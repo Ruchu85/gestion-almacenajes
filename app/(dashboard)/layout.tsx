@@ -22,7 +22,10 @@ export default async function DashboardLayout({
     .from("user_profiles")
     .select("full_name, role")
     .eq("id", user.id)
-    .single();
+    .single() as unknown as {
+      data: { full_name: string | null; role: "admin" | "user" } | null;
+      error: unknown;
+    };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
