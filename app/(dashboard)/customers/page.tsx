@@ -79,6 +79,7 @@ export default function CustomersPage() {
     if (result.error) {
       toast({ variant: "destructive", title: "Error", description: result.error });
     } else {
+      toast({ title: active ? "Cliente activado" : "Cliente desactivado" });
       await loadCustomers();
     }
   }

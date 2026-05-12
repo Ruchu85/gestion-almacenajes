@@ -79,6 +79,7 @@ export default function SuppliersPage() {
     if (result.error) {
       toast({ variant: "destructive", title: "Error", description: result.error });
     } else {
+      toast({ title: active ? "Proveedor activado" : "Proveedor desactivado" });
       await loadSuppliers();
     }
   }

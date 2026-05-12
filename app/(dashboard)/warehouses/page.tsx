@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Plus, Warehouse } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { WarehousesService } from "@/services/warehouses.service";
@@ -13,7 +13,6 @@ import { Button } from "@/components/ui/button";
 import { WarehouseForm } from "@/modules/warehouses/components/warehouse-form";
 import { getWarehouseColumns } from "@/modules/warehouses/components/warehouse-columns";
 import { toast } from "@/hooks/use-toast";
-import { useEffect } from "react";
 
 export default function WarehousesPage() {
   const [warehouses, setWarehouses] = useState<WarehouseType[]>([]);
