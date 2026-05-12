@@ -135,22 +135,28 @@ export interface Database {
       user_profiles: {
         Row: {
           id: string;
+          email: string;
           full_name: string | null;
           role: "admin" | "user";
+          active: boolean;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id: string;
+          email: string;
           full_name?: string | null;
           role?: "admin" | "user";
+          active?: boolean;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
+          email?: string;
           full_name?: string | null;
           role?: "admin" | "user";
+          active?: boolean;
           created_at?: string;
           updated_at?: string;
         };
