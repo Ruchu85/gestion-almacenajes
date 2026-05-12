@@ -259,14 +259,15 @@ BEGIN
         AND im.movement_date <= target_date
       GROUP BY im.warehouse_id, im.product_id
     ),
-    -- Outbound total acumulado hasta target_date
+    -- Outbound con periodo de plancha vencido en target_date
+    -- movement_date + free_days < target_date => la mercancía ya salió del cómputo de stock
     total_outbound AS (
       SELECT
         om.warehouse_id,
         om.product_id,
         SUM(om.quantity) AS total_out
       FROM outbound_movements om
-      WHERE om.movement_date <= target_date
+      WHERE om.movement_date + om.free_days < target_date
       GROUP BY om.warehouse_id, om.product_id
     )
   SELECT

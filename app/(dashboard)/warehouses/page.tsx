@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Plus, Warehouse } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { WarehousesService } from "@/services/warehouses.service";
@@ -22,7 +22,7 @@ export default function WarehousesPage() {
   const [editingWarehouse, setEditingWarehouse] =
     useState<WarehouseType | null>(null);
 
-  const service = new WarehousesService(createClient());
+  const service = useMemo(() => new WarehousesService(createClient()), []);
 
   const loadWarehouses = useCallback(async () => {
     setIsLoading(true);

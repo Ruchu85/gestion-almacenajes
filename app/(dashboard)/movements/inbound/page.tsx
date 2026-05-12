@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Plus, ArrowDownToLine, Download } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { InboundMovementsService } from "@/services/movements.service";
@@ -34,11 +34,11 @@ export default function InboundMovementsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [userId, setUserId] = useState<string>("");
 
-  const supabase = createClient();
-  const movementsService = new InboundMovementsService(supabase);
-  const warehousesService = new WarehousesService(supabase);
-  const productsService = new ProductsService(supabase);
-  const suppliersService = new SuppliersService(supabase);
+  const supabase = useMemo(() => createClient(), []);
+  const movementsService = useMemo(() => new InboundMovementsService(supabase), [supabase]);
+  const warehousesService = useMemo(() => new WarehousesService(supabase), [supabase]);
+  const productsService = useMemo(() => new ProductsService(supabase), [supabase]);
+  const suppliersService = useMemo(() => new SuppliersService(supabase), [supabase]);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);

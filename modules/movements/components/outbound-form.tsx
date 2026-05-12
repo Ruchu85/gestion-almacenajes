@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
+import { Loader2, Info } from "lucide-react";
 import { outboundSchema, type OutboundFormValues } from "@/validations/outbound.schema";
 import type { Warehouse, Product, Customer } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
+  Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -18,6 +18,9 @@ import {
   Dialog, DialogContent, DialogDescription,
   DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { getCostStartDate } from "@/utils/calculations";
+import { formatDate } from "@/utils/format";
 
 interface OutboundFormProps {
   open: boolean;
@@ -51,6 +54,21 @@ export function OutboundForm({
     },
   });
 
+  const [costStartDate, setCostStartDate] = useState<string | null>(null);
+  const movementDate = form.watch("movement_date");
+  const freeDays = form.watch("free_days");
+
+  useEffect(() => {
+    if (movementDate && freeDays >= 0) {
+      try {
+        const date = getCostStartDate(movementDate, freeDays);
+        setCostStartDate(formatDate(date));
+      } catch {
+        setCostStartDate(null);
+      }
+    }
+  }, [movementDate, freeDays]);
+
   useEffect(() => {
     if (!open) {
       form.reset({
@@ -62,6 +80,7 @@ export function OutboundForm({
         free_days: 0,
         comments: "",
       });
+      setCostStartDate(null);
     }
   }, [open, form]);
 
@@ -178,6 +197,43 @@ export function OutboundForm({
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="free_days"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-1">
+                    Días de plancha
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        Días desde la salida SIN descontar del stock para el coste.
+                        La mercancía deja de generar coste a partir del día siguiente al vencimiento.
+                      </TooltipContent>
+                    </Tooltip>
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="365"
+                      step="1"
+                      {...field}
+                      onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                    />
+                  </FormControl>
+                  {costStartDate && (
+                    <FormDescription>
+                      La mercancía dejará de computar en el stock el <strong>{costStartDate}</strong>
+                    </FormDescription>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

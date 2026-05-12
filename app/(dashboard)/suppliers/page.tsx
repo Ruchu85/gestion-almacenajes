@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Plus, Truck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { SuppliersService } from "@/services/suppliers.service";
@@ -21,7 +21,7 @@ export default function SuppliersPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
 
-  const service = new SuppliersService(createClient());
+  const service = useMemo(() => new SuppliersService(createClient()), []);
 
   const loadSuppliers = useCallback(async () => {
     setIsLoading(true);

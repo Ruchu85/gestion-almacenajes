@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { Plus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { CustomersService } from "@/services/customers.service";
@@ -21,7 +21,7 @@ export default function CustomersPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
 
-  const service = new CustomersService(createClient());
+  const service = useMemo(() => new CustomersService(createClient()), []);
 
   const loadCustomers = useCallback(async () => {
     setIsLoading(true);
