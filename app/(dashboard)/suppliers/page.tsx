@@ -13,6 +13,12 @@ import { Button } from "@/components/ui/button";
 import { SupplierForm } from "@/modules/suppliers/components/supplier-form";
 import { getSupplierColumns } from "@/modules/suppliers/components/supplier-columns";
 import { toast } from "@/hooks/use-toast";
+import {
+  createSupplier,
+  updateSupplier,
+  deleteSupplier,
+  toggleSupplierActive,
+} from "./actions";
 
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -32,13 +38,13 @@ export default function SuppliersPage() {
       setSuppliers(result.data?.data ?? []);
     }
     setIsLoading(false);
-  }, []);
+  }, [service]);
 
   useEffect(() => { loadSuppliers(); }, [loadSuppliers]);
 
   async function handleCreate(values: SupplierFormValues) {
     setIsSaving(true);
-    const result = await service.create(values);
+    const result = await createSupplier(values);
     if (result.error) {
       toast({ variant: "destructive", title: "Error al crear", description: result.error });
     } else {
@@ -52,7 +58,7 @@ export default function SuppliersPage() {
   async function handleUpdate(values: SupplierFormValues) {
     if (!editingSupplier) return;
     setIsSaving(true);
-    const result = await service.update(editingSupplier.id, values);
+    const result = await updateSupplier(editingSupplier.id, values);
     if (result.error) {
       toast({ variant: "destructive", title: "Error al actualizar", description: result.error });
     } else {
@@ -65,7 +71,7 @@ export default function SuppliersPage() {
   }
 
   async function handleDelete(id: string) {
-    const result = await service.delete(id);
+    const result = await deleteSupplier(id);
     if (result.error) {
       toast({ variant: "destructive", title: "Error al eliminar", description: result.error });
     } else {
@@ -75,7 +81,7 @@ export default function SuppliersPage() {
   }
 
   async function handleToggleActive(id: string, active: boolean) {
-    const result = await service.toggleActive(id, active);
+    const result = await toggleSupplierActive(id, active);
     if (result.error) {
       toast({ variant: "destructive", title: "Error", description: result.error });
     } else {

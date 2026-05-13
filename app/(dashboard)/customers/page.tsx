@@ -13,6 +13,12 @@ import { Button } from "@/components/ui/button";
 import { CustomerForm } from "@/modules/customers/components/customer-form";
 import { getCustomerColumns } from "@/modules/customers/components/customer-columns";
 import { toast } from "@/hooks/use-toast";
+import {
+  createCustomer,
+  updateCustomer,
+  deleteCustomer,
+  toggleCustomerActive,
+} from "./actions";
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -32,13 +38,13 @@ export default function CustomersPage() {
       setCustomers(result.data?.data ?? []);
     }
     setIsLoading(false);
-  }, []);
+  }, [service]);
 
   useEffect(() => { loadCustomers(); }, [loadCustomers]);
 
   async function handleCreate(values: CustomerFormValues) {
     setIsSaving(true);
-    const result = await service.create(values);
+    const result = await createCustomer(values);
     if (result.error) {
       toast({ variant: "destructive", title: "Error al crear", description: result.error });
     } else {
@@ -52,7 +58,7 @@ export default function CustomersPage() {
   async function handleUpdate(values: CustomerFormValues) {
     if (!editingCustomer) return;
     setIsSaving(true);
-    const result = await service.update(editingCustomer.id, values);
+    const result = await updateCustomer(editingCustomer.id, values);
     if (result.error) {
       toast({ variant: "destructive", title: "Error al actualizar", description: result.error });
     } else {
@@ -65,7 +71,7 @@ export default function CustomersPage() {
   }
 
   async function handleDelete(id: string) {
-    const result = await service.delete(id);
+    const result = await deleteCustomer(id);
     if (result.error) {
       toast({ variant: "destructive", title: "Error al eliminar", description: result.error });
     } else {
@@ -75,7 +81,7 @@ export default function CustomersPage() {
   }
 
   async function handleToggleActive(id: string, active: boolean) {
-    const result = await service.toggleActive(id, active);
+    const result = await toggleCustomerActive(id, active);
     if (result.error) {
       toast({ variant: "destructive", title: "Error", description: result.error });
     } else {

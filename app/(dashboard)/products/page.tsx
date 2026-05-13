@@ -13,6 +13,12 @@ import { Button } from "@/components/ui/button";
 import { ProductForm } from "@/modules/products/components/product-form";
 import { getProductColumns } from "@/modules/products/components/product-columns";
 import { toast } from "@/hooks/use-toast";
+import {
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  toggleProductActive,
+} from "./actions";
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -32,13 +38,13 @@ export default function ProductsPage() {
       setProducts(result.data?.data ?? []);
     }
     setIsLoading(false);
-  }, []);
+  }, [service]);
 
   useEffect(() => { loadProducts(); }, [loadProducts]);
 
   async function handleCreate(values: ProductFormValues) {
     setIsSaving(true);
-    const result = await service.create(values);
+    const result = await createProduct(values);
     if (result.error) {
       toast({ variant: "destructive", title: "Error al crear", description: result.error });
     } else {
@@ -52,7 +58,7 @@ export default function ProductsPage() {
   async function handleUpdate(values: ProductFormValues) {
     if (!editingProduct) return;
     setIsSaving(true);
-    const result = await service.update(editingProduct.id, values);
+    const result = await updateProduct(editingProduct.id, values);
     if (result.error) {
       toast({ variant: "destructive", title: "Error al actualizar", description: result.error });
     } else {
@@ -65,7 +71,7 @@ export default function ProductsPage() {
   }
 
   async function handleDelete(id: string) {
-    const result = await service.delete(id);
+    const result = await deleteProduct(id);
     if (result.error) {
       toast({ variant: "destructive", title: "Error al eliminar", description: result.error });
     } else {
@@ -75,7 +81,7 @@ export default function ProductsPage() {
   }
 
   async function handleToggleActive(id: string, active: boolean) {
-    const result = await service.toggleActive(id, active);
+    const result = await toggleProductActive(id, active);
     if (result.error) {
       toast({ variant: "destructive", title: "Error", description: result.error });
     } else {
