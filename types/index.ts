@@ -54,6 +54,7 @@ export interface PuestaSummary {
   cantidad_inicial: number;
   cantidad_salida: number;
   cantidad_pendiente: number;
+  cantidad_fisica_pendiente: number;
   fecha_puesta: string;
   dias_plancha: number;
   fecha_fin_plancha: string;

@@ -410,6 +410,7 @@ export interface Database {
           n_camion: string | null;
           matricula: string | null;
           cantidad: number;
+          tipo: "real" | "plancha";
           comentarios: string | null;
           created_by: string | null;
           created_at: string;
@@ -422,6 +423,7 @@ export interface Database {
           n_camion?: string | null;
           matricula?: string | null;
           cantidad: number;
+          tipo?: "real" | "plancha";
           comentarios?: string | null;
           created_by?: string | null;
           created_at?: string;
@@ -434,6 +436,7 @@ export interface Database {
           n_camion?: string | null;
           matricula?: string | null;
           cantidad?: number;
+          tipo?: "real" | "plancha";
           comentarios?: string | null;
           created_by?: string | null;
           created_at?: string;
@@ -582,6 +585,7 @@ export interface Database {
           cantidad_inicial: number;
           cantidad_salida: number;
           cantidad_pendiente: number;
+          cantidad_fisica_pendiente: number;
           fecha_puesta: string;
           dias_plancha: number;
           fecha_fin_plancha: string;
@@ -604,6 +608,7 @@ export interface Database {
           cantidad_inicial: number;
           cantidad_salida: number;
           cantidad_pendiente: number;
+          cantidad_fisica_pendiente: number;
           fecha_puesta: string;
           dias_plancha: number;
           fecha_fin_plancha: string;
@@ -612,6 +617,10 @@ export interface Database {
           estado: string;
           created_at: string;
         }[];
+      };
+      create_plancha_auto_exit: {
+        Args: { p_puesta_id: string };
+        Returns: void;
       };
     };
     Enums: {

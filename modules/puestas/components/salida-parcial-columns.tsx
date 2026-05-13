@@ -1,10 +1,11 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Pencil, Trash2, Truck } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, Truck, ArrowRightLeft } from "lucide-react";
 import type { SalidaParcial } from "@/types";
 import { formatDate, formatNumber } from "@/utils/format";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 
 export function getSalidaColumns(
   onEdit:   (salida: SalidaParcial) => void,
@@ -26,14 +28,20 @@ export function getSalidaColumns(
       cell: ({ row }) => formatDate(row.original.fecha_salida),
     },
     {
-      accessorKey: "n_camion",
-      header: "Nº camión",
-      cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <Truck className="h-3.5 w-3.5 text-muted-foreground" />
-          <span>{row.original.n_camion || <span className="text-muted-foreground">—</span>}</span>
-        </div>
-      ),
+      accessorKey: "tipo",
+      header: "Tipo",
+      cell: ({ row }) => {
+        const isPlancha = row.original.tipo === "plancha";
+        return isPlancha ? (
+          <Badge variant="outline" className="text-amber-600 border-amber-400 bg-amber-50 dark:bg-amber-950/30 gap-1">
+            <ArrowRightLeft className="h-3 w-3" />Traspaso
+          </Badge>
+        ) : (
+          <Badge variant="secondary" className="gap-1">
+            <Truck className="h-3 w-3" />Camión
+          </Badge>
+        );
+      },
     },
     {
       accessorKey: "matricula",
@@ -48,7 +56,10 @@ export function getSalidaColumns(
       accessorKey: "cantidad",
       header: "Cantidad",
       cell: ({ row }) => (
-        <span className="font-medium tabular-nums">
+        <span className={cn(
+          "font-medium tabular-nums",
+          row.original.tipo === "plancha" && "text-amber-600"
+        )}>
           {formatNumber(row.original.cantidad)} {unit}
         </span>
       ),
@@ -66,6 +77,8 @@ export function getSalidaColumns(
       id: "actions",
       cell: ({ row }) => {
         const salida = row.original;
+        const isPlancha = salida.tipo === "plancha";
+        if (isPlancha) return null; // plancha exits are not editable/deletable
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

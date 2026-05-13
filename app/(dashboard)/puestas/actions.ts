@@ -103,13 +103,14 @@ export async function changePuestaEstado(
 
 export async function createSalidaParcial(
   values: SalidaParcialFormValues,
-  cantidadPendiente: number
+  cantidadPendiente: number,
+  forceOverflow = false
 ): Promise<{ data?: SalidaParcial; error?: string }> {
   const user = await requireAuth();
   const parsed = salidaParcialSchema.safeParse(values);
   if (!parsed.success) return { error: parsed.error.errors[0].message };
 
-  if (parsed.data.cantidad > cantidadPendiente) {
+  if (!forceOverflow && parsed.data.cantidad > cantidadPendiente) {
     return {
       error: `La cantidad (${parsed.data.cantidad}) supera la pendiente (${cantidadPendiente})`,
     };
@@ -125,6 +126,7 @@ export async function createSalidaParcial(
       n_camion: parsed.data.n_camion ?? null,
       matricula: parsed.data.matricula ?? null,
       cantidad: parsed.data.cantidad,
+      tipo: "real",
       comentarios: parsed.data.comentarios ?? null,
       created_by: user.id,
     })
@@ -133,7 +135,7 @@ export async function createSalidaParcial(
 
   if (error) return { error: error.message };
 
-  // Auto-finalizar si la cantidad pendiente llega a 0
+  // Auto-finalizar si la cantidad física pendiente llega a 0 o negativo
   if (parsed.data.cantidad >= cantidadPendiente) {
     await supabase
       .from("puestas_a_disposicion")
@@ -142,6 +144,16 @@ export async function createSalidaParcial(
   }
 
   return { data: data as SalidaParcial };
+}
+
+export async function triggerPlanchaAutoExit(puestaId: string): Promise<{ error?: string }> {
+  await requireAuth();
+  const supabase = await createServiceClient();
+  const { error } = await supabase.rpc("create_plancha_auto_exit", {
+    p_puesta_id: puestaId,
+  });
+  if (error) return { error: error.message };
+  return {};
 }
 
 export async function updateSalidaParcial(

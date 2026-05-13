@@ -4,9 +4,10 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Plus, Truck, TrendingUp, Package, Calendar,
-  Clock, CheckCircle2, AlertCircle, BarChart3,
+  Clock, CheckCircle2, AlertCircle, BarChart3, AlertTriangle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { parseISO, isBefore } from "date-fns";
 import type {
   PuestaSummary, PuestaDailyBreakdown, SalidaParcial,
 } from "@/types";
@@ -25,25 +26,24 @@ import {
   createSalidaParcial,
   updateSalidaParcial,
   deleteSalidaParcial,
+  triggerPlanchaAutoExit,
 } from "../actions";
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Area,
-  AreaChart,
+  AreaChart, Area, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 
-const estadoConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: React.ElementType }> = {
-  abierta:        { label: "Abierta",        variant: "default",    icon: Clock },
-  finalizada:     { label: "Finalizada",     variant: "secondary",  icon: CheckCircle2 },
-  cerrada_manual: { label: "Cerrada manual", variant: "outline",    icon: AlertCircle },
+const estadoConfig: Record<string, {
+  label: string;
+  variant: "default" | "secondary" | "destructive" | "outline";
+  icon: React.ElementType;
+}> = {
+  abierta:        { label: "Abierta",        variant: "default",   icon: Clock },
+  finalizada:     { label: "Finalizada",     variant: "secondary", icon: CheckCircle2 },
+  cerrada_manual: { label: "Cerrada manual", variant: "outline",   icon: AlertCircle },
 };
 
 export default function PuestaDetailPage() {
@@ -64,6 +64,7 @@ export default function PuestaDetailPage() {
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
+
     const [summaryRes, breakdownRes, salidasRes] = await Promise.all([
       supabase.rpc("get_puesta_summary", { p_puesta_id: id, p_fecha: today }),
       supabase.rpc("get_puesta_daily_breakdown", {
@@ -81,25 +82,49 @@ export default function PuestaDetailPage() {
     if (summaryRes.error) {
       toast({ variant: "destructive", title: "Error", description: summaryRes.error.message });
     } else {
-      setSummary((summaryRes.data?.[0] as PuestaSummary) ?? null);
+      const s = (summaryRes.data?.[0] as PuestaSummary) ?? null;
+      setSummary(s);
+
+      // Auto-trigger plancha exit if fecha_fin_plancha has passed and no plancha salida exists
+      if (s && s.estado === "abierta") {
+        const plancharPassed = isBefore(parseISO(s.fecha_fin_plancha), new Date());
+        const hasPlanchaExit = (salidasRes.data ?? []).some(
+          (sal: SalidaParcial) => sal.tipo === "plancha"
+        );
+        if (plancharPassed && !hasPlanchaExit && s.cantidad_fisica_pendiente > 0) {
+          await triggerPlanchaAutoExit(id);
+          // Reload after creating plancha exit
+          const [sRes2, bRes2, salRes2] = await Promise.all([
+            supabase.rpc("get_puesta_summary", { p_puesta_id: id, p_fecha: today }),
+            supabase.rpc("get_puesta_daily_breakdown", {
+              p_puesta_id: id, p_fecha_inicio: null, p_fecha_fin: today,
+            }),
+            supabase.from("salidas_parciales").select("*").eq("puesta_id", id).order("fecha_salida", { ascending: false }),
+          ]);
+          setSummary((sRes2.data?.[0] as PuestaSummary) ?? null);
+          setBreakdown((bRes2.data ?? []) as PuestaDailyBreakdown[]);
+          setSalidas((salRes2.data ?? []) as SalidaParcial[]);
+          setIsLoading(false);
+          return;
+        }
+      }
     }
 
-    if (!breakdownRes.error) {
-      setBreakdown((breakdownRes.data ?? []) as PuestaDailyBreakdown[]);
-    }
-
-    if (!salidasRes.error) {
-      setSalidas((salidasRes.data ?? []) as SalidaParcial[]);
-    }
+    if (!breakdownRes.error) setBreakdown((breakdownRes.data ?? []) as PuestaDailyBreakdown[]);
+    if (!salidasRes.error) setSalidas((salidasRes.data ?? []) as SalidaParcial[]);
 
     setIsLoading(false);
   }, [supabase, id, today]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  async function handleCreateSalida(values: SalidaParcialFormValues) {
+  async function handleCreateSalida(values: SalidaParcialFormValues, forceOverflow = false) {
     setIsSaving(true);
-    const result = await createSalidaParcial(values, summary?.cantidad_pendiente ?? 0);
+    const result = await createSalidaParcial(
+      values,
+      summary?.cantidad_fisica_pendiente ?? 0,
+      forceOverflow
+    );
     if (result.error) {
       toast({ variant: "destructive", title: "Error al registrar salida", description: result.error });
     } else {
@@ -136,13 +161,13 @@ export default function PuestaDetailPage() {
   }
 
   function handleEditSalida(salida: SalidaParcial) {
+    if (salida.tipo === "plancha") return; // plancha exits are not editable
     setEditingSalida(salida);
     setSalidaFormOpen(true);
   }
 
   const salidaColumns = getSalidaColumns(handleEditSalida, handleDeleteSalida, summary?.unit);
 
-  // Chart data: last 30 days of breakdown
   const chartData = useMemo(() => {
     const last30 = breakdown.slice(-30);
     return last30.map((d) => ({
@@ -157,9 +182,7 @@ export default function PuestaDetailPage() {
       <div className="space-y-6">
         <Skeleton className="h-8 w-64" />
         <div className="grid grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28" />
-          ))}
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28" />)}
         </div>
         <Skeleton className="h-64" />
       </div>
@@ -184,6 +207,13 @@ export default function PuestaDetailPage() {
     ? Math.round((summary.cantidad_salida / summary.cantidad_inicial) * 100)
     : 0;
 
+  const pendienteFisico = summary.cantidad_fisica_pendiente;
+  const pendienteNegativo = pendienteFisico < 0;
+
+  // Salidas reales only for count display
+  const salidasReales = salidas.filter((s) => s.tipo === "real");
+  const salidaPlancha = salidas.find((s) => s.tipo === "plancha");
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -197,8 +227,7 @@ export default function PuestaDetailPage() {
               {summary.numero_contrato || "Sin referencia"}
             </h1>
             <Badge variant={estadoCfg.variant} className="flex items-center gap-1">
-              <EstadoIcon className="h-3 w-3" />
-              {estadoCfg.label}
+              <EstadoIcon className="h-3 w-3" />{estadoCfg.label}
             </Badge>
           </div>
           <p className="text-muted-foreground mt-1">
@@ -216,9 +245,7 @@ export default function PuestaDetailPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold tabular-nums">
-              {formatNumber(summary.cantidad_inicial)}
-            </p>
+            <p className="text-2xl font-bold tabular-nums">{formatNumber(summary.cantidad_inicial)}</p>
             <p className="text-xs text-muted-foreground">{summary.unit}</p>
           </CardContent>
         </Card>
@@ -226,12 +253,12 @@ export default function PuestaDetailPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1.5 text-xs">
-              <Truck className="h-3.5 w-3.5" />Salida total
+              <Truck className="h-3.5 w-3.5" />Salida real
             </CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums">
-              {formatNumber(summary.cantidad_salida)}
+              {formatNumber(salidasReales.reduce((s, r) => s + r.cantidad, 0))}
             </p>
             <p className="text-xs text-muted-foreground">{porcentajeSalida}% retirado</p>
           </CardContent>
@@ -240,12 +267,15 @@ export default function PuestaDetailPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1.5 text-xs">
-              <BarChart3 className="h-3.5 w-3.5" />Pendiente
+              <BarChart3 className="h-3.5 w-3.5" />Pendiente físico
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold tabular-nums">
-              {formatNumber(summary.cantidad_pendiente)}
+            <p className={cn(
+              "text-2xl font-bold tabular-nums",
+              pendienteNegativo && "text-destructive"
+            )}>
+              {formatNumber(pendienteFisico)} {pendienteNegativo && <AlertTriangle className="inline h-4 w-4 ml-1" />}
             </p>
             <p className="text-xs text-muted-foreground">{summary.unit} en almacén</p>
           </CardContent>
@@ -261,16 +291,13 @@ export default function PuestaDetailPage() {
             <p className="text-2xl font-bold tabular-nums text-primary">
               {formatCurrency(summary.coste_acumulado)}
             </p>
-            <p className="text-xs text-muted-foreground">
-              {summary.dias_activos} días activos
-            </p>
+            <p className="text-xs text-muted-foreground">{summary.dias_activos} días activos</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Info + Chart */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Info panel */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -290,6 +317,17 @@ export default function PuestaDetailPage() {
               <span className="text-muted-foreground">Fin de plancha</span>
               <span className="font-medium">{formatDate(summary.fecha_fin_plancha)}</span>
             </div>
+            {salidaPlancha && (
+              <>
+                <Separator />
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground text-xs">Traspaso a cliente</span>
+                  <Badge variant="outline" className="text-xs">
+                    {formatNumber(salidaPlancha.cantidad)} {summary.unit}
+                  </Badge>
+                </div>
+              </>
+            )}
             <Separator />
             <div className="flex justify-between">
               <span className="text-muted-foreground">Días activos (coste)</span>
@@ -298,7 +336,6 @@ export default function PuestaDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Cost chart */}
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-base">Evolución de costes diarios</CardTitle>
@@ -307,7 +344,7 @@ export default function PuestaDetailPage() {
           <CardContent>
             {chartData.length === 0 ? (
               <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
-                Aún no hay datos de coste (en período de plancha)
+                Aún no hay datos de coste (en período de plancha o traspasado)
               </div>
             ) : (
               <ResponsiveContainer width="100%" height={180}>
@@ -321,17 +358,9 @@ export default function PuestaDetailPage() {
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    formatter={(value: number) => [`${formatCurrency(value)}`, "Coste día"]}
-                    labelClassName="font-medium"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="coste"
-                    stroke="hsl(var(--primary))"
-                    fill="url(#costGradient)"
-                    strokeWidth={2}
-                  />
+                  <Tooltip formatter={(v: number) => [formatCurrency(v), "Coste día"]} />
+                  <Area type="monotone" dataKey="coste" stroke="hsl(var(--primary))"
+                    fill="url(#costGradient)" strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -347,14 +376,16 @@ export default function PuestaDetailPage() {
               <Truck className="h-4 w-4" />Salidas de camión
             </CardTitle>
             <CardDescription>
-              {salidas.length} salida{salidas.length !== 1 ? "s" : ""} registrada{salidas.length !== 1 ? "s" : ""}
+              {salidasReales.length} salida{salidasReales.length !== 1 ? "s" : ""} real{salidasReales.length !== 1 ? "es" : ""}
+              {salidaPlancha && (
+                <span className="ml-2 text-amber-500 font-medium">
+                  · Traspaso plancha: {formatNumber(salidaPlancha.cantidad)} {summary.unit}
+                </span>
+              )}
             </CardDescription>
           </div>
-          {summary.estado === "abierta" && summary.cantidad_pendiente > 0 && (
-            <Button
-              size="sm"
-              onClick={() => { setEditingSalida(null); setSalidaFormOpen(true); }}
-            >
+          {summary.estado === "abierta" && pendienteFisico > 0 && (
+            <Button size="sm" onClick={() => { setEditingSalida(null); setSalidaFormOpen(true); }}>
               <Plus className="mr-2 h-4 w-4" />Registrar salida
             </Button>
           )}
@@ -376,13 +407,13 @@ export default function PuestaDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Daily breakdown table (collapsible) */}
+      {/* Daily breakdown table */}
       {breakdown.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Desglose diario de almacenaje</CardTitle>
             <CardDescription>
-              {breakdown.length} días · Total acumulado: {formatCurrency(summary.coste_acumulado)}
+              {breakdown.length} días · Total: {formatCurrency(summary.coste_acumulado)}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -391,7 +422,7 @@ export default function PuestaDetailPage() {
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="pb-2 text-left font-medium">Fecha</th>
-                    <th className="pb-2 text-center font-medium">Día activo</th>
+                    <th className="pb-2 text-center font-medium">Día</th>
                     <th className="pb-2 text-right font-medium">Pendiente</th>
                     <th className="pb-2 text-right font-medium">Tarifa/ud</th>
                     <th className="pb-2 text-right font-medium">Coste día</th>
@@ -428,14 +459,13 @@ export default function PuestaDetailPage() {
         </Card>
       )}
 
-      {/* Salida form */}
       <SalidaParcialForm
         open={salidaFormOpen}
         onOpenChange={(open) => { setSalidaFormOpen(open); if (!open) setEditingSalida(null); }}
         onSubmit={editingSalida ? handleUpdateSalida : handleCreateSalida}
         isLoading={isSaving}
         puestaId={id}
-        cantidadPendiente={summary.cantidad_pendiente}
+        cantidadPendiente={summary.cantidad_fisica_pendiente}
         unit={summary.unit}
         defaultValues={editingSalida ?? undefined}
       />
