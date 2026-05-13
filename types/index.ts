@@ -11,6 +11,9 @@ export type UserProfile = Tables<"user_profiles">;
 export type InboundMovement = Tables<"inbound_movements">;
 export type OutboundMovement = Tables<"outbound_movements">;
 export type StorageCost = Tables<"storage_costs">;
+export type PuestaADisposicion = Tables<"puestas_a_disposicion">;
+export type SalidaParcial = Tables<"salidas_parciales">;
+export type TarifaTramo = Tables<"tarifa_tramos">;
 
 // ============================================================
 // TIPOS ENRIQUECIDOS (con relaciones joined)
@@ -34,6 +37,47 @@ export type StorageCostWithRelations = StorageCost & {
 
 // ============================================================
 // TIPOS DE STOCK Y KPIs
+// ============================================================
+// ============================================================
+// TIPOS ENRIQUECIDOS — PUESTAS A DISPOSICIÓN
+// ============================================================
+export type PuestaEstado = "abierta" | "finalizada" | "cerrada_manual";
+
+export interface PuestaSummary {
+  puesta_id: string;
+  numero_contrato: string;
+  customer_name: string;
+  product_name: string;
+  product_code: string;
+  unit: string;
+  warehouse_name: string;
+  cantidad_inicial: number;
+  cantidad_salida: number;
+  cantidad_pendiente: number;
+  fecha_puesta: string;
+  dias_plancha: number;
+  fecha_fin_plancha: string;
+  dias_activos: number;
+  coste_acumulado: number;
+  estado: string;
+  created_at: string;
+}
+
+export interface PuestaDailyBreakdown {
+  dia: string;
+  dias_activos: number;
+  cantidad_pendiente: number;
+  tarifa_diaria: number;
+  coste_dia: number;
+}
+
+export type PuestaADisposicionWithRelations = PuestaADisposicion & {
+  customer: Pick<Customer, "id" | "name"> | null;
+  product: Pick<Product, "id" | "code" | "name" | "unit">;
+  warehouse: Pick<Warehouse, "id" | "code" | "name">;
+  salidas_parciales?: SalidaParcial[];
+};
+
 // ============================================================
 export interface StockSummaryItem {
   warehouse_id: string;

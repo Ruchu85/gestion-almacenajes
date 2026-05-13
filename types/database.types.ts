@@ -290,6 +290,165 @@ export interface Database {
           }
         ];
       };
+      tarifa_tramos: {
+        Row: {
+          id: string;
+          product_id: string;
+          dias_desde: number;
+          dias_hasta: number | null;
+          precio_diario: number;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          product_id: string;
+          dias_desde: number;
+          dias_hasta?: number | null;
+          precio_diario: number;
+          active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          product_id?: string;
+          dias_desde?: number;
+          dias_hasta?: number | null;
+          precio_diario?: number;
+          active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "tarifa_tramos_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      puestas_a_disposicion: {
+        Row: {
+          id: string;
+          numero_contrato: string | null;
+          customer_id: string | null;
+          product_id: string;
+          warehouse_id: string;
+          cantidad_inicial: number;
+          fecha_puesta: string;
+          dias_plancha: number;
+          fecha_fin_plancha: string;
+          estado: "abierta" | "finalizada" | "cerrada_manual";
+          comentarios: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          numero_contrato?: string | null;
+          customer_id?: string | null;
+          product_id: string;
+          warehouse_id: string;
+          cantidad_inicial: number;
+          fecha_puesta: string;
+          dias_plancha?: number;
+          estado?: "abierta" | "finalizada" | "cerrada_manual";
+          comentarios?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          numero_contrato?: string | null;
+          customer_id?: string | null;
+          product_id?: string;
+          warehouse_id?: string;
+          cantidad_inicial?: number;
+          fecha_puesta?: string;
+          dias_plancha?: number;
+          estado?: "abierta" | "finalizada" | "cerrada_manual";
+          comentarios?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "puestas_customer_id_fkey";
+            columns: ["customer_id"];
+            isOneToOne: false;
+            referencedRelation: "customers";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "puestas_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "puestas_warehouse_id_fkey";
+            columns: ["warehouse_id"];
+            isOneToOne: false;
+            referencedRelation: "warehouses";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      salidas_parciales: {
+        Row: {
+          id: string;
+          puesta_id: string;
+          fecha_salida: string;
+          n_camion: string | null;
+          matricula: string | null;
+          cantidad: number;
+          comentarios: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          puesta_id: string;
+          fecha_salida: string;
+          n_camion?: string | null;
+          matricula?: string | null;
+          cantidad: number;
+          comentarios?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          puesta_id?: string;
+          fecha_salida?: string;
+          n_camion?: string | null;
+          matricula?: string | null;
+          cantidad?: number;
+          comentarios?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "salidas_parciales_puesta_id_fkey";
+            columns: ["puesta_id"];
+            isOneToOne: false;
+            referencedRelation: "puestas_a_disposicion";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       storage_costs: {
         Row: {
           id: string;
@@ -391,6 +550,68 @@ export interface Database {
       get_monthly_cost_evolution: {
         Args: { p_months?: number };
         Returns: { month: string; total_cost: number }[];
+      };
+      get_tarifa_for_puesta_day: {
+        Args: { p_product_id: string; p_dias_activos: number };
+        Returns: number;
+      };
+      get_puesta_daily_breakdown: {
+        Args: {
+          p_puesta_id: string;
+          p_fecha_inicio?: string | null;
+          p_fecha_fin?: string;
+        };
+        Returns: {
+          dia: string;
+          dias_activos: number;
+          cantidad_pendiente: number;
+          tarifa_diaria: number;
+          coste_dia: number;
+        }[];
+      };
+      get_puesta_summary: {
+        Args: { p_puesta_id: string; p_fecha?: string };
+        Returns: {
+          puesta_id: string;
+          numero_contrato: string;
+          customer_name: string;
+          product_name: string;
+          product_code: string;
+          unit: string;
+          warehouse_name: string;
+          cantidad_inicial: number;
+          cantidad_salida: number;
+          cantidad_pendiente: number;
+          fecha_puesta: string;
+          dias_plancha: number;
+          fecha_fin_plancha: string;
+          dias_activos: number;
+          coste_acumulado: number;
+          estado: string;
+          created_at: string;
+        }[];
+      };
+      get_all_puestas_summary: {
+        Args: { p_fecha?: string };
+        Returns: {
+          puesta_id: string;
+          numero_contrato: string;
+          customer_name: string;
+          product_name: string;
+          product_code: string;
+          unit: string;
+          warehouse_name: string;
+          cantidad_inicial: number;
+          cantidad_salida: number;
+          cantidad_pendiente: number;
+          fecha_puesta: string;
+          dias_plancha: number;
+          fecha_fin_plancha: string;
+          dias_activos: number;
+          coste_acumulado: number;
+          estado: string;
+          created_at: string;
+        }[];
       };
     };
     Enums: {
