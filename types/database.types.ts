@@ -452,6 +452,42 @@ export interface Database {
           }
         ];
       };
+      monthly_invoices: {
+        Row: {
+          id: string;
+          warehouse_id: string;
+          product_id: string;
+          year_month: string;
+          invoice_amount: number | null;
+          invoice_ref: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          warehouse_id: string;
+          product_id: string;
+          year_month: string;
+          invoice_amount?: number | null;
+          invoice_ref?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          warehouse_id?: string;
+          product_id?: string;
+          year_month?: string;
+          invoice_amount?: number | null;
+          invoice_ref?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       storage_costs: {
         Row: {
           id: string;

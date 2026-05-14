@@ -8,8 +8,13 @@ import {
   Warehouse,
   Package,
   CalendarDays,
+  ChevronDown,
   ChevronRight,
-  AlertCircle,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  ClipboardList,
+  FileText,
+  Plus,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { StorageCostsService } from "@/services/storage-costs.service";
@@ -27,17 +32,17 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { formatCurrency, formatNumber, formatQuantity } from "@/utils/format";
 
-// ────────────────────────────────────────────────────────
-// Tipos locales para el organigrama
-// ────────────────────────────────────────────────────────
 interface ProductStock {
   product_id: string;
   product_name: string;
@@ -61,13 +66,13 @@ interface WarehouseGroup {
 export default function DashboardPage() {
   const [kpis, setKpis] = useState<DashboardKPIs | null>(null);
   const [warehouseGroups, setWarehouseGroups] = useState<WarehouseGroup[]>([]);
+  const [expandedWarehouses, setExpandedWarehouses] = useState<Set<string>>(new Set());
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
   const [isLoadingStock, setIsLoadingStock] = useState(true);
 
   const supabase = useMemo(() => createClient(), []);
   const service = useMemo(() => new StorageCostsService(supabase), [supabase]);
 
-  // Carga KPIs
   const loadKpis = useCallback(async () => {
     setIsLoadingKpis(true);
     const result = await service.getDashboardKPIs();
@@ -79,7 +84,6 @@ export default function DashboardPage() {
     setIsLoadingKpis(false);
   }, [service]);
 
-  // Carga el organigrama directamente desde las tablas (evita problemas con el RPC get_stock_summary)
   const loadOrganigrama = useCallback(async () => {
     setIsLoadingStock(true);
 
@@ -100,15 +104,13 @@ export default function DashboardPage() {
       return;
     }
 
-    // Agregar entradas por (warehouse, product)
-    type StockKey = string;
-    const stockMap = new Map<StockKey, ProductStock & { warehouse_id: string; warehouse_name: string }>();
+    type StockEntry = ProductStock & { warehouse_id: string; warehouse_name: string };
+    const stockMap = new Map<string, StockEntry>();
 
     for (const row of inboundRes.data ?? []) {
       const w = row.warehouse as { id: string; name: string } | null;
       const p = row.product as { id: string; name: string; code: string; unit: string; storage_daily_price: number } | null;
       if (!w || !p) continue;
-
       const key = `${row.warehouse_id}||${row.product_id}`;
       if (!stockMap.has(key)) {
         stockMap.set(key, {
@@ -128,7 +130,6 @@ export default function DashboardPage() {
       stockMap.get(key)!.total_inbound += Number(row.quantity);
     }
 
-    // Agregar salidas
     for (const row of outboundRes.data ?? []) {
       const key = `${row.warehouse_id}||${row.product_id}`;
       if (stockMap.has(key)) {
@@ -136,7 +137,6 @@ export default function DashboardPage() {
       }
     }
 
-    // Construir grupos por almacén (solo con stock pendiente > 0)
     const groups = new Map<string, WarehouseGroup>();
     for (const item of stockMap.values()) {
       item.pending_stock = Math.max(0, item.total_inbound - item.total_outbound);
@@ -160,12 +160,13 @@ export default function DashboardPage() {
 
     const sorted = Array.from(groups.values())
       .sort((a, b) => b.totalPendingStock - a.totalPendingStock)
-      .map((g) => ({
-        ...g,
-        products: g.products.sort((a, b) => b.pending_stock - a.pending_stock),
-      }));
+      .map((g) => ({ ...g, products: g.products.sort((a, b) => b.pending_stock - a.pending_stock) }));
 
     setWarehouseGroups(sorted);
+    // Auto-expand first warehouse
+    if (sorted.length > 0) {
+      setExpandedWarehouses(new Set([sorted[0].warehouse_id]));
+    }
     setIsLoadingStock(false);
   }, [supabase]);
 
@@ -174,6 +175,15 @@ export default function DashboardPage() {
     loadOrganigrama();
   }, [loadKpis, loadOrganigrama]);
 
+  function toggleWarehouse(id: string) {
+    setExpandedWarehouses((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   return (
     <>
       <PageHeader
@@ -181,7 +191,7 @@ export default function DashboardPage() {
         description="Resumen general de almacenajes y costes"
       />
 
-      {/* KPIs compactos — fila única */}
+      {/* KPIs compactos */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <StatsCard
           title="Coste hoy"
@@ -216,23 +226,23 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Organigrama — bloque principal */}
-      <Card className="flex-1">
-        <CardHeader className="pb-3">
+      {/* Organigrama en árbol */}
+      <Card>
+        <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
                 <Warehouse className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <CardTitle className="text-lg">Organigrama de almacenes</CardTitle>
+                <CardTitle>Organigrama de almacenes</CardTitle>
                 <CardDescription>
-                  Despliega un almacén para ver sus productos y acceder al calendario de stock
+                  Despliega un almacén para ver sus productos y gestionar movimientos
                 </CardDescription>
               </div>
             </div>
             {!isLoadingStock && warehouseGroups.length > 0 && (
-              <Badge variant="outline" className="shrink-0">
+              <Badge variant="outline">
                 {warehouseGroups.length}{" "}
                 {warehouseGroups.length === 1 ? "almacén activo" : "almacenes activos"}
               </Badge>
@@ -242,9 +252,14 @@ export default function DashboardPage() {
 
         <CardContent>
           {isLoadingStock ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-16 w-full rounded-lg" />
+                <div key={i} className="space-y-2">
+                  <Skeleton className="h-16 w-full rounded-xl" />
+                  <div className="ml-8 space-y-2">
+                    <Skeleton className="h-12 w-full rounded-lg" />
+                  </div>
+                </div>
               ))}
             </div>
           ) : warehouseGroups.length === 0 ? (
@@ -260,123 +275,180 @@ export default function DashboardPage() {
               </div>
             </div>
           ) : (
-            <Accordion type="multiple" defaultValue={[warehouseGroups[0]?.warehouse_id]} className="space-y-2">
-              {warehouseGroups.map((group) => (
-                <AccordionItem
-                  key={group.warehouse_id}
-                  value={group.warehouse_id}
-                  className="border rounded-xl overflow-hidden data-[state=open]:border-primary/30"
-                >
-                  <AccordionTrigger className="hover:no-underline px-5 py-4 hover:bg-muted/30 data-[state=open]:bg-muted/20">
-                    <div className="flex items-center gap-4 text-left flex-1 mr-4">
-                      {/* Icono almacén */}
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
-                        <Warehouse className="h-5 w-5 text-primary" />
+            <div className="space-y-3">
+              {warehouseGroups.map((group) => {
+                const isExpanded = expandedWarehouses.has(group.warehouse_id);
+                return (
+                  <div key={group.warehouse_id}>
+                    {/* ── Nodo Almacén ────────────────────────────── */}
+                    <button
+                      onClick={() => toggleWarehouse(group.warehouse_id)}
+                      className={cn(
+                        "w-full flex items-center gap-4 p-4 rounded-xl border text-left transition-all",
+                        isExpanded
+                          ? "bg-primary/5 border-primary/30 shadow-sm"
+                          : "bg-card hover:bg-muted/40 border-border"
+                      )}
+                    >
+                      <div className={cn(
+                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition-colors",
+                        isExpanded ? "bg-primary/15 border-primary/30" : "bg-muted border-border"
+                      )}>
+                        <Warehouse className={cn("h-5 w-5", isExpanded ? "text-primary" : "text-muted-foreground")} />
                       </div>
 
-                      {/* Nombre y conteo */}
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-base leading-tight truncate">
-                          {group.warehouse_name}
-                        </p>
-                        <p className="text-sm text-muted-foreground mt-0.5">
+                        <p className="font-semibold text-base truncate">{group.warehouse_name}</p>
+                        <p className="text-sm text-muted-foreground">
                           {group.products.length}{" "}
-                          {group.products.length === 1 ? "producto" : "productos"} con stock
+                          {group.products.length === 1 ? "producto" : "productos"} con stock activo
                         </p>
                       </div>
 
-                      {/* Métricas */}
-                      <div className="flex items-center gap-2 mr-2 shrink-0">
+                      <div className="flex items-center gap-4 shrink-0">
                         <div className="text-right hidden sm:block">
                           <p className="text-xs text-muted-foreground">Stock total</p>
-                          <p className="font-semibold tabular-nums text-sm">
-                            {formatNumber(group.totalPendingStock)} uds
-                          </p>
+                          <p className="font-semibold tabular-nums">{formatNumber(group.totalPendingStock)} uds</p>
                         </div>
-                        <div className="h-8 w-px bg-border hidden sm:block" />
+                        <div className="h-8 w-px bg-border hidden md:block" />
                         <div className="text-right hidden md:block">
                           <p className="text-xs text-muted-foreground">Coste/día</p>
-                          <p className="font-semibold tabular-nums text-sm text-primary">
-                            {formatCurrency(group.totalDailyCost)}
-                          </p>
+                          <p className="font-semibold tabular-nums text-primary">{formatCurrency(group.totalDailyCost)}</p>
                         </div>
-                        <Badge
-                          className="ml-1 shrink-0 bg-primary/10 text-primary border-primary/20 hover:bg-primary/10 font-mono text-xs md:hidden"
-                        >
-                          {formatCurrency(group.totalDailyCost)}/día
-                        </Badge>
+                        <ChevronDown className={cn(
+                          "h-4 w-4 text-muted-foreground transition-transform duration-200",
+                          isExpanded && "rotate-180"
+                        )} />
                       </div>
-                    </div>
-                  </AccordionTrigger>
+                    </button>
 
-                  <AccordionContent className="px-5 pb-4 pt-0">
-                    <div className="rounded-lg border divide-y bg-background/60">
-                      {group.products.map((product) => (
-                        <div
-                          key={product.product_id}
-                          className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
-                        >
-                          {/* Icono producto */}
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted border">
-                            <Package className="h-4 w-4 text-muted-foreground" />
-                          </div>
+                    {/* ── Árbol de Productos ──────────────────────── */}
+                    {isExpanded && (
+                      <div className="ml-5 mt-1 relative">
+                        {/* Línea vertical del árbol */}
+                        <div className="absolute left-0 top-0 bottom-3 w-0.5 bg-border/60 rounded-full" />
 
-                          {/* Nombre y código */}
-                          <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm leading-tight truncate">
-                              {product.product_name}
-                            </p>
-                            <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                              {product.product_code}
-                            </p>
-                          </div>
+                        <div className="space-y-1.5 pl-1">
+                          {group.products.map((product, idx) => {
+                            const isLast = idx === group.products.length - 1;
+                            return (
+                              <div key={product.product_id} className="relative">
+                                {/* Rama horizontal */}
+                                <div className={cn(
+                                  "absolute left-[-4px] top-1/2 w-5 h-0.5 bg-border/60",
+                                  isLast && "hidden"
+                                )} />
+                                <div className="absolute left-[-4px] top-1/2 w-5 h-0.5 bg-border/60" />
 
-                          {/* Métricas del producto */}
-                          <div className="flex items-center gap-5 shrink-0">
-                            <div className="text-right hidden sm:block">
-                              <p className="text-xs text-muted-foreground">Entradas</p>
-                              <p className="text-sm tabular-nums">
-                                {formatQuantity(product.total_inbound, product.unit)}
-                              </p>
-                            </div>
-                            <div className="text-right hidden sm:block">
-                              <p className="text-xs text-muted-foreground">Salidas</p>
-                              <p className="text-sm tabular-nums">
-                                {formatQuantity(product.total_outbound, product.unit)}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-xs text-muted-foreground">Pendiente</p>
-                              <p className="text-sm font-bold tabular-nums text-amber-600 dark:text-amber-400">
-                                {formatQuantity(product.pending_stock, product.unit)}
-                              </p>
-                            </div>
-                            <div className="text-right hidden md:block">
-                              <p className="text-xs text-muted-foreground">Coste/día</p>
-                              <p className="text-sm font-semibold tabular-nums text-primary">
-                                {formatCurrency(product.daily_cost)}
-                              </p>
-                            </div>
+                                <div className="ml-5 rounded-lg border bg-background/80 hover:bg-muted/20 transition-colors">
+                                  <div className="flex items-center gap-3 px-4 py-3">
+                                    {/* Icono producto */}
+                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted border">
+                                      <Package className="h-4 w-4 text-muted-foreground" />
+                                    </div>
 
-                            {/* Botón acceder */}
-                            <Button variant="outline" size="sm" asChild className="shrink-0">
-                              <Link
-                                href={`/warehouses/${group.warehouse_id}/${product.product_id}`}
-                              >
-                                <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
-                                <span className="hidden sm:inline">Ver calendario</span>
-                                <span className="sm:hidden">Ver</span>
-                                <ChevronRight className="h-3.5 w-3.5 ml-0.5 opacity-50" />
-                              </Link>
-                            </Button>
-                          </div>
+                                    {/* Nombre */}
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium text-sm leading-tight truncate">
+                                        {product.product_name}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground font-mono">
+                                        {product.product_code}
+                                      </p>
+                                    </div>
+
+                                    {/* Métricas */}
+                                    <div className="flex items-center gap-4 shrink-0">
+                                      <div className="hidden sm:flex items-center gap-4 text-sm">
+                                        <div className="text-right">
+                                          <p className="text-xs text-muted-foreground">Entradas</p>
+                                          <p className="tabular-nums text-green-600 dark:text-green-400 font-medium">
+                                            +{formatQuantity(product.total_inbound, product.unit)}
+                                          </p>
+                                        </div>
+                                        <div className="text-right">
+                                          <p className="text-xs text-muted-foreground">Salidas</p>
+                                          <p className="tabular-nums text-red-600 dark:text-red-400 font-medium">
+                                            -{formatQuantity(product.total_outbound, product.unit)}
+                                          </p>
+                                        </div>
+                                        <div className="text-right">
+                                          <p className="text-xs text-muted-foreground">Pendiente</p>
+                                          <p className="tabular-nums font-bold text-amber-600 dark:text-amber-400">
+                                            {formatQuantity(product.pending_stock, product.unit)}
+                                          </p>
+                                        </div>
+                                        <div className="text-right hidden lg:block">
+                                          <p className="text-xs text-muted-foreground">Coste/día</p>
+                                          <p className="tabular-nums font-semibold text-primary">
+                                            {formatCurrency(product.daily_cost)}
+                                          </p>
+                                        </div>
+                                      </div>
+
+                                      {/* Menú de acciones */}
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="outline" size="sm" className="gap-1.5">
+                                            <Plus className="h-3.5 w-3.5" />
+                                            Acciones
+                                            <ChevronDown className="h-3 w-3 opacity-60" />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end" className="w-58">
+                                          <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+                                            {product.product_name}
+                                          </DropdownMenuLabel>
+                                          <DropdownMenuSeparator />
+
+                                          <DropdownMenuItem asChild>
+                                            <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}`}>
+                                              <CalendarDays className="mr-2 h-4 w-4 text-blue-500" />
+                                              Ver calendario de stock
+                                            </Link>
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem asChild>
+                                            <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}?tab=puestas`}>
+                                              <FileText className="mr-2 h-4 w-4 text-violet-500" />
+                                              Ver puestas activas
+                                            </Link>
+                                          </DropdownMenuItem>
+
+                                          <DropdownMenuSeparator />
+
+                                          <DropdownMenuItem asChild>
+                                            <Link href="/movements/inbound">
+                                              <ArrowDownToLine className="mr-2 h-4 w-4 text-green-500" />
+                                              Nueva entrada
+                                            </Link>
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem asChild>
+                                            <Link href="/movements/outbound">
+                                              <ArrowUpFromLine className="mr-2 h-4 w-4 text-red-500" />
+                                              Nueva salida
+                                            </Link>
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem asChild>
+                                            <Link href="/puestas">
+                                              <ClipboardList className="mr-2 h-4 w-4 text-amber-500" />
+                                              Nueva puesta a disposición
+                                            </Link>
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      ))}
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
-            </Accordion>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </CardContent>
       </Card>
