@@ -1029,25 +1029,42 @@ export default function WarehouseProductPage() {
                         const totalRealSalidas = (row.salidas_parciales ?? [])
                           .filter((s) => s.tipo === "real")
                           .reduce((acc, s) => acc + Number(s.cantidad), 0);
-                        const pending = Math.max(0, Number(row.cantidad_inicial) - totalRealSalidas);
+                        const pending = Number(row.cantidad_inicial) - totalRealSalidas;
+                        const isOverflow = pending < 0;
                         return (
-                          <tr key={row.id} className="border-b hover:bg-muted/50 transition-colors">
+                          <tr
+                            key={row.id}
+                            className={cn(
+                              "border-b transition-colors",
+                              isOverflow
+                                ? "bg-destructive/5 hover:bg-destructive/10"
+                                : "hover:bg-muted/50"
+                            )}
+                          >
                             <td className="p-4 font-mono text-sm">{row.numero_contrato ?? <span className="text-muted-foreground">—</span>}</td>
                             <td className="p-4 text-sm">{row.customer?.name ?? <span className="text-muted-foreground">—</span>}</td>
                             <td className="p-4 font-mono text-sm">{formatDate(row.fecha_puesta)}</td>
                             <td className="p-4 tabular-nums text-sm">{formatQuantity(row.cantidad_inicial, productUnit)}</td>
                             <td className="p-4 tabular-nums font-semibold text-sm">
                               <span className={cn(
-                                pending > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+                                isOverflow
+                                  ? "text-destructive"
+                                  : pending > 0
+                                  ? "text-amber-600 dark:text-amber-400"
+                                  : "text-muted-foreground"
                               )}>
+                                {isOverflow && ""}
                                 {formatQuantity(pending, productUnit)}
+                                {isOverflow && (
+                                  <span className="ml-1 text-xs font-normal">(exceso)</span>
+                                )}
                               </span>
                             </td>
                             <td className="p-4 text-sm text-muted-foreground">{row.dias_plancha} días</td>
                             <td className="p-4">{estadoBadge(row.estado)}</td>
                             <td className="p-4">
                               <div className="flex items-center gap-2">
-                                {row.estado === "abierta" && pending > 0 && (
+                                {row.estado === "abierta" && !isOverflow && (
                                   <Button
                                     variant="outline"
                                     size="sm"

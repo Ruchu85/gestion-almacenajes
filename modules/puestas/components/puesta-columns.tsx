@@ -78,16 +78,20 @@ export function getPuestaColumns(
     {
       accessorKey: "cantidad_pendiente",
       header: "Pendiente",
-      cell: ({ row }) => (
-        <div className="text-right tabular-nums">
-          <div className="font-medium">
-            {formatNumber(row.original.cantidad_pendiente)} {row.original.unit}
+      cell: ({ row }) => {
+        const isOverflow = row.original.cantidad_pendiente < 0;
+        return (
+          <div className="text-right tabular-nums">
+            <div className={`font-medium ${isOverflow ? "text-destructive" : ""}`}>
+              {formatNumber(row.original.cantidad_pendiente)} {row.original.unit}
+              {isOverflow && <span className="ml-1 text-xs font-normal">(exceso)</span>}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              de {formatNumber(row.original.cantidad_inicial)}
+            </div>
           </div>
-          <div className="text-xs text-muted-foreground">
-            de {formatNumber(row.original.cantidad_inicial)}
-          </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       accessorKey: "dias_activos",

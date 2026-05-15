@@ -34,7 +34,7 @@ export default function SuppliersPage() {
 
   const loadSuppliers = useCallback(async () => {
     setIsLoading(true);
-    const result = await service.getAll({ sortBy: "name", sortOrder: "asc" });
+    const result = await service.getAll({ sortBy: "name", sortOrder: "asc", pageSize: 10000 });
     if (result.error) {
       toast({ variant: "destructive", title: "Error", description: result.error });
     } else {

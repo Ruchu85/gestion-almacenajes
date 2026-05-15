@@ -166,13 +166,12 @@ export async function createSalidaParcial(
     });
   }
 
-  // Auto-finalizar solo cuando las salidas reales cubren toda la cantidad inicial
-  // y NO es un overflow forzado por el usuario (en ese caso, la puesta queda con pendiente negativo)
+  // Auto-finalizar cuando las salidas reales cubren o superan toda la cantidad inicial
   const salidaList = (puesta.salidas_parciales ?? []) as { cantidad: number; tipo: string }[];
   const realTotal = salidaList
     .filter((s) => s.tipo === "real")
     .reduce((sum, s) => sum + Number(s.cantidad), 0);
-  if (!forceOverflow && realTotal + parsed.data.cantidad >= Number(puesta.cantidad_inicial)) {
+  if (realTotal + parsed.data.cantidad >= Number(puesta.cantidad_inicial)) {
     await supabase
       .from("puestas_a_disposicion")
       .update({ estado: "finalizada" })
