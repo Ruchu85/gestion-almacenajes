@@ -4,6 +4,9 @@
 -- se refleje como valor negativo en la UI.
 -- ============================================================
 
+DROP FUNCTION IF EXISTS get_puesta_summary(UUID, DATE);
+DROP FUNCTION IF EXISTS get_all_puestas_summary(DATE);
+
 CREATE OR REPLACE FUNCTION get_puesta_summary(
   p_puesta_id UUID,
   p_fecha     DATE DEFAULT CURRENT_DATE
@@ -84,5 +87,37 @@ BEGIN
     b.estado::TEXT,
     b.created_at
   FROM base b, salidas_billing sb, salidas_reales sr, coste c;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+CREATE OR REPLACE FUNCTION get_all_puestas_summary(
+  p_fecha DATE DEFAULT CURRENT_DATE
+)
+RETURNS TABLE(
+  puesta_id          UUID,
+  numero_contrato    TEXT,
+  customer_name      TEXT,
+  product_name       TEXT,
+  product_code       TEXT,
+  unit               TEXT,
+  warehouse_name     TEXT,
+  cantidad_inicial   DECIMAL,
+  cantidad_salida    DECIMAL,
+  cantidad_pendiente DECIMAL,
+  cantidad_fisica_pendiente DECIMAL,
+  fecha_puesta       DATE,
+  dias_plancha       INTEGER,
+  fecha_fin_plancha  DATE,
+  dias_activos       INTEGER,
+  coste_acumulado    DECIMAL,
+  estado             TEXT,
+  created_at         TIMESTAMPTZ
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT ps.*
+    FROM puestas_a_disposicion pd
+    CROSS JOIN LATERAL get_puesta_summary(pd.id, p_fecha) ps
+   ORDER BY pd.created_at DESC;
 END;
 $$ LANGUAGE plpgsql STABLE;
