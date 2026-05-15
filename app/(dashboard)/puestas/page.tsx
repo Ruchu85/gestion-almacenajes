@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ClipboardList } from "lucide-react";
+import { Plus, ClipboardList, ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { WarehousesService } from "@/services/warehouses.service";
 import { ProductsService } from "@/services/products.service";
@@ -38,6 +38,11 @@ export default function PuestasPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [presetWarehouseId, setPresetWarehouseId] = useState<string>("");
+  const [presetWarehouseName, setPresetWarehouseName] = useState<string>("");
+  const [presetProductId, setPresetProductId] = useState<string>("");
+  const [presetProductName, setPresetProductName] = useState<string>("");
+  const [backUrl, setBackUrl] = useState<string>("");
 
   const supabase = useMemo(() => createClient(), []);
   const warehousesService = useMemo(() => new WarehousesService(supabase), [supabase]);
@@ -75,6 +80,31 @@ export default function PuestasPage() {
 
   useEffect(() => { loadSummaries(); }, [loadSummaries]);
 
+  // Read preset URL params on mount
+  useEffect(() => {
+    const search = typeof window !== "undefined" ? window.location.search : "";
+    const urlParams = new URLSearchParams(search);
+    const whId = urlParams.get("warehouse_id");
+    const prId = urlParams.get("product_id");
+    const back = urlParams.get("back");
+    if (whId) setPresetWarehouseId(whId);
+    if (prId) setPresetProductId(prId);
+    if (back) setBackUrl(decodeURIComponent(back));
+    if (whId && prId) { setEditingPuesta(null); setFormOpen(true); }
+  }, []);
+
+  // Resolve preset names once options are loaded
+  useEffect(() => {
+    if (presetWarehouseId && warehouses.length > 0) {
+      const wh = warehouses.find((w) => w.id === presetWarehouseId);
+      if (wh) setPresetWarehouseName(wh.name);
+    }
+    if (presetProductId && products.length > 0) {
+      const pr = products.find((p) => p.id === presetProductId);
+      if (pr) setPresetProductName(pr.name);
+    }
+  }, [warehouses, products, presetWarehouseId, presetProductId]);
+
   async function handleCreate(values: PuestaFormValues) {
     setIsSaving(true);
     const result = await createPuesta(values);
@@ -83,6 +113,10 @@ export default function PuestasPage() {
     } else {
       toast({ title: "Puesta a disposición creada" });
       setFormOpen(false);
+      if (backUrl) {
+        router.push(backUrl);
+        return;
+      }
       await loadSummaries();
     }
     setIsSaving(false);
@@ -158,9 +192,17 @@ export default function PuestasPage() {
         title="Puestas a Disposición"
         description="Gestiona los lotes de mercancía puestos a disposición de clientes"
         actions={
-          <Button onClick={() => { setEditingPuesta(null); setFormOpen(true); }}>
-            <Plus className="mr-2 h-4 w-4" />Nueva puesta
-          </Button>
+          <>
+            {backUrl && (
+              <Button variant="outline" onClick={() => router.push(backUrl)}>
+                <ChevronLeft className="mr-1 h-4 w-4" />
+                Volver
+              </Button>
+            )}
+            <Button onClick={() => { setEditingPuesta(null); setFormOpen(true); }}>
+              <Plus className="mr-2 h-4 w-4" />Nueva puesta
+            </Button>
+          </>
         }
       />
 
@@ -190,6 +232,10 @@ export default function PuestasPage() {
         warehouses={warehouses}
         products={products}
         customers={customers}
+        presetWarehouseId={presetWarehouseId || undefined}
+        presetWarehouseName={presetWarehouseName || undefined}
+        presetProductId={presetProductId || undefined}
+        presetProductName={presetProductName || undefined}
       />
     </>
   );

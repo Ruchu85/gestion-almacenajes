@@ -11,6 +11,7 @@ export const warehouseSchema = z.object({
     .min(1, "El nombre es obligatorio")
     .max(200, "Máximo 200 caracteres"),
   address: z.string().max(500, "Máximo 500 caracteres").optional().nullable(),
+  posicion_cerrada: z.string().optional().nullable(),
   active: z.boolean().default(true),
 });
 

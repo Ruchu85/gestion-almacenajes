@@ -9,12 +9,12 @@ import {
   Package,
   CalendarDays,
   ChevronDown,
-  ChevronRight,
   ArrowDownToLine,
   ArrowUpFromLine,
   ClipboardList,
   FileText,
   Plus,
+  MapPin,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { StorageCostsService } from "@/services/storage-costs.service";
@@ -58,14 +58,25 @@ interface ProductStock {
 interface WarehouseGroup {
   warehouse_id: string;
   warehouse_name: string;
+  posicion_cerrada: string | null;
   products: ProductStock[];
   totalDailyCost: number;
   totalPendingStock: number;
 }
 
+interface PositionGroup {
+  posicion_cerrada: string;
+  warehouses: WarehouseGroup[];
+  totalDailyCost: number;
+  totalPendingStock: number;
+}
+
+const SIN_POSICION = "(Sin posición cerrada)";
+
 export default function DashboardPage() {
   const [kpis, setKpis] = useState<DashboardKPIs | null>(null);
-  const [warehouseGroups, setWarehouseGroups] = useState<WarehouseGroup[]>([]);
+  const [positionGroups, setPositionGroups] = useState<PositionGroup[]>([]);
+  const [expandedPositions, setExpandedPositions] = useState<Set<string>>(new Set());
   const [expandedWarehouses, setExpandedWarehouses] = useState<Set<string>>(new Set());
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
   const [isLoadingStock, setIsLoadingStock] = useState(true);
@@ -91,7 +102,7 @@ export default function DashboardPage() {
       supabase
         .from("inbound_movements")
         .select(
-          "warehouse_id, product_id, quantity, warehouse:warehouses(id, name), product:products(id, name, code, unit, storage_daily_price)"
+          "warehouse_id, product_id, quantity, warehouse:warehouses(id, name, posicion_cerrada), product:products(id, name, code, unit, storage_daily_price)"
         ),
       supabase
         .from("outbound_movements")
@@ -104,11 +115,11 @@ export default function DashboardPage() {
       return;
     }
 
-    type StockEntry = ProductStock & { warehouse_id: string; warehouse_name: string };
+    type StockEntry = ProductStock & { warehouse_id: string; warehouse_name: string; posicion_cerrada: string | null };
     const stockMap = new Map<string, StockEntry>();
 
     for (const row of inboundRes.data ?? []) {
-      const w = row.warehouse as { id: string; name: string } | null;
+      const w = row.warehouse as { id: string; name: string; posicion_cerrada: string | null } | null;
       const p = row.product as { id: string; name: string; code: string; unit: string; storage_daily_price: number } | null;
       if (!w || !p) continue;
       const key = `${row.warehouse_id}||${row.product_id}`;
@@ -116,6 +127,7 @@ export default function DashboardPage() {
         stockMap.set(key, {
           warehouse_id: row.warehouse_id,
           warehouse_name: w.name,
+          posicion_cerrada: w.posicion_cerrada ?? null,
           product_id: row.product_id,
           product_name: p.name,
           product_code: p.code,
@@ -137,35 +149,66 @@ export default function DashboardPage() {
       }
     }
 
-    const groups = new Map<string, WarehouseGroup>();
+    // Build warehouse groups
+    const warehouseMap = new Map<string, WarehouseGroup>();
     for (const item of stockMap.values()) {
       item.pending_stock = Math.max(0, item.total_inbound - item.total_outbound);
       item.daily_cost = item.pending_stock * item.daily_price;
       if (item.pending_stock <= 0) continue;
 
-      if (!groups.has(item.warehouse_id)) {
-        groups.set(item.warehouse_id, {
+      if (!warehouseMap.has(item.warehouse_id)) {
+        warehouseMap.set(item.warehouse_id, {
           warehouse_id: item.warehouse_id,
           warehouse_name: item.warehouse_name,
+          posicion_cerrada: item.posicion_cerrada,
           products: [],
           totalDailyCost: 0,
           totalPendingStock: 0,
         });
       }
-      const g = groups.get(item.warehouse_id)!;
-      g.products.push(item);
-      g.totalDailyCost += item.daily_cost;
-      g.totalPendingStock += item.pending_stock;
+      const wg = warehouseMap.get(item.warehouse_id)!;
+      wg.products.push(item);
+      wg.totalDailyCost += item.daily_cost;
+      wg.totalPendingStock += item.pending_stock;
     }
 
-    const sorted = Array.from(groups.values())
-      .sort((a, b) => b.totalPendingStock - a.totalPendingStock)
-      .map((g) => ({ ...g, products: g.products.sort((a, b) => b.pending_stock - a.pending_stock) }));
+    // Build position groups
+    const positionMap = new Map<string, PositionGroup>();
+    for (const wg of warehouseMap.values()) {
+      wg.products.sort((a, b) => b.pending_stock - a.pending_stock);
+      const posKey = wg.posicion_cerrada ?? SIN_POSICION;
+      if (!positionMap.has(posKey)) {
+        positionMap.set(posKey, {
+          posicion_cerrada: posKey,
+          warehouses: [],
+          totalDailyCost: 0,
+          totalPendingStock: 0,
+        });
+      }
+      const pg = positionMap.get(posKey)!;
+      pg.warehouses.push(wg);
+      pg.totalDailyCost += wg.totalDailyCost;
+      pg.totalPendingStock += wg.totalPendingStock;
+    }
 
-    setWarehouseGroups(sorted);
-    // Auto-expand first warehouse
+    // Sort: named positions alphabetically, SIN_POSICION last
+    const sorted = Array.from(positionMap.values()).sort((a, b) => {
+      if (a.posicion_cerrada === SIN_POSICION) return 1;
+      if (b.posicion_cerrada === SIN_POSICION) return -1;
+      return a.posicion_cerrada.localeCompare(b.posicion_cerrada, "es");
+    });
+
+    for (const pg of sorted) {
+      pg.warehouses.sort((a, b) => b.totalPendingStock - a.totalPendingStock);
+    }
+
+    setPositionGroups(sorted);
+    // Auto-expand first position and its first warehouse
     if (sorted.length > 0) {
-      setExpandedWarehouses(new Set([sorted[0].warehouse_id]));
+      setExpandedPositions(new Set([sorted[0].posicion_cerrada]));
+      if (sorted[0].warehouses.length > 0) {
+        setExpandedWarehouses(new Set([sorted[0].warehouses[0].warehouse_id]));
+      }
     }
     setIsLoadingStock(false);
   }, [supabase]);
@@ -175,6 +218,15 @@ export default function DashboardPage() {
     loadOrganigrama();
   }, [loadKpis, loadOrganigrama]);
 
+  function togglePosition(key: string) {
+    setExpandedPositions((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   function toggleWarehouse(id: string) {
     setExpandedWarehouses((prev) => {
       const next = new Set(prev);
@@ -183,6 +235,8 @@ export default function DashboardPage() {
       return next;
     });
   }
+
+  const totalWarehouses = positionGroups.reduce((sum, pg) => sum + pg.warehouses.length, 0);
 
   return (
     <>
@@ -226,7 +280,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Organigrama en árbol */}
+      {/* Organigrama en árbol 3 niveles */}
       <Card>
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
@@ -237,14 +291,14 @@ export default function DashboardPage() {
               <div>
                 <CardTitle>Organigrama de almacenes</CardTitle>
                 <CardDescription>
-                  Despliega un almacén para ver sus productos y gestionar movimientos
+                  Posición cerrada → Almacén → Productos
                 </CardDescription>
               </div>
             </div>
-            {!isLoadingStock && warehouseGroups.length > 0 && (
+            {!isLoadingStock && totalWarehouses > 0 && (
               <Badge variant="outline">
-                {warehouseGroups.length}{" "}
-                {warehouseGroups.length === 1 ? "almacén activo" : "almacenes activos"}
+                {totalWarehouses}{" "}
+                {totalWarehouses === 1 ? "almacén activo" : "almacenes activos"}
               </Badge>
             )}
           </div>
@@ -255,14 +309,17 @@ export default function DashboardPage() {
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="space-y-2">
-                  <Skeleton className="h-16 w-full rounded-xl" />
+                  <Skeleton className="h-14 w-full rounded-xl" />
                   <div className="ml-8 space-y-2">
                     <Skeleton className="h-12 w-full rounded-lg" />
+                    <div className="ml-8">
+                      <Skeleton className="h-10 w-full rounded-md" />
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-          ) : warehouseGroups.length === 0 ? (
+          ) : positionGroups.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
                 <Warehouse className="h-8 w-8 opacity-40" />
@@ -276,168 +333,218 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {warehouseGroups.map((group) => {
-                const isExpanded = expandedWarehouses.has(group.warehouse_id);
+              {positionGroups.map((pg) => {
+                const isPosExpanded = expandedPositions.has(pg.posicion_cerrada);
                 return (
-                  <div key={group.warehouse_id}>
-                    {/* ── Nodo Almacén ────────────────────────────── */}
+                  <div key={pg.posicion_cerrada}>
+                    {/* ── Nodo Posición Cerrada ────────────────────── */}
                     <button
-                      onClick={() => toggleWarehouse(group.warehouse_id)}
+                      onClick={() => togglePosition(pg.posicion_cerrada)}
                       className={cn(
                         "w-full flex items-center gap-4 p-4 rounded-xl border text-left transition-all",
-                        isExpanded
-                          ? "bg-primary/5 border-primary/30 shadow-sm"
+                        isPosExpanded
+                          ? "bg-violet-50 dark:bg-violet-950/20 border-violet-300 dark:border-violet-700 shadow-sm"
                           : "bg-card hover:bg-muted/40 border-border"
                       )}
                     >
                       <div className={cn(
                         "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition-colors",
-                        isExpanded ? "bg-primary/15 border-primary/30" : "bg-muted border-border"
+                        isPosExpanded
+                          ? "bg-violet-100 dark:bg-violet-900/40 border-violet-300 dark:border-violet-700"
+                          : "bg-muted border-border"
                       )}>
-                        <Warehouse className={cn("h-5 w-5", isExpanded ? "text-primary" : "text-muted-foreground")} />
+                        <MapPin className={cn("h-5 w-5", isPosExpanded ? "text-violet-600 dark:text-violet-400" : "text-muted-foreground")} />
                       </div>
 
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-base truncate">{group.warehouse_name}</p>
+                        <p className="font-semibold text-base truncate">{pg.posicion_cerrada}</p>
                         <p className="text-sm text-muted-foreground">
-                          {group.products.length}{" "}
-                          {group.products.length === 1 ? "producto" : "productos"} con stock activo
+                          {pg.warehouses.length}{" "}
+                          {pg.warehouses.length === 1 ? "almacén" : "almacenes"}
+                          {" · "}
+                          {pg.warehouses.reduce((s, w) => s + w.products.length, 0)}{" "}
+                          {pg.warehouses.reduce((s, w) => s + w.products.length, 0) === 1 ? "producto" : "productos"}
                         </p>
                       </div>
 
                       <div className="flex items-center gap-4 shrink-0">
                         <div className="text-right hidden sm:block">
                           <p className="text-xs text-muted-foreground">Stock total</p>
-                          <p className="font-semibold tabular-nums">{formatNumber(group.totalPendingStock)} uds</p>
+                          <p className="font-semibold tabular-nums">{formatNumber(pg.totalPendingStock)} uds</p>
                         </div>
                         <div className="h-8 w-px bg-border hidden md:block" />
                         <div className="text-right hidden md:block">
                           <p className="text-xs text-muted-foreground">Coste/día</p>
-                          <p className="font-semibold tabular-nums text-primary">{formatCurrency(group.totalDailyCost)}</p>
+                          <p className="font-semibold tabular-nums text-violet-600 dark:text-violet-400">{formatCurrency(pg.totalDailyCost)}</p>
                         </div>
                         <ChevronDown className={cn(
                           "h-4 w-4 text-muted-foreground transition-transform duration-200",
-                          isExpanded && "rotate-180"
+                          isPosExpanded && "rotate-180"
                         )} />
                       </div>
                     </button>
 
-                    {/* ── Árbol de Productos ──────────────────────── */}
-                    {isExpanded && (
+                    {/* ── Nivel 2: Almacenes ───────────────────────── */}
+                    {isPosExpanded && (
                       <div className="ml-5 mt-1 relative">
-                        {/* Línea vertical del árbol */}
                         <div className="absolute left-0 top-0 bottom-3 w-0.5 bg-border/60 rounded-full" />
-
                         <div className="space-y-1.5 pl-1">
-                          {group.products.map((product, idx) => {
-                            const isLast = idx === group.products.length - 1;
+                          {pg.warehouses.map((group) => {
+                            const isExpanded = expandedWarehouses.has(group.warehouse_id);
                             return (
-                              <div key={product.product_id} className="relative">
-                                {/* Rama horizontal */}
-                                <div className={cn(
-                                  "absolute left-[-4px] top-1/2 w-5 h-0.5 bg-border/60",
-                                  isLast && "hidden"
-                                )} />
-                                <div className="absolute left-[-4px] top-1/2 w-5 h-0.5 bg-border/60" />
-
-                                <div className="ml-5 rounded-lg border bg-background/80 hover:bg-muted/20 transition-colors">
-                                  <div className="flex items-center gap-3 px-4 py-3">
-                                    {/* Icono producto */}
-                                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted border">
-                                      <Package className="h-4 w-4 text-muted-foreground" />
+                              <div key={group.warehouse_id} className="relative">
+                                <div className="absolute left-[-4px] top-[22px] w-5 h-0.5 bg-border/60" />
+                                <div className="ml-5">
+                                  {/* ── Nodo Almacén ─────────────────── */}
+                                  <button
+                                    onClick={() => toggleWarehouse(group.warehouse_id)}
+                                    className={cn(
+                                      "w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-all",
+                                      isExpanded
+                                        ? "bg-primary/5 border-primary/30 shadow-sm"
+                                        : "bg-card hover:bg-muted/40 border-border"
+                                    )}
+                                  >
+                                    <div className={cn(
+                                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors",
+                                      isExpanded ? "bg-primary/15 border-primary/30" : "bg-muted border-border"
+                                    )}>
+                                      <Warehouse className={cn("h-4 w-4", isExpanded ? "text-primary" : "text-muted-foreground")} />
                                     </div>
 
-                                    {/* Nombre */}
                                     <div className="flex-1 min-w-0">
-                                      <p className="font-medium text-sm leading-tight truncate">
-                                        {product.product_name}
-                                      </p>
-                                      <p className="text-xs text-muted-foreground font-mono">
-                                        {product.product_code}
+                                      <p className="font-semibold text-sm truncate">{group.warehouse_name}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {group.products.length}{" "}
+                                        {group.products.length === 1 ? "producto" : "productos"} con stock activo
                                       </p>
                                     </div>
 
-                                    {/* Métricas */}
-                                    <div className="flex items-center gap-4 shrink-0">
-                                      <div className="hidden sm:flex items-center gap-4 text-sm">
-                                        <div className="text-right">
-                                          <p className="text-xs text-muted-foreground">Entradas</p>
-                                          <p className="tabular-nums text-green-600 dark:text-green-400 font-medium">
-                                            +{formatQuantity(product.total_inbound, product.unit)}
-                                          </p>
-                                        </div>
-                                        <div className="text-right">
-                                          <p className="text-xs text-muted-foreground">Salidas</p>
-                                          <p className="tabular-nums text-red-600 dark:text-red-400 font-medium">
-                                            -{formatQuantity(product.total_outbound, product.unit)}
-                                          </p>
-                                        </div>
-                                        <div className="text-right">
-                                          <p className="text-xs text-muted-foreground">Pendiente</p>
-                                          <p className="tabular-nums font-bold text-amber-600 dark:text-amber-400">
-                                            {formatQuantity(product.pending_stock, product.unit)}
-                                          </p>
-                                        </div>
-                                        <div className="text-right hidden lg:block">
-                                          <p className="text-xs text-muted-foreground">Coste/día</p>
-                                          <p className="tabular-nums font-semibold text-primary">
-                                            {formatCurrency(product.daily_cost)}
-                                          </p>
-                                        </div>
+                                    <div className="flex items-center gap-3 shrink-0">
+                                      <div className="text-right hidden sm:block">
+                                        <p className="text-xs text-muted-foreground">Stock</p>
+                                        <p className="font-semibold tabular-nums text-sm">{formatNumber(group.totalPendingStock)} uds</p>
                                       </div>
-
-                                      {/* Menú de acciones */}
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                          <Button variant="outline" size="sm" className="gap-1.5">
-                                            <Plus className="h-3.5 w-3.5" />
-                                            Acciones
-                                            <ChevronDown className="h-3 w-3 opacity-60" />
-                                          </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="w-58">
-                                          <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
-                                            {product.product_name}
-                                          </DropdownMenuLabel>
-                                          <DropdownMenuSeparator />
-
-                                          <DropdownMenuItem asChild>
-                                            <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}`}>
-                                              <CalendarDays className="mr-2 h-4 w-4 text-blue-500" />
-                                              Ver calendario de stock
-                                            </Link>
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem asChild>
-                                            <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}?tab=puestas`}>
-                                              <FileText className="mr-2 h-4 w-4 text-violet-500" />
-                                              Ver puestas activas
-                                            </Link>
-                                          </DropdownMenuItem>
-
-                                          <DropdownMenuSeparator />
-
-                                          <DropdownMenuItem asChild>
-                                            <Link href="/movements/inbound">
-                                              <ArrowDownToLine className="mr-2 h-4 w-4 text-green-500" />
-                                              Nueva entrada
-                                            </Link>
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem asChild>
-                                            <Link href="/movements/outbound">
-                                              <ArrowUpFromLine className="mr-2 h-4 w-4 text-red-500" />
-                                              Nueva salida
-                                            </Link>
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem asChild>
-                                            <Link href="/puestas">
-                                              <ClipboardList className="mr-2 h-4 w-4 text-amber-500" />
-                                              Nueva puesta a disposición
-                                            </Link>
-                                          </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
+                                      <div className="h-6 w-px bg-border hidden md:block" />
+                                      <div className="text-right hidden md:block">
+                                        <p className="text-xs text-muted-foreground">Coste/día</p>
+                                        <p className="font-semibold tabular-nums text-sm text-primary">{formatCurrency(group.totalDailyCost)}</p>
+                                      </div>
+                                      <ChevronDown className={cn(
+                                        "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
+                                        isExpanded && "rotate-180"
+                                      )} />
                                     </div>
-                                  </div>
+                                  </button>
+
+                                  {/* ── Nivel 3: Productos ─────────────── */}
+                                  {isExpanded && (
+                                    <div className="ml-5 mt-1 relative">
+                                      <div className="absolute left-0 top-0 bottom-3 w-0.5 bg-border/60 rounded-full" />
+                                      <div className="space-y-1.5 pl-1">
+                                        {group.products.map((product) => (
+                                          <div key={product.product_id} className="relative">
+                                            <div className="absolute left-[-4px] top-1/2 w-5 h-0.5 bg-border/60" />
+                                            <div className="ml-5 rounded-lg border bg-background/80 hover:bg-muted/20 transition-colors">
+                                              <div className="flex items-center gap-3 px-4 py-3">
+                                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted border">
+                                                  <Package className="h-4 w-4 text-muted-foreground" />
+                                                </div>
+
+                                                <div className="flex-1 min-w-0">
+                                                  <p className="font-medium text-sm leading-tight truncate">
+                                                    {product.product_name}
+                                                  </p>
+                                                  <p className="text-xs text-muted-foreground font-mono">
+                                                    {product.product_code}
+                                                  </p>
+                                                </div>
+
+                                                <div className="flex items-center gap-4 shrink-0">
+                                                  <div className="hidden sm:flex items-center gap-4 text-sm">
+                                                    <div className="text-right">
+                                                      <p className="text-xs text-muted-foreground">Entradas</p>
+                                                      <p className="tabular-nums text-green-600 dark:text-green-400 font-medium">
+                                                        +{formatQuantity(product.total_inbound, product.unit)}
+                                                      </p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                      <p className="text-xs text-muted-foreground">Salidas</p>
+                                                      <p className="tabular-nums text-red-600 dark:text-red-400 font-medium">
+                                                        -{formatQuantity(product.total_outbound, product.unit)}
+                                                      </p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                      <p className="text-xs text-muted-foreground">Pendiente</p>
+                                                      <p className="tabular-nums font-bold text-amber-600 dark:text-amber-400">
+                                                        {formatQuantity(product.pending_stock, product.unit)}
+                                                      </p>
+                                                    </div>
+                                                    <div className="text-right hidden lg:block">
+                                                      <p className="text-xs text-muted-foreground">Coste/día</p>
+                                                      <p className="tabular-nums font-semibold text-primary">
+                                                        {formatCurrency(product.daily_cost)}
+                                                      </p>
+                                                    </div>
+                                                  </div>
+
+                                                  <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                      <Button variant="outline" size="sm" className="gap-1.5">
+                                                        <Plus className="h-3.5 w-3.5" />
+                                                        Acciones
+                                                        <ChevronDown className="h-3 w-3 opacity-60" />
+                                                      </Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end" className="w-58">
+                                                      <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+                                                        {product.product_name}
+                                                      </DropdownMenuLabel>
+                                                      <DropdownMenuSeparator />
+
+                                                      <DropdownMenuItem asChild>
+                                                        <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}`}>
+                                                          <CalendarDays className="mr-2 h-4 w-4 text-blue-500" />
+                                                          Ver calendario de stock
+                                                        </Link>
+                                                      </DropdownMenuItem>
+                                                      <DropdownMenuItem asChild>
+                                                        <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}?tab=puestas`}>
+                                                          <FileText className="mr-2 h-4 w-4 text-violet-500" />
+                                                          Ver puestas activas
+                                                        </Link>
+                                                      </DropdownMenuItem>
+
+                                                      <DropdownMenuSeparator />
+
+                                                      <DropdownMenuItem asChild>
+                                                        <Link href={`/movements/inbound?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`}>
+                                                          <ArrowDownToLine className="mr-2 h-4 w-4 text-green-500" />
+                                                          Nueva entrada
+                                                        </Link>
+                                                      </DropdownMenuItem>
+                                                      <DropdownMenuItem asChild>
+                                                        <Link href={`/movements/outbound?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`}>
+                                                          <ArrowUpFromLine className="mr-2 h-4 w-4 text-red-500" />
+                                                          Nueva salida
+                                                        </Link>
+                                                      </DropdownMenuItem>
+                                                      <DropdownMenuItem asChild>
+                                                        <Link href={`/puestas?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`}>
+                                                          <ClipboardList className="mr-2 h-4 w-4 text-amber-500" />
+                                                          Nueva puesta a disposición
+                                                        </Link>
+                                                      </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                  </DropdownMenu>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             );

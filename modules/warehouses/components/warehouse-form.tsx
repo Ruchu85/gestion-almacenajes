@@ -19,6 +19,13 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -26,6 +33,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+
+const PROVINCIAS_ESPANA = [
+  "Álava", "Albacete", "Alicante", "Almería", "Asturias", "Ávila",
+  "Badajoz", "Baleares", "Barcelona", "Burgos",
+  "Cáceres", "Cádiz", "Cantabria", "Castellón", "Ciudad Real", "Córdoba", "A Coruña", "Cuenca",
+  "Girona", "Granada", "Guadalajara", "Gipuzkoa",
+  "Huelva", "Huesca",
+  "Jaén",
+  "La Rioja", "Las Palmas", "León", "Lleida", "Lugo",
+  "Madrid", "Málaga", "Murcia",
+  "Navarra",
+  "Ourense",
+  "Palencia", "Pontevedra",
+  "Salamanca", "Santa Cruz de Tenerife", "Segovia", "Sevilla", "Soria",
+  "Tarragona", "Teruel", "Toledo",
+  "Valencia", "Valladolid", "Bizkaia",
+  "Zamora", "Zaragoza",
+  "Ceuta", "Melilla",
+];
 
 interface WarehouseFormProps {
   open: boolean;
@@ -50,6 +76,7 @@ export function WarehouseForm({
       code: "",
       name: "",
       address: "",
+      posicion_cerrada: null,
       active: true,
     },
   });
@@ -61,21 +88,18 @@ export function WarehouseForm({
           code: defaultValues.code,
           name: defaultValues.name,
           address: defaultValues.address ?? "",
+          posicion_cerrada: defaultValues.posicion_cerrada ?? null,
           active: defaultValues.active,
         });
       } else {
-        form.reset({ code: "", name: "", address: "", active: true });
+        form.reset({ code: "", name: "", address: "", posicion_cerrada: null, active: true });
       }
     }
   }, [open, defaultValues, form]);
 
-  async function handleSubmit(values: WarehouseFormValues) {
-    await onSubmit(values);
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle>
             {isEditing ? "Editar almacén" : "Nuevo almacén"}
@@ -88,10 +112,7 @@ export function WarehouseForm({
         </DialogHeader>
 
         <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(handleSubmit)}
-            className="space-y-4"
-          >
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
               name="code"
@@ -102,9 +123,7 @@ export function WarehouseForm({
                     <Input
                       placeholder="ALM-01"
                       {...field}
-                      onChange={(e) =>
-                        field.onChange(e.target.value.toUpperCase())
-                      }
+                      onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                       disabled={isEditing}
                     />
                   </FormControl>
@@ -130,23 +149,54 @@ export function WarehouseForm({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="address"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Dirección</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="Calle Industrial 15, 28001 Madrid"
-                      {...field}
-                      value={field.value ?? ""}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="posicion_cerrada"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Posición Cerrada</FormLabel>
+                    <Select
+                      onValueChange={(val) => field.onChange(val === "__none__" ? null : val)}
+                      value={field.value ?? "__none__"}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar provincia" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="max-h-64">
+                        <SelectItem value="__none__">
+                          <span className="text-muted-foreground">— Sin asignar —</span>
+                        </SelectItem>
+                        {PROVINCIAS_ESPANA.map((p) => (
+                          <SelectItem key={p} value={p}>{p}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="address"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Dirección</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Calle Industrial 15..."
+                        {...field}
+                        value={field.value ?? ""}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <FormField
               control={form.control}
@@ -160,10 +210,7 @@ export function WarehouseForm({
                     </FormDescription>
                   </div>
                   <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
                   </FormControl>
                 </FormItem>
               )}

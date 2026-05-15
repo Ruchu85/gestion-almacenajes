@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { Plus, ArrowDownToLine, Download } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, ArrowDownToLine, Download, ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { InboundMovementsService } from "@/services/movements.service";
 import { WarehousesService } from "@/services/warehouses.service";
@@ -25,6 +26,7 @@ import { exportToCSV, exportToExcel } from "@/utils/export";
 import { formatDate, formatQuantity } from "@/utils/format";
 
 export default function InboundMovementsPage() {
+  const router = useRouter();
   const [movements, setMovements] = useState<InboundMovementWithRelations[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -33,6 +35,11 @@ export default function InboundMovementsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [userId, setUserId] = useState<string>("");
+  const [presetWarehouseId, setPresetWarehouseId] = useState<string>("");
+  const [presetWarehouseName, setPresetWarehouseName] = useState<string>("");
+  const [presetProductId, setPresetProductId] = useState<string>("");
+  const [presetProductName, setPresetProductName] = useState<string>("");
+  const [backUrl, setBackUrl] = useState<string>("");
 
   const supabase = useMemo(() => createClient(), []);
   const movementsService = useMemo(() => new InboundMovementsService(supabase), [supabase]);
@@ -64,6 +71,31 @@ export default function InboundMovementsPage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  // Read preset URL params on mount
+  useEffect(() => {
+    const search = typeof window !== "undefined" ? window.location.search : "";
+    const urlParams = new URLSearchParams(search);
+    const whId = urlParams.get("warehouse_id");
+    const prId = urlParams.get("product_id");
+    const back = urlParams.get("back");
+    if (whId) setPresetWarehouseId(whId);
+    if (prId) setPresetProductId(prId);
+    if (back) setBackUrl(decodeURIComponent(back));
+    if (whId && prId) setFormOpen(true);
+  }, []);
+
+  // Resolve preset names once data is loaded
+  useEffect(() => {
+    if (presetWarehouseId && warehouses.length > 0) {
+      const wh = warehouses.find((w) => w.id === presetWarehouseId);
+      if (wh) setPresetWarehouseName(`${wh.code} — ${wh.name}`);
+    }
+    if (presetProductId && products.length > 0) {
+      const pr = products.find((p) => p.id === presetProductId);
+      if (pr) setPresetProductName(`${pr.code} — ${pr.name}`);
+    }
+  }, [warehouses, products, presetWarehouseId, presetProductId]);
+
   async function handleCreate(values: InboundFormValues) {
     setIsSaving(true);
     const result = await movementsService.create(values, userId);
@@ -72,6 +104,10 @@ export default function InboundMovementsPage() {
     } else {
       toast({ title: "Entrada registrada correctamente" });
       setFormOpen(false);
+      if (backUrl) {
+        router.push(backUrl);
+        return;
+      }
       await loadData();
     }
     setIsSaving(false);
@@ -122,6 +158,12 @@ export default function InboundMovementsPage() {
         description="Registro de todas las entradas al almacén"
         actions={
           <>
+            {backUrl && (
+              <Button variant="outline" onClick={() => router.push(backUrl)}>
+                <ChevronLeft className="mr-1 h-4 w-4" />
+                Volver
+              </Button>
+            )}
             <Button variant="outline" onClick={handleExportCSV} disabled={movements.length === 0}>
               <Download className="mr-2 h-4 w-4" />
               Exportar CSV
@@ -157,6 +199,10 @@ export default function InboundMovementsPage() {
         warehouses={warehouses}
         products={products}
         suppliers={suppliers}
+        presetWarehouseId={presetWarehouseId || undefined}
+        presetWarehouseName={presetWarehouseName || undefined}
+        presetProductId={presetProductId || undefined}
+        presetProductName={presetProductName || undefined}
       />
     </>
   );

@@ -118,6 +118,18 @@ export async function createSalidaParcial(
 
   const supabase = await createServiceClient();
 
+  // Fetch puesta to determine plancha period and warehouse/product context
+  const { data: puesta, error: puestaError } = await supabase
+    .from("puestas_a_disposicion")
+    .select("fecha_puesta, dias_plancha, warehouse_id, product_id, customer_id, cantidad_inicial, salidas_parciales(cantidad, tipo)")
+    .eq("id", parsed.data.puesta_id)
+    .single();
+
+  if (puestaError || !puesta) {
+    return { error: "No se pudo cargar la puesta a disposición" };
+  }
+
+  // Create the salida_parcial
   const { data, error } = await supabase
     .from("salidas_parciales")
     .insert({
@@ -135,8 +147,32 @@ export async function createSalidaParcial(
 
   if (error) return { error: error.message };
 
-  // Auto-finalizar si la cantidad física pendiente llega a 0 o negativo
-  if (parsed.data.cantidad >= cantidadPendiente) {
+  // If the salida is within the plancha period, also create an outbound_movement
+  const fechaPuesta = new Date(puesta.fecha_puesta + "T00:00:00");
+  const fechaFinPlancha = new Date(fechaPuesta);
+  fechaFinPlancha.setDate(fechaFinPlancha.getDate() + (Number(puesta.dias_plancha) ?? 0));
+  const fechaFinStr = fechaFinPlancha.toISOString().split("T")[0];
+
+  if (parsed.data.fecha_salida <= fechaFinStr) {
+    await supabase.from("outbound_movements").insert({
+      warehouse_id: puesta.warehouse_id,
+      product_id: puesta.product_id,
+      quantity: parsed.data.cantidad,
+      movement_date: parsed.data.fecha_salida,
+      free_days: 0,
+      customer_id: puesta.customer_id ?? null,
+      comments: `Retirada puesta a disposición${parsed.data.n_camion ? ` (camión: ${parsed.data.n_camion})` : ""}`,
+      created_by: user.id,
+    });
+  }
+
+  // Auto-finalizar solo cuando las salidas reales cubren toda la cantidad inicial
+  // y NO es un overflow forzado por el usuario (en ese caso, la puesta queda con pendiente negativo)
+  const salidaList = (puesta.salidas_parciales ?? []) as { cantidad: number; tipo: string }[];
+  const realTotal = salidaList
+    .filter((s) => s.tipo === "real")
+    .reduce((sum, s) => sum + Number(s.cantidad), 0);
+  if (!forceOverflow && realTotal + parsed.data.cantidad >= Number(puesta.cantidad_inicial)) {
     await supabase
       .from("puestas_a_disposicion")
       .update({ estado: "finalizada" })
@@ -147,12 +183,62 @@ export async function createSalidaParcial(
 }
 
 export async function triggerPlanchaAutoExit(puestaId: string): Promise<{ error?: string }> {
-  await requireAuth();
+  const user = await requireAuth();
   const supabase = await createServiceClient();
-  const { error } = await supabase.rpc("create_plancha_auto_exit", {
-    p_puesta_id: puestaId,
+
+  // Fetch puesta with all salidas_parciales
+  const { data: puesta, error: puestaError } = await supabase
+    .from("puestas_a_disposicion")
+    .select("*, salidas_parciales(cantidad, tipo)")
+    .eq("id", puestaId)
+    .single();
+
+  if (puestaError || !puesta) {
+    return { error: puestaError?.message ?? "Puesta no encontrada" };
+  }
+
+  const salidaParciales = puesta.salidas_parciales as { cantidad: number; tipo: string }[];
+
+  // Idempotency: if auto-exit already done, skip
+  if (salidaParciales.some((s) => s.tipo === "plancha")) return {};
+
+  // Calculate remaining pending (only real salidas reduce pending at this point)
+  const totalReal = salidaParciales
+    .filter((s) => s.tipo === "real")
+    .reduce((sum, s) => sum + Number(s.cantidad), 0);
+  const pending = Number(puesta.cantidad_inicial) - totalReal;
+  if (pending <= 0) return {};
+
+  // Determine fecha_fin_plancha
+  const fechaPuesta = new Date(puesta.fecha_puesta + "T00:00:00");
+  const fechaFinPlancha = new Date(fechaPuesta);
+  fechaFinPlancha.setDate(fechaFinPlancha.getDate() + (Number(puesta.dias_plancha) ?? 0));
+  const fechaFinStr = fechaFinPlancha.toISOString().split("T")[0];
+
+  // Create the plancha auto-exit salida_parcial
+  const { error: salidaError } = await supabase.from("salidas_parciales").insert({
+    puesta_id: puestaId,
+    fecha_salida: fechaFinStr,
+    cantidad: pending,
+    tipo: "plancha",
+    comentarios: "Salida automática fin de plancha",
+    created_by: user.id,
   });
-  if (error) return { error: error.message };
+  if (salidaError) return { error: salidaError.message };
+
+  // Create the corresponding outbound_movement
+  const { error: outboundError } = await supabase.from("outbound_movements").insert({
+    warehouse_id: puesta.warehouse_id,
+    product_id: puesta.product_id,
+    quantity: pending,
+    movement_date: fechaFinStr,
+    free_days: 0,
+    customer_id: puesta.customer_id ?? null,
+    comments: `Auto-salida fin de plancha${puesta.numero_contrato ? ` (${puesta.numero_contrato})` : ""}`,
+    created_by: user.id,
+  });
+  if (outboundError) return { error: outboundError.message };
+
   return {};
 }
 
@@ -180,6 +266,20 @@ export async function updateSalidaParcial(
 
   if (error) return { error: error.message };
   return { data: data as SalidaParcial };
+}
+
+export async function updatePuestaComentarios(
+  id: string,
+  comentarios: string | null
+): Promise<{ error?: string }> {
+  await requireAuth();
+  const supabase = await createServiceClient();
+  const { error } = await supabase
+    .from("puestas_a_disposicion")
+    .update({ comentarios })
+    .eq("id", id);
+  if (error) return { error: error.message };
+  return {};
 }
 
 export async function deleteSalidaParcial(id: string): Promise<{ error?: string }> {

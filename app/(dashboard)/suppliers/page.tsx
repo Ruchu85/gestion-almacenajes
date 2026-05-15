@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { Plus, Truck } from "lucide-react";
+import { Plus, Truck, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { SuppliersService } from "@/services/suppliers.service";
 import type { Supplier } from "@/types";
@@ -12,12 +12,14 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { SupplierForm } from "@/modules/suppliers/components/supplier-form";
 import { getSupplierColumns } from "@/modules/suppliers/components/supplier-columns";
+import { BulkImportDialog, type ImportRow } from "@/modules/shared/components/bulk-import-dialog";
 import { toast } from "@/hooks/use-toast";
 import {
   createSupplier,
   updateSupplier,
   deleteSupplier,
   toggleSupplierActive,
+  bulkImportSuppliers,
 } from "./actions";
 
 export default function SuppliersPage() {
@@ -25,6 +27,7 @@ export default function SuppliersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
 
   const service = useMemo(() => new SuppliersService(createClient()), []);
@@ -96,15 +99,24 @@ export default function SuppliersPage() {
     handleToggleActive
   );
 
+  async function handleBulkImport(rows: ImportRow[]) {
+    return bulkImportSuppliers(rows);
+  }
+
   return (
     <>
       <PageHeader
         title="Proveedores"
         description="Gestiona los proveedores de mercancía"
         actions={
-          <Button onClick={() => { setEditingSupplier(null); setFormOpen(true); }}>
-            <Plus className="mr-2 h-4 w-4" />Nuevo proveedor
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />Importar Excel
+            </Button>
+            <Button onClick={() => { setEditingSupplier(null); setFormOpen(true); }}>
+              <Plus className="mr-2 h-4 w-4" />Nuevo proveedor
+            </Button>
+          </div>
         }
       />
       {!isLoading && suppliers.length === 0 ? (
@@ -123,6 +135,12 @@ export default function SuppliersPage() {
         onSubmit={editingSupplier ? handleUpdate : handleCreate}
         isLoading={isSaving}
         defaultValues={editingSupplier ?? undefined}
+      />
+      <BulkImportDialog
+        open={importOpen}
+        onOpenChange={(open) => { setImportOpen(open); if (!open) loadSuppliers(); }}
+        type="proveedores"
+        onImport={handleBulkImport}
       />
     </>
   );

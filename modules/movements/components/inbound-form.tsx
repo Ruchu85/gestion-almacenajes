@@ -31,6 +31,22 @@ interface InboundFormProps {
   warehouses: Warehouse[];
   products: Product[];
   suppliers: Supplier[];
+  presetWarehouseId?: string;
+  presetWarehouseName?: string;
+  presetProductId?: string;
+  presetProductName?: string;
+}
+
+function LockedField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-sm font-medium mb-1.5">{label}</p>
+      <div className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-muted/60 px-3 text-sm">
+        <span className="truncate text-foreground">{value}</span>
+        <span className="text-[10px] text-muted-foreground ml-2 shrink-0 uppercase tracking-wide">Fijado</span>
+      </div>
+    </div>
+  );
 }
 
 export function InboundForm({
@@ -41,6 +57,10 @@ export function InboundForm({
   warehouses,
   products,
   suppliers,
+  presetWarehouseId,
+  presetWarehouseName,
+  presetProductId,
+  presetProductName,
 }: InboundFormProps) {
   const form = useForm<InboundFormValues>({
     resolver: zodResolver(inboundSchema),
@@ -71,10 +91,13 @@ export function InboundForm({
   }, [movementDate, freeDays]);
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      if (presetWarehouseId) form.setValue("warehouse_id", presetWarehouseId);
+      if (presetProductId) form.setValue("product_id", presetProductId);
+    } else {
       form.reset({
-        warehouse_id: "",
-        product_id: "",
+        warehouse_id: presetWarehouseId ?? "",
+        product_id: presetProductId ?? "",
         supplier_id: null,
         quantity: 0,
         movement_date: new Date().toISOString().split("T")[0],
@@ -82,7 +105,7 @@ export function InboundForm({
         comments: "",
       });
     }
-  }, [open, form]);
+  }, [open, form, presetWarehouseId, presetProductId]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -97,55 +120,63 @@ export function InboundForm({
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="warehouse_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Almacén *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar almacén" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {warehouses.map((w) => (
-                          <SelectItem key={w.id} value={w.id}>
-                            {w.code} — {w.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {presetWarehouseId ? (
+                <LockedField label="Almacén *" value={presetWarehouseName ?? presetWarehouseId} />
+              ) : (
+                <FormField
+                  control={form.control}
+                  name="warehouse_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Almacén *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar almacén" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {warehouses.map((w) => (
+                            <SelectItem key={w.id} value={w.id}>
+                              {w.code} — {w.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
-              <FormField
-                control={form.control}
-                name="product_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Producto *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar producto" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {products.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.code} — {p.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {presetProductId ? (
+                <LockedField label="Producto *" value={presetProductName ?? presetProductId} />
+              ) : (
+                <FormField
+                  control={form.control}
+                  name="product_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Producto *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar producto" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {products.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.code} — {p.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
 
             <FormField

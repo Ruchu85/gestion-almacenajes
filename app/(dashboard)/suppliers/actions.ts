@@ -61,3 +61,31 @@ export async function toggleSupplierActive(id: string, active: boolean): Promise
   if (error) return { error: error.message };
   return {};
 }
+
+export async function bulkImportSuppliers(
+  rows: { nombre: string; cif: string; direccion: string; comentarios: string }[]
+): Promise<{ imported: number; errors: string[] }> {
+  await requireAuth();
+  const supabase = await createServiceClient();
+
+  const records = rows.map((row) => {
+    const commentParts = [
+      row.direccion ? `Dirección: ${row.direccion}` : null,
+      row.comentarios || null,
+    ].filter(Boolean);
+    return {
+      name: row.nombre,
+      tax_id: row.cif || null,
+      comments: commentParts.length > 0 ? commentParts.join(" | ") : null,
+      active: true,
+    };
+  });
+
+  const { data, error } = await supabase
+    .from("suppliers")
+    .insert(records)
+    .select("id");
+
+  if (error) return { imported: 0, errors: [error.message] };
+  return { imported: data?.length ?? 0, errors: [] };
+}

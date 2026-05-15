@@ -33,6 +33,22 @@ interface PuestaFormProps {
   warehouses: Warehouse[];
   products: Product[];
   customers: Customer[];
+  presetWarehouseId?: string;
+  presetWarehouseName?: string;
+  presetProductId?: string;
+  presetProductName?: string;
+}
+
+function LockedField({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-sm font-medium mb-1.5">{label}</p>
+      <div className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-muted/60 px-3 text-sm">
+        <span className="truncate text-foreground">{value}</span>
+        <span className="text-[10px] text-muted-foreground ml-2 shrink-0 uppercase tracking-wide">Fijado</span>
+      </div>
+    </div>
+  );
 }
 
 export function PuestaForm({
@@ -44,6 +60,10 @@ export function PuestaForm({
   warehouses,
   products,
   customers,
+  presetWarehouseId,
+  presetWarehouseName,
+  presetProductId,
+  presetProductName,
 }: PuestaFormProps) {
   const isEditing = !!defaultValues;
   const [finPlancha, setFinPlancha] = useState<string | null>(null);
@@ -97,8 +117,8 @@ export function PuestaForm({
         form.reset({
           numero_contrato: "",
           customer_id: null,
-          product_id: "",
-          warehouse_id: "",
+          product_id: presetProductId ?? "",
+          warehouse_id: presetWarehouseId ?? "",
           cantidad_inicial: 0,
           fecha_puesta: new Date().toISOString().split("T")[0],
           dias_plancha: 0,
@@ -107,7 +127,7 @@ export function PuestaForm({
         });
       }
     }
-  }, [open, defaultValues, form]);
+  }, [open, defaultValues, form, presetWarehouseId, presetProductId]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -169,50 +189,58 @@ export function PuestaForm({
 
             {/* Producto + Almacén */}
             <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="product_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Producto *</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {products.filter((p) => p.active).map((p) => (
-                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="warehouse_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Almacén *</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {warehouses.filter((w) => w.active).map((w) => (
-                          <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {presetProductId && !defaultValues ? (
+                <LockedField label="Producto *" value={presetProductName ?? presetProductId} />
+              ) : (
+                <FormField
+                  control={form.control}
+                  name="product_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Producto *</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {products.filter((p) => p.active).map((p) => (
+                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+              {presetWarehouseId && !defaultValues ? (
+                <LockedField label="Almacén *" value={presetWarehouseName ?? presetWarehouseId} />
+              ) : (
+                <FormField
+                  control={form.control}
+                  name="warehouse_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Almacén *</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {warehouses.filter((w) => w.active).map((w) => (
+                            <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
 
             {/* Cantidad + Fecha */}

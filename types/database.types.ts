@@ -15,6 +15,7 @@ export interface Database {
           code: string;
           name: string;
           address: string | null;
+          posicion_cerrada: string | null;
           active: boolean;
           created_at: string;
           updated_at: string;
@@ -24,6 +25,7 @@ export interface Database {
           code: string;
           name: string;
           address?: string | null;
+          posicion_cerrada?: string | null;
           active?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -33,6 +35,7 @@ export interface Database {
           code?: string;
           name?: string;
           address?: string | null;
+          posicion_cerrada?: string | null;
           active?: boolean;
           created_at?: string;
           updated_at?: string;

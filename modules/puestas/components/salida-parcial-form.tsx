@@ -34,6 +34,7 @@ interface SalidaParcialFormProps {
   cantidadPendiente?: number;
   unit?: string;
   defaultValues?: SalidaParcial;
+  fechaMinima?: string;
 }
 
 export function SalidaParcialForm({
@@ -45,6 +46,7 @@ export function SalidaParcialForm({
   cantidadPendiente,
   unit = "ud",
   defaultValues,
+  fechaMinima,
 }: SalidaParcialFormProps) {
   const isEditing = !!defaultValues;
   const [pendingOverflowValues, setPendingOverflowValues] = useState<SalidaParcialFormValues | null>(null);
@@ -55,7 +57,7 @@ export function SalidaParcialForm({
       puesta_id: puestaId,
       fecha_salida: new Date().toISOString().split("T")[0],
       n_camion: "",
-      matricula: "",
+      matricula: undefined as unknown as string,
       cantidad: undefined as unknown as number,
       comentarios: "",
     },
@@ -81,7 +83,7 @@ export function SalidaParcialForm({
           puesta_id: puestaId,
           fecha_salida: new Date().toISOString().split("T")[0],
           n_camion: "",
-          matricula: "",
+          matricula: undefined as unknown as string,
           cantidad: undefined as unknown as number,
           comentarios: "",
         });
@@ -90,6 +92,13 @@ export function SalidaParcialForm({
   }, [open, defaultValues, puestaId, form]);
 
   async function handleSubmit(values: SalidaParcialFormValues) {
+    // Validate minimum date
+    if (fechaMinima && values.fecha_salida < fechaMinima) {
+      form.setError("fecha_salida", {
+        message: `La fecha no puede ser anterior al inicio de la puesta (${fechaMinima})`,
+      });
+      return;
+    }
     if (
       !isEditing &&
       cantidadPendiente !== undefined &&
@@ -136,8 +145,13 @@ export function SalidaParcialForm({
                   <FormItem>
                     <FormLabel>Fecha de salida *</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <Input type="date" min={fechaMinima} {...field} />
                     </FormControl>
+                    {fechaMinima && (
+                      <p className="text-xs text-muted-foreground">
+                        Mínimo: {fechaMinima}
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -149,7 +163,7 @@ export function SalidaParcialForm({
                 name="matricula"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Matrícula</FormLabel>
+                    <FormLabel>Matrícula *</FormLabel>
                     <FormControl>
                       <Input
                         placeholder="1234 ABC"

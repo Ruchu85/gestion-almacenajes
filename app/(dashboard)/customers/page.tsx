@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { Plus, Users } from "lucide-react";
+import { Plus, Users, Upload } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { CustomersService } from "@/services/customers.service";
 import type { Customer } from "@/types";
@@ -12,12 +12,14 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { CustomerForm } from "@/modules/customers/components/customer-form";
 import { getCustomerColumns } from "@/modules/customers/components/customer-columns";
+import { BulkImportDialog, type ImportRow } from "@/modules/shared/components/bulk-import-dialog";
 import { toast } from "@/hooks/use-toast";
 import {
   createCustomer,
   updateCustomer,
   deleteCustomer,
   toggleCustomerActive,
+  bulkImportCustomers,
 } from "./actions";
 
 export default function CustomersPage() {
@@ -25,6 +27,7 @@ export default function CustomersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
 
   const service = useMemo(() => new CustomersService(createClient()), []);
@@ -96,15 +99,24 @@ export default function CustomersPage() {
     handleToggleActive
   );
 
+  async function handleBulkImport(rows: ImportRow[]) {
+    return bulkImportCustomers(rows);
+  }
+
   return (
     <>
       <PageHeader
         title="Clientes"
         description="Gestiona los clientes a los que se despacha mercancía"
         actions={
-          <Button onClick={() => { setEditingCustomer(null); setFormOpen(true); }}>
-            <Plus className="mr-2 h-4 w-4" />Nuevo cliente
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="mr-2 h-4 w-4" />Importar Excel
+            </Button>
+            <Button onClick={() => { setEditingCustomer(null); setFormOpen(true); }}>
+              <Plus className="mr-2 h-4 w-4" />Nuevo cliente
+            </Button>
+          </div>
         }
       />
       {!isLoading && customers.length === 0 ? (
@@ -123,6 +135,12 @@ export default function CustomersPage() {
         onSubmit={editingCustomer ? handleUpdate : handleCreate}
         isLoading={isSaving}
         defaultValues={editingCustomer ?? undefined}
+      />
+      <BulkImportDialog
+        open={importOpen}
+        onOpenChange={(open) => { setImportOpen(open); if (!open) loadCustomers(); }}
+        type="clientes"
+        onImport={handleBulkImport}
       />
     </>
   );

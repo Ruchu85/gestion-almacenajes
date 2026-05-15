@@ -4,7 +4,8 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Plus, Truck, TrendingUp, Package, Calendar,
-  Clock, CheckCircle2, AlertCircle, BarChart3, AlertTriangle,
+  Clock, CheckCircle2, AlertCircle, BarChart3,
+  RotateCcw, XCircle, MessageSquare, Loader2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { parseISO, isBefore } from "date-fns";
@@ -18,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { SalidaParcialForm } from "@/modules/puestas/components/salida-parcial-form";
 import { getSalidaColumns } from "@/modules/puestas/components/salida-parcial-columns";
 import { toast } from "@/hooks/use-toast";
@@ -27,7 +29,12 @@ import {
   updateSalidaParcial,
   deleteSalidaParcial,
   triggerPlanchaAutoExit,
+  changePuestaEstado,
+  updatePuestaComentarios,
 } from "../actions";
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AreaChart, Area, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer,
@@ -54,10 +61,25 @@ export default function PuestaDetailPage() {
   const [summary, setSummary]     = useState<PuestaSummary | null>(null);
   const [breakdown, setBreakdown] = useState<PuestaDailyBreakdown[]>([]);
   const [salidas, setSalidas]     = useState<SalidaParcial[]>([]);
+  const [comentarios, setComentarios] = useState<string | null>(null);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving]   = useState(false);
+
   const [salidaFormOpen, setSalidaFormOpen] = useState(false);
   const [editingSalida, setEditingSalida]   = useState<SalidaParcial | null>(null);
+
+  const [comentariosDialogOpen, setComentariosDialogOpen] = useState(false);
+  const [comentariosText, setComentariosText] = useState("");
+  const [isSavingComentarios, setIsSavingComentarios] = useState(false);
+
+  const [backUrl, setBackUrl] = useState("/puestas");
+
+  useEffect(() => {
+    const search = typeof window !== "undefined" ? window.location.search : "";
+    const back = new URLSearchParams(search).get("back");
+    if (back) setBackUrl(decodeURIComponent(back));
+  }, []);
 
   const supabase = useMemo(() => createClient(), []);
   const today = useMemo(() => new Date().toISOString().split("T")[0], []);
@@ -65,7 +87,7 @@ export default function PuestaDetailPage() {
   const loadData = useCallback(async () => {
     setIsLoading(true);
 
-    const [summaryRes, breakdownRes, salidasRes] = await Promise.all([
+    const [summaryRes, breakdownRes, salidasRes, puestaRes] = await Promise.all([
       supabase.rpc("get_puesta_summary", { p_puesta_id: id, p_fecha: today }),
       supabase.rpc("get_puesta_daily_breakdown", {
         p_puesta_id: id,
@@ -77,6 +99,11 @@ export default function PuestaDetailPage() {
         .select("*")
         .eq("puesta_id", id)
         .order("fecha_salida", { ascending: false }),
+      supabase
+        .from("puestas_a_disposicion")
+        .select("comentarios")
+        .eq("id", id)
+        .single(),
     ]);
 
     if (summaryRes.error) {
@@ -91,9 +118,8 @@ export default function PuestaDetailPage() {
         const hasPlanchaExit = (salidasRes.data ?? []).some(
           (sal: SalidaParcial) => sal.tipo === "plancha"
         );
-        if (plancharPassed && !hasPlanchaExit && s.cantidad_fisica_pendiente > 0) {
+        if (plancharPassed && !hasPlanchaExit) {
           await triggerPlanchaAutoExit(id);
-          // Reload after creating plancha exit
           const [sRes2, bRes2, salRes2] = await Promise.all([
             supabase.rpc("get_puesta_summary", { p_puesta_id: id, p_fecha: today }),
             supabase.rpc("get_puesta_daily_breakdown", {
@@ -104,6 +130,7 @@ export default function PuestaDetailPage() {
           setSummary((sRes2.data?.[0] as PuestaSummary) ?? null);
           setBreakdown((bRes2.data ?? []) as PuestaDailyBreakdown[]);
           setSalidas((salRes2.data ?? []) as SalidaParcial[]);
+          if (!puestaRes.error) setComentarios(puestaRes.data?.comentarios ?? null);
           setIsLoading(false);
           return;
         }
@@ -112,6 +139,7 @@ export default function PuestaDetailPage() {
 
     if (!breakdownRes.error) setBreakdown((breakdownRes.data ?? []) as PuestaDailyBreakdown[]);
     if (!salidasRes.error) setSalidas((salidasRes.data ?? []) as SalidaParcial[]);
+    if (!puestaRes.error) setComentarios(puestaRes.data?.comentarios ?? null);
 
     setIsLoading(false);
   }, [supabase, id, today]);
@@ -120,11 +148,7 @@ export default function PuestaDetailPage() {
 
   async function handleCreateSalida(values: SalidaParcialFormValues, forceOverflow = false) {
     setIsSaving(true);
-    const result = await createSalidaParcial(
-      values,
-      summary?.cantidad_fisica_pendiente ?? 0,
-      forceOverflow
-    );
+    const result = await createSalidaParcial(values, realPending, forceOverflow);
     if (result.error) {
       toast({ variant: "destructive", title: "Error al registrar salida", description: result.error });
     } else {
@@ -160,10 +184,52 @@ export default function PuestaDetailPage() {
     }
   }
 
+  async function handleReactivar() {
+    setIsSaving(true);
+    const result = await changePuestaEstado(id, "abierta");
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al reactivar", description: result.error });
+    } else {
+      toast({ title: "Puesta reactivada correctamente" });
+      await loadData();
+    }
+    setIsSaving(false);
+  }
+
+  async function handleCerrarManual() {
+    setIsSaving(true);
+    const result = await changePuestaEstado(id, "cerrada_manual");
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al cerrar", description: result.error });
+    } else {
+      toast({ title: "Puesta cerrada manualmente" });
+      await loadData();
+    }
+    setIsSaving(false);
+  }
+
   function handleEditSalida(salida: SalidaParcial) {
-    if (salida.tipo === "plancha") return; // plancha exits are not editable
+    if (salida.tipo === "plancha") return;
     setEditingSalida(salida);
     setSalidaFormOpen(true);
+  }
+
+  function openComentariosDialog() {
+    setComentariosText(comentarios ?? "");
+    setComentariosDialogOpen(true);
+  }
+
+  async function handleSaveComentarios() {
+    setIsSavingComentarios(true);
+    const result = await updatePuestaComentarios(id, comentariosText.trim() || null);
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al guardar comentarios", description: result.error });
+    } else {
+      setComentarios(comentariosText.trim() || null);
+      setComentariosDialogOpen(false);
+      toast({ title: "Comentarios guardados" });
+    }
+    setIsSavingComentarios(false);
   }
 
   const salidaColumns = getSalidaColumns(handleEditSalida, handleDeleteSalida, summary?.unit);
@@ -194,8 +260,8 @@ export default function PuestaDetailPage() {
       <div className="flex flex-col items-center justify-center gap-4 py-20">
         <AlertCircle className="h-12 w-12 text-muted-foreground" />
         <p className="text-muted-foreground">Puesta a disposición no encontrada</p>
-        <Button variant="outline" onClick={() => router.push("/puestas")}>
-          <ArrowLeft className="mr-2 h-4 w-4" />Volver al listado
+        <Button variant="outline" onClick={() => router.push(backUrl)}>
+          <ArrowLeft className="mr-2 h-4 w-4" />Volver
         </Button>
       </div>
     );
@@ -203,22 +269,20 @@ export default function PuestaDetailPage() {
 
   const estadoCfg = estadoConfig[summary.estado] ?? estadoConfig.abierta;
   const EstadoIcon = estadoCfg.icon;
-  const porcentajeSalida = summary.cantidad_inicial > 0
-    ? Math.round((summary.cantidad_salida / summary.cantidad_inicial) * 100)
-    : 0;
-
-  const pendienteFisico = summary.cantidad_fisica_pendiente;
-  const pendienteNegativo = pendienteFisico < 0;
-
-  // Salidas reales only for count display
   const salidasReales = salidas.filter((s) => s.tipo === "real");
   const salidaPlancha = salidas.find((s) => s.tipo === "plancha");
+  const realTotal = salidasReales.reduce((s, r) => s + Number(r.cantidad), 0);
+  // realPending can be negative (overflow confirmed by user)
+  const realPending = summary.cantidad_inicial - realTotal;
+  const porcentajeSalida = summary.cantidad_inicial > 0
+    ? Math.round((realTotal / summary.cantidad_inicial) * 100)
+    : 0;
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push("/puestas")}>
+        <Button variant="ghost" size="icon" onClick={() => router.push(backUrl)}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex-1">
@@ -229,10 +293,55 @@ export default function PuestaDetailPage() {
             <Badge variant={estadoCfg.variant} className="flex items-center gap-1">
               <EstadoIcon className="h-3 w-3" />{estadoCfg.label}
             </Badge>
+            {summary.estado === "abierta" && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleCerrarManual}
+                disabled={isSaving}
+                className="text-destructive border-destructive/40 hover:bg-destructive/10"
+              >
+                {isSaving ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <XCircle className="mr-2 h-3.5 w-3.5" />
+                )}
+                Cerrar manualmente
+              </Button>
+            )}
+            {summary.estado !== "abierta" && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleReactivar}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                )}
+                Reactivar
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={openComentariosDialog}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <MessageSquare className="mr-2 h-3.5 w-3.5" />
+              {comentarios ? "Ver/editar comentarios" : "Añadir comentarios"}
+            </Button>
           </div>
           <p className="text-muted-foreground mt-1">
             {summary.customer_name || "Sin cliente"} · {summary.product_name} · {summary.warehouse_name}
           </p>
+          {comentarios && (
+            <p className="mt-1.5 text-sm text-muted-foreground bg-muted/40 rounded-md px-3 py-1.5 max-w-xl">
+              {comentarios}
+            </p>
+          )}
         </div>
       </div>
 
@@ -258,7 +367,7 @@ export default function PuestaDetailPage() {
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-bold tabular-nums">
-              {formatNumber(salidasReales.reduce((s, r) => s + r.cantidad, 0))}
+              {formatNumber(realTotal)}
             </p>
             <p className="text-xs text-muted-foreground">{porcentajeSalida}% retirado</p>
           </CardContent>
@@ -267,17 +376,21 @@ export default function PuestaDetailPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1.5 text-xs">
-              <BarChart3 className="h-3.5 w-3.5" />Pendiente físico
+              <BarChart3 className="h-3.5 w-3.5" />Cant. Pte Retirar
             </CardDescription>
           </CardHeader>
           <CardContent>
             <p className={cn(
               "text-2xl font-bold tabular-nums",
-              pendienteNegativo && "text-destructive"
+              realPending < 0
+                ? "text-red-600 dark:text-red-400"
+                : "text-amber-600 dark:text-amber-400"
             )}>
-              {formatNumber(pendienteFisico)} {pendienteNegativo && <AlertTriangle className="inline h-4 w-4 ml-1" />}
+              {formatNumber(realPending)}
             </p>
-            <p className="text-xs text-muted-foreground">{summary.unit} en almacén</p>
+            <p className="text-xs text-muted-foreground">
+              {realPending < 0 ? `${summary.unit} en exceso` : `${summary.unit} pendiente`}
+            </p>
           </CardContent>
         </Card>
 
@@ -384,9 +497,9 @@ export default function PuestaDetailPage() {
               )}
             </CardDescription>
           </div>
-          {summary.estado === "abierta" && pendienteFisico > 0 && (
+          {summary.estado === "abierta" && realPending > 0 && (
             <Button size="sm" onClick={() => { setEditingSalida(null); setSalidaFormOpen(true); }}>
-              <Plus className="mr-2 h-4 w-4" />Registrar salida
+              <Truck className="mr-2 h-4 w-4" />Registrar retirada
             </Button>
           )}
         </CardHeader>
@@ -459,16 +572,50 @@ export default function PuestaDetailPage() {
         </Card>
       )}
 
+      {/* Salida parcial form dialog */}
       <SalidaParcialForm
         open={salidaFormOpen}
         onOpenChange={(open) => { setSalidaFormOpen(open); if (!open) setEditingSalida(null); }}
         onSubmit={editingSalida ? handleUpdateSalida : handleCreateSalida}
         isLoading={isSaving}
         puestaId={id}
-        cantidadPendiente={summary.cantidad_fisica_pendiente}
+        cantidadPendiente={realPending}
         unit={summary.unit}
         defaultValues={editingSalida ?? undefined}
+        fechaMinima={summary.fecha_puesta}
       />
+
+      {/* Comentarios dialog */}
+      <Dialog open={comentariosDialogOpen} onOpenChange={setComentariosDialogOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              Comentarios de la puesta
+            </DialogTitle>
+          </DialogHeader>
+          <Textarea
+            rows={5}
+            placeholder="Escribe aquí los comentarios o notas de esta puesta a disposición..."
+            value={comentariosText}
+            onChange={(e) => setComentariosText(e.target.value)}
+            className="resize-none"
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setComentariosDialogOpen(false)}
+              disabled={isSavingComentarios}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveComentarios} disabled={isSavingComentarios}>
+              {isSavingComentarios && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
