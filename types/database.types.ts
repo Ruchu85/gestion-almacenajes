@@ -16,6 +16,7 @@ export interface Database {
           name: string;
           address: string | null;
           posicion_cerrada: string | null;
+          storage_daily_price: number;
           active: boolean;
           created_at: string;
           updated_at: string;
@@ -26,6 +27,7 @@ export interface Database {
           name: string;
           address?: string | null;
           posicion_cerrada?: string | null;
+          storage_daily_price?: number;
           active?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -36,6 +38,7 @@ export interface Database {
           name?: string;
           address?: string | null;
           posicion_cerrada?: string | null;
+          storage_daily_price?: number;
           active?: boolean;
           created_at?: string;
           updated_at?: string;
@@ -79,6 +82,7 @@ export interface Database {
         Row: {
           id: string;
           name: string;
+          codigo: string | null;
           tax_id: string | null;
           comments: string | null;
           active: boolean;
@@ -88,6 +92,7 @@ export interface Database {
         Insert: {
           id?: string;
           name: string;
+          codigo?: string | null;
           tax_id?: string | null;
           comments?: string | null;
           active?: boolean;
@@ -97,6 +102,7 @@ export interface Database {
         Update: {
           id?: string;
           name?: string;
+          codigo?: string | null;
           tax_id?: string | null;
           comments?: string | null;
           active?: boolean;
@@ -109,6 +115,7 @@ export interface Database {
         Row: {
           id: string;
           name: string;
+          codigo: string | null;
           tax_id: string | null;
           comments: string | null;
           active: boolean;
@@ -118,6 +125,7 @@ export interface Database {
         Insert: {
           id?: string;
           name: string;
+          codigo?: string | null;
           tax_id?: string | null;
           comments?: string | null;
           active?: boolean;
@@ -127,6 +135,7 @@ export interface Database {
         Update: {
           id?: string;
           name?: string;
+          codigo?: string | null;
           tax_id?: string | null;
           comments?: string | null;
           active?: boolean;

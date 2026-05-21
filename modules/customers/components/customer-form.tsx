@@ -30,14 +30,20 @@ export function CustomerForm({ open, onOpenChange, onSubmit, isLoading = false, 
   const isEditing = !!defaultValues;
   const form = useForm<CustomerFormValues>({
     resolver: zodResolver(customerSchema),
-    defaultValues: { name: "", tax_id: "", comments: "", active: true },
+    defaultValues: { name: "", codigo: "", tax_id: "", comments: "", active: true },
   });
 
   useEffect(() => {
     if (open) {
       form.reset(defaultValues
-        ? { name: defaultValues.name, tax_id: defaultValues.tax_id ?? "", comments: defaultValues.comments ?? "", active: defaultValues.active }
-        : { name: "", tax_id: "", comments: "", active: true }
+        ? {
+            name: defaultValues.name,
+            codigo: defaultValues.codigo ?? "",
+            tax_id: defaultValues.tax_id ?? "",
+            comments: defaultValues.comments ?? "",
+            active: defaultValues.active,
+          }
+        : { name: "", codigo: "", tax_id: "", comments: "", active: true }
       );
     }
   }, [open, defaultValues, form]);
@@ -60,13 +66,22 @@ export function CustomerForm({ open, onOpenChange, onSubmit, isLoading = false, 
                 <FormMessage />
               </FormItem>
             )} />
-            <FormField control={form.control} name="tax_id" render={({ field }) => (
-              <FormItem>
-                <FormLabel>CIF/NIF</FormLabel>
-                <FormControl><Input placeholder="B11223344" {...field} value={field.value ?? ""} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
+            <div className="grid grid-cols-2 gap-4">
+              <FormField control={form.control} name="codigo" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Código</FormLabel>
+                  <FormControl><Input placeholder="CLI-001" {...field} value={field.value ?? ""} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="tax_id" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>CIF/NIF</FormLabel>
+                  <FormControl><Input placeholder="B11223344" {...field} value={field.value ?? ""} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
             <FormField control={form.control} name="comments" render={({ field }) => (
               <FormItem>
                 <FormLabel>Comentarios</FormLabel>

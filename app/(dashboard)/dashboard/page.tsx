@@ -102,7 +102,7 @@ export default function DashboardPage() {
       supabase
         .from("inbound_movements")
         .select(
-          "warehouse_id, product_id, quantity, warehouse:warehouses(id, name, posicion_cerrada), product:products(id, name, code, unit, storage_daily_price)"
+          "warehouse_id, product_id, quantity, warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
         ),
       supabase
         .from("outbound_movements")
@@ -119,9 +119,11 @@ export default function DashboardPage() {
     const stockMap = new Map<string, StockEntry>();
 
     for (const row of inboundRes.data ?? []) {
-      const w = row.warehouse as { id: string; name: string; posicion_cerrada: string | null } | null;
-      const p = row.product as { id: string; name: string; code: string; unit: string; storage_daily_price: number } | null;
+      const w = row.warehouse as { id: string; name: string; posicion_cerrada: string | null; active: boolean; storage_daily_price: number } | null;
+      const p = row.product as { id: string; name: string; code: string; unit: string } | null;
       if (!w || !p) continue;
+      // Excluir almacenes inactivos del dashboard
+      if (!w.active) continue;
       const key = `${row.warehouse_id}||${row.product_id}`;
       if (!stockMap.has(key)) {
         stockMap.set(key, {
@@ -135,7 +137,7 @@ export default function DashboardPage() {
           total_inbound: 0,
           total_outbound: 0,
           pending_stock: 0,
-          daily_price: Number(p.storage_daily_price ?? 0),
+          daily_price: Number(w.storage_daily_price ?? 0),
           daily_cost: 0,
         });
       }

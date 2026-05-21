@@ -51,6 +51,18 @@ export async function deleteSupplier(id: string): Promise<{ error?: string }> {
   return {};
 }
 
+export async function deleteAllSuppliers(): Promise<{ deleted: number; error?: string }> {
+  await requireAuth();
+  const supabase = await createServiceClient();
+  const { data, error } = await supabase
+    .from("suppliers")
+    .delete()
+    .neq("id", "00000000-0000-0000-0000-000000000000")
+    .select("id");
+  if (error) return { deleted: 0, error: error.message };
+  return { deleted: data?.length ?? 0 };
+}
+
 export async function toggleSupplierActive(id: string, active: boolean): Promise<{ error?: string }> {
   await requireAuth();
   const supabase = await createServiceClient();

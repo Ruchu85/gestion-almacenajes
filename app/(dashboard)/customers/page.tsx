@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { Plus, Users, Upload } from "lucide-react";
+import { Plus, Users, Upload, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { CustomersService } from "@/services/customers.service";
 import type { Customer } from "@/types";
@@ -13,11 +13,13 @@ import { Button } from "@/components/ui/button";
 import { CustomerForm } from "@/modules/customers/components/customer-form";
 import { getCustomerColumns } from "@/modules/customers/components/customer-columns";
 import { BulkImportDialog, type ImportRow } from "@/modules/shared/components/bulk-import-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { toast } from "@/hooks/use-toast";
 import {
   createCustomer,
   updateCustomer,
   deleteCustomer,
+  deleteAllCustomers,
   toggleCustomerActive,
   bulkImportCustomers,
 } from "./actions";
@@ -83,6 +85,16 @@ export default function CustomersPage() {
     }
   }
 
+  async function handleDeleteAll() {
+    const result = await deleteAllCustomers();
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al eliminar", description: result.error });
+    } else {
+      toast({ title: `${result.deleted} clientes eliminados` });
+      await loadCustomers();
+    }
+  }
+
   async function handleToggleActive(id: string, active: boolean) {
     const result = await toggleCustomerActive(id, active);
     if (result.error) {
@@ -110,6 +122,19 @@ export default function CustomersPage() {
         description="Gestiona los clientes a los que se despacha mercancía"
         actions={
           <div className="flex items-center gap-2">
+            {customers.length > 0 && (
+              <ConfirmDialog
+                trigger={
+                  <Button variant="outline" className="text-destructive hover:text-destructive border-destructive/30 hover:border-destructive">
+                    <Trash2 className="mr-2 h-4 w-4" />Eliminar todos
+                  </Button>
+                }
+                title="¿Eliminar todos los clientes?"
+                description={`Se eliminarán permanentemente los ${customers.length} clientes. Esta acción no se puede deshacer.`}
+                confirmLabel="Eliminar todos"
+                onConfirm={handleDeleteAll}
+              />
+            )}
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <Upload className="mr-2 h-4 w-4" />Importar Excel
             </Button>

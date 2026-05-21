@@ -77,6 +77,7 @@ export function WarehouseForm({
       name: "",
       address: "",
       posicion_cerrada: null,
+      storage_daily_price: 0,
       active: true,
     },
   });
@@ -89,10 +90,11 @@ export function WarehouseForm({
           name: defaultValues.name,
           address: defaultValues.address ?? "",
           posicion_cerrada: defaultValues.posicion_cerrada ?? null,
+          storage_daily_price: Number(defaultValues.storage_daily_price ?? 0),
           active: defaultValues.active,
         });
       } else {
-        form.reset({ code: "", name: "", address: "", posicion_cerrada: null, active: true });
+        form.reset({ code: "", name: "", address: "", posicion_cerrada: null, storage_daily_price: 0, active: true });
       }
     }
   }, [open, defaultValues, form]);
@@ -144,6 +146,30 @@ export function WarehouseForm({
                   <FormControl>
                     <Input placeholder="Almacén Central Madrid" {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="storage_daily_price"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Precio de almacenaje diario (€) *</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                      placeholder="0.0000"
+                      {...field}
+                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Coste por unidad de mercancía almacenada por día en este almacén
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -206,7 +232,7 @@ export function WarehouseForm({
                   <div className="space-y-0.5">
                     <FormLabel>Activo</FormLabel>
                     <FormDescription>
-                      Los almacenes inactivos no aparecen en los movimientos
+                      Los almacenes inactivos no aparecen en los movimientos ni en el dashboard
                     </FormDescription>
                   </div>
                   <FormControl>

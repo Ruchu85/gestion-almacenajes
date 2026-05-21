@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { Plus, Truck, Upload } from "lucide-react";
+import { Plus, Truck, Upload, Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { SuppliersService } from "@/services/suppliers.service";
 import type { Supplier } from "@/types";
@@ -13,11 +13,13 @@ import { Button } from "@/components/ui/button";
 import { SupplierForm } from "@/modules/suppliers/components/supplier-form";
 import { getSupplierColumns } from "@/modules/suppliers/components/supplier-columns";
 import { BulkImportDialog, type ImportRow } from "@/modules/shared/components/bulk-import-dialog";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { toast } from "@/hooks/use-toast";
 import {
   createSupplier,
   updateSupplier,
   deleteSupplier,
+  deleteAllSuppliers,
   toggleSupplierActive,
   bulkImportSuppliers,
 } from "./actions";
@@ -83,6 +85,16 @@ export default function SuppliersPage() {
     }
   }
 
+  async function handleDeleteAll() {
+    const result = await deleteAllSuppliers();
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al eliminar", description: result.error });
+    } else {
+      toast({ title: `${result.deleted} proveedores eliminados` });
+      await loadSuppliers();
+    }
+  }
+
   async function handleToggleActive(id: string, active: boolean) {
     const result = await toggleSupplierActive(id, active);
     if (result.error) {
@@ -110,6 +122,19 @@ export default function SuppliersPage() {
         description="Gestiona los proveedores de mercancía"
         actions={
           <div className="flex items-center gap-2">
+            {suppliers.length > 0 && (
+              <ConfirmDialog
+                trigger={
+                  <Button variant="outline" className="text-destructive hover:text-destructive border-destructive/30 hover:border-destructive">
+                    <Trash2 className="mr-2 h-4 w-4" />Eliminar todos
+                  </Button>
+                }
+                title="¿Eliminar todos los proveedores?"
+                description={`Se eliminarán permanentemente los ${suppliers.length} proveedores. Esta acción no se puede deshacer.`}
+                confirmLabel="Eliminar todos"
+                onConfirm={handleDeleteAll}
+              />
+            )}
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <Upload className="mr-2 h-4 w-4" />Importar Excel
             </Button>

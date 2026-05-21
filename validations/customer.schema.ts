@@ -5,6 +5,12 @@ export const customerSchema = z.object({
     .string()
     .min(1, "El nombre es obligatorio")
     .max(200, "Máximo 200 caracteres"),
+  codigo: z
+    .string()
+    .max(50, "Máximo 50 caracteres")
+    .optional()
+    .nullable()
+    .transform((v) => v || null),
   tax_id: z
     .string()
     .max(50, "Máximo 50 caracteres")

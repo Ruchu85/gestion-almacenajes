@@ -322,6 +322,7 @@ export default function WarehouseProductPage() {
   const [salidaPuestaPendiente, setSalidaPuestaPendiente] = useState<number>(0);
   const [salidaFechaPuesta, setSalidaFechaPuesta] = useState<string>("");
   const [isSavingSalida, setIsSavingSalida] = useState(false);
+  const [showAllPuestas, setShowAllPuestas] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
 
@@ -419,7 +420,7 @@ export default function WarehouseProductPage() {
   const loadCalendar = useCallback(async () => {
     setIsLoadingCalendar(true);
 
-    const [inboundRes, outboundRes, costsRes, invoicesRes, productRes] = await Promise.all([
+    const [inboundRes, outboundRes, costsRes, invoicesRes, warehouseRes] = await Promise.all([
       supabase
         .from("inbound_movements")
         .select("movement_date, quantity, free_days")
@@ -444,13 +445,13 @@ export default function WarehouseProductPage() {
         .eq("warehouse_id", params.id)
         .eq("product_id", params.productId),
       supabase
-        .from("products")
+        .from("warehouses")
         .select("storage_daily_price")
-        .eq("id", params.productId)
+        .eq("id", params.id)
         .single(),
     ]);
 
-    const dailyPrice = Number(productRes.data?.storage_daily_price ?? 0);
+    const dailyPrice = Number(warehouseRes.data?.storage_daily_price ?? 0);
     const inboundMovements = (inboundRes.data ?? []) as { movement_date: string; quantity: number; free_days: number }[];
     const outboundMovements = (outboundRes.data ?? []) as { movement_date: string; quantity: number }[];
 
@@ -996,18 +997,49 @@ export default function WarehouseProductPage() {
         <TabsContent value="puestas">
           <Card>
             <CardHeader>
-              <CardTitle>Puestas a disposición</CardTitle>
-              <CardDescription>
-                Contratos de puesta a disposición de {productName} en {warehouseName}
-              </CardDescription>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle>Puestas a disposición</CardTitle>
+                  <CardDescription>
+                    Contratos de puesta a disposición de {productName} en {warehouseName}
+                  </CardDescription>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer select-none shrink-0">
+                  <span className="text-sm text-muted-foreground">
+                    {showAllPuestas ? "Todas" : "Solo activas"}
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={showAllPuestas}
+                    onClick={() => setShowAllPuestas((v) => !v)}
+                    className={cn(
+                      "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+                      showAllPuestas ? "bg-primary" : "bg-muted"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-lg transition-transform",
+                        showAllPuestas ? "translate-x-4" : "translate-x-0"
+                      )}
+                    />
+                  </button>
+                  <span className="text-xs text-muted-foreground">Ver todas</span>
+                </label>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               {isLoadingMeta ? (
                 <div className="p-6 space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-              ) : allPuestas.length === 0 ? (
+              ) : allPuestas.filter((p) => showAllPuestas || p.estado === "abierta").length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <ClipboardList className="h-8 w-8 mb-2 opacity-40" />
-                  <p className="text-sm">No hay puestas a disposición para esta combinación</p>
+                  <p className="text-sm">
+                    {showAllPuestas
+                      ? "No hay puestas a disposición para esta combinación"
+                      : "No hay puestas activas — activa 'Ver todas' para ver las finalizadas"}
+                  </p>
                 </div>
               ) : (
                 <div className="relative w-full overflow-auto">
@@ -1025,7 +1057,7 @@ export default function WarehouseProductPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {allPuestas.map((row) => {
+                      {allPuestas.filter((p) => showAllPuestas || p.estado === "abierta").map((row) => {
                         const totalRealSalidas = (row.salidas_parciales ?? [])
                           .filter((s) => s.tipo === "real")
                           .reduce((acc, s) => acc + Number(s.cantidad), 0);

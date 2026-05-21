@@ -18,6 +18,13 @@ export function getCustomerColumns(
 ): ColumnDef<Customer>[] {
   return [
     {
+      accessorKey: "codigo",
+      header: "Código",
+      cell: ({ row }) => (
+        <span className="font-mono text-sm text-muted-foreground">{row.getValue("codigo") ?? "-"}</span>
+      ),
+    },
+    {
       accessorKey: "name",
       header: "Nombre",
       cell: ({ row }) => <span className="font-medium">{row.getValue("name")}</span>,
