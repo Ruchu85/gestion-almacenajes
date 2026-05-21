@@ -46,6 +46,62 @@ export async function updateProduct(id: string, values: ProductFormValues): Prom
 export async function deleteProduct(id: string): Promise<{ error?: string }> {
   await requireAuth();
   const supabase = await createServiceClient();
+
+  // Fetch active warehouse IDs
+  const { data: activeWarehouses, error: whError } = await supabase
+    .from("warehouses")
+    .select("id")
+    .eq("active", true);
+
+  if (whError) return { error: whError.message };
+
+  const activeWarehouseIds = (activeWarehouses ?? []).map((w) => w.id);
+
+  if (activeWarehouseIds.length > 0) {
+    // Total inbound per active warehouse for this product
+    const { data: inboundRows, error: inbErr } = await supabase
+      .from("inbound_movements")
+      .select("warehouse_id, quantity")
+      .eq("product_id", id)
+      .in("warehouse_id", activeWarehouseIds);
+
+    if (inbErr) return { error: inbErr.message };
+
+    const inboundByWh: Record<string, number> = {};
+    for (const row of inboundRows ?? []) {
+      inboundByWh[row.warehouse_id] = (inboundByWh[row.warehouse_id] ?? 0) + Number(row.quantity);
+    }
+
+    const relevantWhs = Object.keys(inboundByWh);
+
+    if (relevantWhs.length > 0) {
+      // Total outbound per warehouse for this product
+      const { data: outboundRows, error: outErr } = await supabase
+        .from("outbound_movements")
+        .select("warehouse_id, quantity")
+        .eq("product_id", id)
+        .in("warehouse_id", relevantWhs);
+
+      if (outErr) return { error: outErr.message };
+
+      const outboundByWh: Record<string, number> = {};
+      for (const row of outboundRows ?? []) {
+        outboundByWh[row.warehouse_id] = (outboundByWh[row.warehouse_id] ?? 0) + Number(row.quantity);
+      }
+
+      const hasPendingStock = relevantWhs.some(
+        (wId) => (inboundByWh[wId] ?? 0) - (outboundByWh[wId] ?? 0) > 0
+      );
+
+      if (hasPendingStock) {
+        return {
+          error:
+            "No se puede eliminar: hay stock pendiente en uno o más almacenes activos. Retira o traslada toda la mercancía antes de eliminar el producto.",
+        };
+      }
+    }
+  }
+
   const { error } = await supabase.from("products").delete().eq("id", id);
   if (error) return { error: error.message };
   return {};
