@@ -3,9 +3,9 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ArrowLeft, Plus, Truck, TrendingUp, Package, Calendar,
+  ArrowLeft, Truck, TrendingUp, Package, Calendar,
   Clock, CheckCircle2, AlertCircle, BarChart3,
-  RotateCcw, XCircle, MessageSquare, Loader2,
+  RotateCcw, XCircle, MessageSquare, Loader2, Undo2, FileText,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { parseISO, isBefore } from "date-fns";
@@ -20,8 +20,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { SalidaParcialForm } from "@/modules/puestas/components/salida-parcial-form";
 import { getSalidaColumns } from "@/modules/puestas/components/salida-parcial-columns";
+import { DesaplicarDialog } from "@/modules/puestas/components/desaplicar-dialog";
 import { toast } from "@/hooks/use-toast";
 import { formatDate, formatNumber, formatCurrency } from "@/utils/format";
 import {
@@ -31,6 +33,9 @@ import {
   triggerPlanchaAutoExit,
   changePuestaEstado,
   updatePuestaComentarios,
+  createDesaplicacion,
+  markMonthAsInvoiced,
+  unmarkMonthAsInvoiced,
 } from "../actions";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
@@ -53,21 +58,35 @@ const estadoConfig: Record<string, {
   cerrada_manual: { label: "Cerrada manual", variant: "outline",   icon: AlertCircle },
 };
 
+function getPrevMonth(): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - 1);
+  return d.toISOString().slice(0, 7);
+}
+
 export default function PuestaDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
 
-  const [summary, setSummary]     = useState<PuestaSummary | null>(null);
-  const [breakdown, setBreakdown] = useState<PuestaDailyBreakdown[]>([]);
-  const [salidas, setSalidas]     = useState<SalidaParcial[]>([]);
+  const [summary, setSummary]       = useState<PuestaSummary | null>(null);
+  const [breakdown, setBreakdown]   = useState<PuestaDailyBreakdown[]>([]);
+  const [salidas, setSalidas]       = useState<SalidaParcial[]>([]);
   const [comentarios, setComentarios] = useState<string | null>(null);
+
+  const [invoicedMonths, setInvoicedMonths] = useState<{ year_month: string; invoiced_at: string }[]>([]);
+  const [selectedMonth, setSelectedMonth]   = useState(getPrevMonth);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving]   = useState(false);
 
   const [salidaFormOpen, setSalidaFormOpen] = useState(false);
   const [editingSalida, setEditingSalida]   = useState<SalidaParcial | null>(null);
+
+  const [desaplicarOpen, setDesaplicarOpen]         = useState(false);
+  const [isSavingDesaplicar, setIsSavingDesaplicar] = useState(false);
 
   const [comentariosDialogOpen, setComentariosDialogOpen] = useState(false);
   const [comentariosText, setComentariosText] = useState("");
@@ -87,7 +106,7 @@ export default function PuestaDetailPage() {
   const loadData = useCallback(async () => {
     setIsLoading(true);
 
-    const [summaryRes, breakdownRes, salidasRes, puestaRes] = await Promise.all([
+    const [summaryRes, breakdownRes, salidasRes, puestaRes, invoicedRes] = await Promise.all([
       supabase.rpc("get_puesta_summary", { p_puesta_id: id, p_fecha: today }),
       supabase.rpc("get_puesta_daily_breakdown", {
         p_puesta_id: id,
@@ -104,6 +123,11 @@ export default function PuestaDetailPage() {
         .select("comentarios")
         .eq("id", id)
         .single(),
+      supabase
+        .from("puesta_facturacion_meses")
+        .select("year_month, invoiced_at")
+        .eq("puesta_id", id)
+        .order("year_month", { ascending: false }),
     ]);
 
     if (summaryRes.error) {
@@ -112,7 +136,6 @@ export default function PuestaDetailPage() {
       const s = (summaryRes.data?.[0] as PuestaSummary) ?? null;
       setSummary(s);
 
-      // Auto-trigger plancha exit if fecha_fin_plancha has passed and no plancha salida exists
       if (s && s.estado === "abierta") {
         const plancharPassed = isBefore(parseISO(s.fecha_fin_plancha), new Date());
         const hasPlanchaExit = (salidasRes.data ?? []).some(
@@ -131,6 +154,7 @@ export default function PuestaDetailPage() {
           setBreakdown((bRes2.data ?? []) as PuestaDailyBreakdown[]);
           setSalidas((salRes2.data ?? []) as SalidaParcial[]);
           if (!puestaRes.error) setComentarios(puestaRes.data?.comentarios ?? null);
+          if (!invoicedRes.error) setInvoicedMonths((invoicedRes.data ?? []) as { year_month: string; invoiced_at: string }[]);
           setIsLoading(false);
           return;
         }
@@ -140,6 +164,7 @@ export default function PuestaDetailPage() {
     if (!breakdownRes.error) setBreakdown((breakdownRes.data ?? []) as PuestaDailyBreakdown[]);
     if (!salidasRes.error) setSalidas((salidasRes.data ?? []) as SalidaParcial[]);
     if (!puestaRes.error) setComentarios(puestaRes.data?.comentarios ?? null);
+    if (!invoicedRes.error) setInvoicedMonths((invoicedRes.data ?? []) as { year_month: string; invoiced_at: string }[]);
 
     setIsLoading(false);
   }, [supabase, id, today]);
@@ -208,6 +233,59 @@ export default function PuestaDetailPage() {
     setIsSaving(false);
   }
 
+  async function handleDesaplicar(cantidad: number) {
+    setIsSavingDesaplicar(true);
+    const result = await createDesaplicacion(id, cantidad);
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al desaplicar", description: result.error });
+    } else {
+      toast({ title: "Desaplicación registrada correctamente" });
+      setDesaplicarOpen(false);
+      await loadData();
+    }
+    setIsSavingDesaplicar(false);
+  }
+
+  async function handleFacturar() {
+    if (!summary) return;
+    const monthData = breakdown.filter((r) => r.dia.startsWith(selectedMonth));
+    if (monthData.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Sin datos",
+        description: "No hay desglose de almacenaje para el mes seleccionado.",
+      });
+      return;
+    }
+
+    setIsGeneratingPDF(true);
+    try {
+      await generatePDF(selectedMonth, monthData, summary);
+      const result = await markMonthAsInvoiced(id, selectedMonth);
+      if (result.error) {
+        toast({ variant: "destructive", title: "Error al marcar factura", description: result.error });
+      } else {
+        toast({ title: "PDF generado · Mes marcado como facturado" });
+        setInvoicedMonths((prev) => [
+          ...prev.filter((m) => m.year_month !== selectedMonth),
+          { year_month: selectedMonth, invoiced_at: new Date().toISOString() },
+        ].sort((a, b) => b.year_month.localeCompare(a.year_month)));
+      }
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  }
+
+  async function handleUnmarkInvoiced(yearMonth: string) {
+    const result = await unmarkMonthAsInvoiced(id, yearMonth);
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error", description: result.error });
+    } else {
+      setInvoicedMonths((prev) => prev.filter((m) => m.year_month !== yearMonth));
+      toast({ title: "Mes desmarcado como facturado" });
+    }
+  }
+
   function handleEditSalida(salida: SalidaParcial) {
     if (salida.tipo === "plancha") return;
     setEditingSalida(salida);
@@ -269,14 +347,23 @@ export default function PuestaDetailPage() {
 
   const estadoCfg = estadoConfig[summary.estado] ?? estadoConfig.abierta;
   const EstadoIcon = estadoCfg.icon;
-  const salidasReales = salidas.filter((s) => s.tipo === "real");
-  const salidaPlancha = salidas.find((s) => s.tipo === "plancha");
-  const realTotal = salidasReales.reduce((s, r) => s + Number(r.cantidad), 0);
-  // realPending can be negative (overflow confirmed by user)
-  const realPending = summary.cantidad_inicial - realTotal;
-  const porcentajeSalida = summary.cantidad_inicial > 0
-    ? Math.round((realTotal / summary.cantidad_inicial) * 100)
+  const salidasReales      = salidas.filter((s) => s.tipo === "real");
+  const salidasDesaplicadas = salidas.filter((s) => s.tipo === "desaplicacion");
+  const salidaPlancha      = salidas.find((s) => s.tipo === "plancha");
+
+  const realTotal          = salidasReales.reduce((s, r) => s + Number(r.cantidad), 0);
+  const desaplicadoTotal   = salidasDesaplicadas.reduce((s, r) => s + Number(r.cantidad), 0);
+  const realPending        = summary.cantidad_inicial - realTotal - desaplicadoTotal;
+  const porcentajeSalida   = summary.cantidad_inicial > 0
+    ? Math.round(((realTotal + desaplicadoTotal) / summary.cantidad_inicial) * 100)
     : 0;
+
+  const isOutsidePlancha = today > summary.fecha_fin_plancha;
+  const puestaRef = summary.numero_contrato || id.slice(0, 8).toUpperCase();
+
+  const isMonthInvoiced = invoicedMonths.some((m) => m.year_month === selectedMonth);
+  const monthBreakdown  = breakdown.filter((r) => r.dia.startsWith(selectedMonth));
+  const monthTotal      = monthBreakdown.reduce((s, r) => s + Number(r.coste_dia), 0);
 
   return (
     <div className="space-y-6">
@@ -294,20 +381,33 @@ export default function PuestaDetailPage() {
               <EstadoIcon className="h-3 w-3" />{estadoCfg.label}
             </Badge>
             {summary.estado === "abierta" && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleCerrarManual}
-                disabled={isSaving}
-                className="text-destructive border-destructive/40 hover:bg-destructive/10"
-              >
-                {isSaving ? (
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <XCircle className="mr-2 h-3.5 w-3.5" />
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCerrarManual}
+                  disabled={isSaving}
+                  className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                >
+                  {isSaving ? (
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <XCircle className="mr-2 h-3.5 w-3.5" />
+                  )}
+                  Cerrar manualmente
+                </Button>
+                {realPending > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDesaplicarOpen(true)}
+                    disabled={isSaving}
+                  >
+                    <Undo2 className="mr-2 h-3.5 w-3.5" />
+                    Desaplicar
+                  </Button>
                 )}
-                Cerrar manualmente
-              </Button>
+              </>
             )}
             {summary.estado !== "abierta" && (
               <Button
@@ -369,7 +469,11 @@ export default function PuestaDetailPage() {
             <p className="text-2xl font-bold tabular-nums">
               {formatNumber(realTotal)}
             </p>
-            <p className="text-xs text-muted-foreground">{porcentajeSalida}% retirado</p>
+            <p className="text-xs text-muted-foreground">
+              {desaplicadoTotal > 0
+                ? `+ ${formatNumber(desaplicadoTotal)} desapl. · ${porcentajeSalida}%`
+                : `${porcentajeSalida}% retirado`}
+            </p>
           </CardContent>
         </Card>
 
@@ -441,6 +545,17 @@ export default function PuestaDetailPage() {
                 </div>
               </>
             )}
+            {desaplicadoTotal > 0 && (
+              <>
+                <Separator />
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground text-xs">Total desaplicado</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {formatNumber(desaplicadoTotal)} {summary.unit}
+                  </Badge>
+                </div>
+              </>
+            )}
             <Separator />
             <div className="flex justify-between">
               <span className="text-muted-foreground">Días activos (coste)</span>
@@ -490,6 +605,11 @@ export default function PuestaDetailPage() {
             </CardTitle>
             <CardDescription>
               {salidasReales.length} salida{salidasReales.length !== 1 ? "s" : ""} real{salidasReales.length !== 1 ? "es" : ""}
+              {salidasDesaplicadas.length > 0 && (
+                <span className="ml-2 text-blue-500 font-medium">
+                  · {salidasDesaplicadas.length} desaplicación{salidasDesaplicadas.length !== 1 ? "es" : ""}
+                </span>
+              )}
               {salidaPlancha && (
                 <span className="ml-2 text-amber-500 font-medium">
                   · Traspaso plancha: {formatNumber(salidaPlancha.cantidad)} {summary.unit}
@@ -524,10 +644,54 @@ export default function PuestaDetailPage() {
       {breakdown.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Desglose diario de almacenaje</CardTitle>
-            <CardDescription>
-              {breakdown.length} días · Total: {formatCurrency(summary.coste_acumulado)}
-            </CardDescription>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="text-base">Desglose diario de almacenaje</CardTitle>
+                <CardDescription>
+                  {breakdown.length} días · Total acumulado: {formatCurrency(summary.coste_acumulado)}
+                </CardDescription>
+              </div>
+              {/* Facturar mes */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <Input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="w-[150px] h-9 text-sm"
+                />
+                <Button
+                  size="sm"
+                  variant={isMonthInvoiced ? "secondary" : "default"}
+                  onClick={handleFacturar}
+                  disabled={isGeneratingPDF || monthBreakdown.length === 0}
+                  title={monthBreakdown.length === 0 ? "Sin datos para el mes seleccionado" : undefined}
+                >
+                  {isGeneratingPDF ? (
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  ) : isMonthInvoiced ? (
+                    <CheckCircle2 className="mr-2 h-3.5 w-3.5 text-green-500" />
+                  ) : (
+                    <FileText className="mr-2 h-3.5 w-3.5" />
+                  )}
+                  {isMonthInvoiced ? "Refacturar mes" : "Facturar mes"}
+                </Button>
+              </div>
+            </div>
+            {/* Totales del mes seleccionado */}
+            {monthBreakdown.length > 0 && (
+              <div className="mt-2 flex items-center gap-3 text-sm">
+                <span className="text-muted-foreground">
+                  {monthBreakdown.length} días · Importe mes seleccionado:
+                </span>
+                <span className="font-semibold text-primary">{formatCurrency(monthTotal)}</span>
+                {isMonthInvoiced && (
+                  <Badge variant="secondary" className="flex items-center gap-1 text-xs">
+                    <CheckCircle2 className="h-3 w-3 text-green-500" />
+                    Facturado
+                  </Badge>
+                )}
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -542,21 +706,30 @@ export default function PuestaDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {breakdown.map((row) => (
-                    <tr key={row.dia} className="border-b last:border-0 hover:bg-muted/40">
-                      <td className="py-1.5">{formatDate(row.dia)}</td>
-                      <td className="py-1.5 text-center text-muted-foreground">{row.dias_activos}</td>
-                      <td className="py-1.5 text-right tabular-nums">
-                        {formatNumber(row.cantidad_pendiente)} {summary.unit}
-                      </td>
-                      <td className="py-1.5 text-right tabular-nums text-muted-foreground">
-                        {formatCurrency(row.tarifa_diaria)}
-                      </td>
-                      <td className="py-1.5 text-right tabular-nums font-medium">
-                        {formatCurrency(row.coste_dia)}
-                      </td>
-                    </tr>
-                  ))}
+                  {breakdown.map((row) => {
+                    const isSelected = row.dia.startsWith(selectedMonth);
+                    return (
+                      <tr
+                        key={row.dia}
+                        className={cn(
+                          "border-b last:border-0 hover:bg-muted/40",
+                          isSelected && "bg-primary/5"
+                        )}
+                      >
+                        <td className="py-1.5">{formatDate(row.dia)}</td>
+                        <td className="py-1.5 text-center text-muted-foreground">{row.dias_activos}</td>
+                        <td className="py-1.5 text-right tabular-nums">
+                          {formatNumber(row.cantidad_pendiente)} {summary.unit}
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums text-muted-foreground">
+                          {formatCurrency(row.tarifa_diaria)}
+                        </td>
+                        <td className="py-1.5 text-right tabular-nums font-medium">
+                          {formatCurrency(row.coste_dia)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 font-bold">
@@ -568,6 +741,39 @@ export default function PuestaDetailPage() {
                 </tfoot>
               </table>
             </div>
+
+            {/* Historial de meses facturados */}
+            {invoicedMonths.length > 0 && (
+              <div className="mt-6 border-t pt-4">
+                <p className="text-sm font-medium mb-3 text-muted-foreground">Meses facturados</p>
+                <div className="flex flex-wrap gap-2">
+                  {invoicedMonths.map((m) => {
+                    const [y, mo] = m.year_month.split("-");
+                    const label = new Date(parseInt(y), parseInt(mo) - 1).toLocaleDateString("es-ES", {
+                      month: "long",
+                      year: "numeric",
+                    });
+                    return (
+                      <div
+                        key={m.year_month}
+                        className="flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1 text-xs"
+                      >
+                        <CheckCircle2 className="h-3 w-3 text-green-500" />
+                        <span className="capitalize">{label}</span>
+                        <button
+                          type="button"
+                          title="Desmarcar"
+                          className="ml-1 text-muted-foreground hover:text-destructive transition-colors"
+                          onClick={() => handleUnmarkInvoiced(m.year_month)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -583,6 +789,18 @@ export default function PuestaDetailPage() {
         unit={summary.unit}
         defaultValues={editingSalida ?? undefined}
         fechaMinima={summary.fecha_puesta}
+      />
+
+      {/* Desaplicar dialog */}
+      <DesaplicarDialog
+        open={desaplicarOpen}
+        onOpenChange={setDesaplicarOpen}
+        onSubmit={handleDesaplicar}
+        isLoading={isSavingDesaplicar}
+        maxCantidad={Math.max(0, realPending)}
+        unit={summary.unit}
+        isOutsidePlancha={isOutsidePlancha}
+        puestaRef={puestaRef}
       />
 
       {/* Comentarios dialog */}
@@ -618,4 +836,84 @@ export default function PuestaDetailPage() {
       </Dialog>
     </div>
   );
+}
+
+// ── PDF generation (client-side, dynamic import) ────────────
+
+async function generatePDF(
+  yearMonth: string,
+  monthData: PuestaDailyBreakdown[],
+  summary: PuestaSummary
+) {
+  const [y, m] = yearMonth.split("-");
+  const monthLabel = new Date(parseInt(y), parseInt(m) - 1).toLocaleDateString("es-ES", {
+    month: "long",
+    year: "numeric",
+  });
+  const monthTotal = monthData.reduce((s, r) => s + Number(r.coste_dia), 0);
+
+  const jsPDFModule = await import("jspdf");
+  const jsPDF = jsPDFModule.default;
+  const autoTableModule = await import("jspdf-autotable");
+  const autoTable = autoTableModule.default;
+
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+  // Header
+  doc.setFontSize(18);
+  doc.setFont("helvetica", "bold");
+  doc.text("Factura de Almacenaje", 14, 22);
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(100);
+
+  const infoLines: [string, string][] = [
+    ["Mes facturado:", monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)],
+    ["Contrato / Ref.:", summary.numero_contrato || "Sin referencia"],
+    ["Cliente:", summary.customer_name || "Sin cliente"],
+    ["Almacén:", summary.warehouse_name],
+    ["Producto:", `${summary.product_name} (${summary.product_code})`],
+    ["Fecha de puesta:", formatDate(summary.fecha_puesta)],
+    ["Fin plancha:", formatDate(summary.fecha_fin_plancha)],
+    ["Generado el:", new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" })],
+  ];
+
+  let y2 = 32;
+  for (const [label, value] of infoLines) {
+    doc.setFont("helvetica", "bold");
+    doc.text(label, 14, y2);
+    doc.setFont("helvetica", "normal");
+    doc.text(value, 55, y2);
+    y2 += 6;
+  }
+
+  doc.setTextColor(0);
+
+  autoTable(doc, {
+    startY: y2 + 4,
+    head: [["Fecha", "Día activo", `Pendiente (${summary.unit})`, "Tarifa/ud (€)", "Coste día (€)"]],
+    body: monthData.map((row) => [
+      formatDate(row.dia),
+      row.dias_activos.toString(),
+      formatNumber(row.cantidad_pendiente),
+      formatCurrency(row.tarifa_diaria),
+      formatCurrency(row.coste_dia),
+    ]),
+    foot: [["", "", "", "TOTAL MES:", formatCurrency(monthTotal)]],
+    styles: { fontSize: 9, cellPadding: 2 },
+    headStyles: { fillColor: [30, 64, 175], textColor: 255, fontStyle: "bold" },
+    footStyles: { fillColor: [241, 245, 249], fontStyle: "bold", textColor: [30, 64, 175] },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    columnStyles: {
+      0: { halign: "left" },
+      1: { halign: "center" },
+      2: { halign: "right" },
+      3: { halign: "right" },
+      4: { halign: "right" },
+    },
+  });
+
+  const safeRef = (summary.numero_contrato || summary.puesta_id.slice(0, 8)).replace(/[^a-zA-Z0-9_-]/g, "_");
+  doc.save(`almacenaje-${yearMonth}-${safeRef}.pdf`);
 }

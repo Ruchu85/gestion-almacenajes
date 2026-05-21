@@ -422,7 +422,7 @@ export interface Database {
           n_camion: string | null;
           matricula: string | null;
           cantidad: number;
-          tipo: "real" | "plancha";
+          tipo: "real" | "plancha" | "desaplicacion";
           comentarios: string | null;
           created_by: string | null;
           created_at: string;
@@ -435,7 +435,7 @@ export interface Database {
           n_camion?: string | null;
           matricula?: string | null;
           cantidad: number;
-          tipo?: "real" | "plancha";
+          tipo?: "real" | "plancha" | "desaplicacion";
           comentarios?: string | null;
           created_by?: string | null;
           created_at?: string;
@@ -448,7 +448,7 @@ export interface Database {
           n_camion?: string | null;
           matricula?: string | null;
           cantidad?: number;
-          tipo?: "real" | "plancha";
+          tipo?: "real" | "plancha" | "desaplicacion";
           comentarios?: string | null;
           created_by?: string | null;
           created_at?: string;
@@ -499,6 +499,38 @@ export interface Database {
           updated_at?: string;
         };
         Relationships: [];
+      };
+      puesta_facturacion_meses: {
+        Row: {
+          id: string;
+          puesta_id: string;
+          year_month: string;
+          invoiced_at: string;
+          created_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          puesta_id: string;
+          year_month: string;
+          invoiced_at?: string;
+          created_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          puesta_id?: string;
+          year_month?: string;
+          invoiced_at?: string;
+          created_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "puesta_facturacion_meses_puesta_id_fkey";
+            columns: ["puesta_id"];
+            isOneToOne: false;
+            referencedRelation: "puestas_a_disposicion";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       storage_costs: {
         Row: {
@@ -603,7 +635,7 @@ export interface Database {
         Returns: { month: string; total_cost: number }[];
       };
       get_tarifa_for_puesta_day: {
-        Args: { p_product_id: string; p_dias_activos: number };
+        Args: { p_product_id: string; p_warehouse_id: string; p_dias_activos: number };
         Returns: number;
       };
       get_puesta_daily_breakdown: {

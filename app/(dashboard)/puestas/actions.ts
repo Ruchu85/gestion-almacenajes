@@ -291,3 +291,108 @@ export async function deleteSalidaParcial(id: string): Promise<{ error?: string 
   if (error) return { error: error.message };
   return {};
 }
+
+// ── Desaplicaciones ──────────────────────────────────────────
+
+export async function createDesaplicacion(
+  puestaId: string,
+  cantidad: number
+): Promise<{ error?: string }> {
+  const user = await requireAuth();
+  const supabase = await createServiceClient();
+
+  const { data: puesta, error: puestaError } = await supabase
+    .from("puestas_a_disposicion")
+    .select("fecha_fin_plancha, warehouse_id, product_id, numero_contrato, cantidad_inicial, salidas_parciales(cantidad, tipo)")
+    .eq("id", puestaId)
+    .single();
+
+  if (puestaError || !puesta) {
+    return { error: "No se pudo cargar la puesta a disposición" };
+  }
+
+  const today = new Date().toISOString().split("T")[0];
+  const puestaRef = puesta.numero_contrato || puestaId.slice(0, 8).toUpperCase();
+
+  // Registrar la desaplicación como salida parcial
+  const { error: salidaError } = await supabase.from("salidas_parciales").insert({
+    puesta_id: puestaId,
+    fecha_salida: today,
+    cantidad,
+    tipo: "desaplicacion",
+    comentarios: `Desaplicación de ${cantidad} unidades`,
+    created_by: user.id,
+  });
+  if (salidaError) return { error: salidaError.message };
+
+  // Si ya ha pasado el período de plancha, generar entrada de stock automática
+  if (today > puesta.fecha_fin_plancha) {
+    const { error: inboundError } = await supabase.from("inbound_movements").insert({
+      warehouse_id: puesta.warehouse_id,
+      product_id: puesta.product_id,
+      quantity: cantidad,
+      movement_date: today,
+      free_days: 1,
+      supplier_id: null,
+      comments: `Desaplicacion cliente nº pta ${puestaRef}`,
+      created_by: user.id,
+    });
+    if (inboundError) return { error: inboundError.message };
+  }
+
+  // Auto-finalizar si la cantidad pendiente llega a 0
+  const salidaList = (puesta.salidas_parciales ?? []) as { cantidad: number; tipo: string }[];
+  const totalPrev = salidaList
+    .filter((s) => s.tipo === "real" || s.tipo === "desaplicacion")
+    .reduce((sum, s) => sum + Number(s.cantidad), 0);
+  if (totalPrev + cantidad >= Number(puesta.cantidad_inicial)) {
+    await supabase
+      .from("puestas_a_disposicion")
+      .update({ estado: "finalizada" })
+      .eq("id", puestaId);
+  }
+
+  return {};
+}
+
+// ── Facturación mensual ──────────────────────────────────────
+
+export async function markMonthAsInvoiced(
+  puestaId: string,
+  yearMonth: string
+): Promise<{ error?: string }> {
+  const user = await requireAuth();
+  const supabase = await createServiceClient();
+
+  const { error } = await supabase
+    .from("puesta_facturacion_meses")
+    .upsert(
+      {
+        puesta_id: puestaId,
+        year_month: yearMonth,
+        invoiced_at: new Date().toISOString(),
+        created_by: user.id,
+      },
+      { onConflict: "puesta_id,year_month" }
+    );
+
+  if (error) return { error: error.message };
+  return {};
+}
+
+export async function unmarkMonthAsInvoiced(
+  puestaId: string,
+  yearMonth: string
+): Promise<{ error?: string }> {
+  await requireAuth();
+  const supabase = await createServiceClient();
+
+  const { error } = await supabase
+    .from("puesta_facturacion_meses")
+    .delete()
+    .eq("puesta_id", puestaId)
+    .eq("year_month", yearMonth);
+
+  if (error) return { error: error.message };
+  return {};
+}
