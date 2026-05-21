@@ -121,7 +121,7 @@ export async function createSalidaParcial(
   // Fetch puesta to determine plancha period and warehouse/product context
   const { data: puesta, error: puestaError } = await supabase
     .from("puestas_a_disposicion")
-    .select("fecha_puesta, dias_plancha, warehouse_id, product_id, customer_id, cantidad_inicial, salidas_parciales(cantidad, tipo)")
+    .select("fecha_puesta, dias_plancha, warehouse_id, product_id, customer_id, numero_contrato, cantidad_inicial, salidas_parciales(cantidad, tipo), customer:customers(name, codigo)")
     .eq("id", parsed.data.puesta_id)
     .single();
 
@@ -147,13 +147,14 @@ export async function createSalidaParcial(
 
   if (error) return { error: error.message };
 
-  // If the salida is within the plancha period, also create an outbound_movement
+  // Determine plancha boundary
   const fechaPuesta = new Date(puesta.fecha_puesta + "T00:00:00");
   const fechaFinPlancha = new Date(fechaPuesta);
   fechaFinPlancha.setDate(fechaFinPlancha.getDate() + (Number(puesta.dias_plancha) ?? 0));
   const fechaFinStr = fechaFinPlancha.toISOString().split("T")[0];
 
   if (parsed.data.fecha_salida <= fechaFinStr) {
+    // Within plancha: create outbound for the full quantity
     await supabase.from("outbound_movements").insert({
       warehouse_id: puesta.warehouse_id,
       product_id: puesta.product_id,
@@ -164,6 +165,28 @@ export async function createSalidaParcial(
       comments: `Retirada puesta a disposición${parsed.data.n_camion ? ` (camión: ${parsed.data.n_camion})` : ""}`,
       created_by: user.id,
     });
+  } else {
+    // Outside plancha: the plancha auto-exit already generated an outbound for the
+    // full pending quantity. Only create an additional outbound for any excess (rebase).
+    const rebaseQty = Math.max(0, parsed.data.cantidad - Math.max(0, cantidadPendiente));
+    if (rebaseQty > 0) {
+      const customerData = puesta.customer as { name: string; codigo: string | null } | null;
+      const customerRef = customerData
+        ? (customerData.codigo ? `[${customerData.codigo}] ${customerData.name}` : customerData.name)
+        : null;
+      const puestaRef = puesta.numero_contrato || parsed.data.puesta_id.slice(0, 8).toUpperCase();
+
+      await supabase.from("outbound_movements").insert({
+        warehouse_id: puesta.warehouse_id,
+        product_id: puesta.product_id,
+        quantity: rebaseQty,
+        movement_date: parsed.data.fecha_salida,
+        free_days: 0,
+        customer_id: puesta.customer_id ?? null,
+        comments: `Rebase${customerRef ? ` cliente ${customerRef}` : ""} pta a disposicion ${puestaRef}`,
+        created_by: user.id,
+      });
+    }
   }
 
   // Auto-finalizar cuando las salidas reales cubren o superan toda la cantidad inicial
