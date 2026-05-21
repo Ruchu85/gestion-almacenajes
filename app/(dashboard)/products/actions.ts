@@ -100,28 +100,34 @@ export async function deleteProduct(id: string): Promise<{ error?: string }> {
     }
   }
 
-  // ── 2. Comprobar si hay registros históricos vinculados ────────────────────
-  // La BD impide borrar si existen FK en movimientos, puestas o tarifas.
-  // En ese caso el producto solo puede desactivarse, no eliminarse.
-  const [{ count: cInbound }, { count: cOutbound }, { count: cPuestas }, { count: cTarifas }] =
-    await Promise.all([
-      supabase.from("inbound_movements").select("id",  { count: "exact", head: true }).eq("product_id", id),
-      supabase.from("outbound_movements").select("id", { count: "exact", head: true }).eq("product_id", id),
-      supabase.from("puestas_a_disposicion").select("id", { count: "exact", head: true }).eq("product_id", id),
-      supabase.from("tarifa_tramos").select("id", { count: "exact", head: true }).eq("product_id", id),
-    ]);
-
-  const hasLinkedRecords =
-    (cInbound ?? 0) > 0 || (cOutbound ?? 0) > 0 || (cPuestas ?? 0) > 0 || (cTarifas ?? 0) > 0;
-
-  if (hasLinkedRecords) {
-    return {
-      error:
-        "No se puede eliminar: el producto tiene movimientos, puestas o tarifas registradas. Puedes desactivarlo para ocultarlo sin perder el historial.",
-    };
+  // ── 2. Eliminar en cascada respetando el orden de FK ─────────────────────
+  // Orden: costes/facturas/tarifas → puestas (cascada a salidas+facturacion)
+  //        → movimientos salida → movimientos entrada → producto
+  const cascadeErrors = await Promise.all([
+    supabase.from("storage_costs").delete().eq("product_id", id),
+    supabase.from("monthly_invoices").delete().eq("product_id", id),
+    supabase.from("tarifa_tramos").delete().eq("product_id", id),
+  ]);
+  for (const r of cascadeErrors) {
+    if (r.error) return { error: r.error.message };
   }
 
-  // ── 3. Eliminar ────────────────────────────────────────────────────────────
+  // puestas_a_disposicion cascada a salidas_parciales y puesta_facturacion_meses
+  const { error: puestasErr } = await supabase
+    .from("puestas_a_disposicion")
+    .delete()
+    .eq("product_id", id);
+  if (puestasErr) return { error: puestasErr.message };
+
+  const movErrors = await Promise.all([
+    supabase.from("outbound_movements").delete().eq("product_id", id),
+    supabase.from("inbound_movements").delete().eq("product_id", id),
+  ]);
+  for (const r of movErrors) {
+    if (r.error) return { error: r.error.message };
+  }
+
+  // ── 3. Eliminar el producto ────────────────────────────────────────────────
   const { error } = await supabase.from("products").delete().eq("id", id);
   if (error) return { error: error.message };
   return {};

@@ -59,7 +59,7 @@ function ProductActions({
             </DropdownMenuItem>
           }
           title="¿Eliminar producto?"
-          description={`Se eliminará "${product.name}" permanentemente.`}
+          description={`Se eliminará "${product.name}" junto con todos sus movimientos, puestas, costes y tarifas asociadas. Esta acción no se puede deshacer.`}
           confirmLabel="Eliminar"
           onConfirm={() => onDelete(product.id)}
         />
