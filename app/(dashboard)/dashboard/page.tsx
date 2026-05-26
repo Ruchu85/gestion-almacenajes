@@ -15,6 +15,8 @@ import {
   FileText,
   Plus,
   MapPin,
+  Search,
+  X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { StorageCostsService } from "@/services/storage-costs.service";
@@ -31,6 +33,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,6 +83,7 @@ export default function DashboardPage() {
   const [expandedWarehouses, setExpandedWarehouses] = useState<Set<string>>(new Set());
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
   const [isLoadingStock, setIsLoadingStock] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const supabase = useMemo(() => createClient(), []);
   const service = useMemo(() => new StorageCostsService(supabase), [supabase]);
@@ -215,6 +219,52 @@ export default function DashboardPage() {
     loadOrganigrama();
   }, [loadKpis, loadOrganigrama]);
 
+  // ── Filtrado por búsqueda ─────────────────────────────────────────────────
+  const filteredGroups = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return positionGroups;
+
+    const result: PositionGroup[] = [];
+    for (const pg of positionGroups) {
+      const posMatch = pg.posicion_cerrada.toLowerCase().includes(q);
+
+      const filteredWarehouses: WarehouseGroup[] = [];
+      for (const wg of pg.warehouses) {
+        const whMatch = wg.warehouse_name.toLowerCase().includes(q);
+        const filteredProducts = wg.products.filter(
+          (p) =>
+            p.product_name.toLowerCase().includes(q) ||
+            p.product_code.toLowerCase().includes(q)
+        );
+
+        if (posMatch || whMatch) {
+          filteredWarehouses.push(wg);
+        } else if (filteredProducts.length > 0) {
+          filteredWarehouses.push({ ...wg, products: filteredProducts });
+        }
+      }
+
+      if (posMatch) {
+        result.push(pg);
+      } else if (filteredWarehouses.length > 0) {
+        result.push({ ...pg, warehouses: filteredWarehouses });
+      }
+    }
+    return result;
+  }, [positionGroups, searchQuery]);
+
+  // Auto-expandir todo cuando hay búsqueda activa
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      const allPositions = new Set(filteredGroups.map((pg) => pg.posicion_cerrada));
+      const allWarehouses = new Set(
+        filteredGroups.flatMap((pg) => pg.warehouses.map((wg) => wg.warehouse_id))
+      );
+      setExpandedPositions(allPositions);
+      setExpandedWarehouses(allWarehouses);
+    }
+  }, [searchQuery, filteredGroups]);
+
   function togglePosition(key: string) {
     setExpandedPositions((prev) => {
       const next = new Set(prev);
@@ -277,7 +327,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Organigrama en árbol 3 niveles */}
+      {/* Almacenes Activos – árbol 3 niveles */}
       <Card className="border-0 shadow-sm">
         <CardHeader className="pb-4 bg-gradient-to-r from-violet-500/5 via-transparent to-transparent rounded-t-xl border-b">
           <div className="flex items-center justify-between">
@@ -286,7 +336,7 @@ export default function DashboardPage() {
                 <Warehouse className="h-5 w-5 text-white" />
               </div>
               <div>
-                <CardTitle className="text-base">Organigrama de almacenes</CardTitle>
+                <CardTitle className="text-base">Almacenes Activos</CardTitle>
                 <CardDescription>
                   Posición cerrada → Almacén → Productos
                 </CardDescription>
@@ -299,6 +349,27 @@ export default function DashboardPage() {
               </Badge>
             )}
           </div>
+
+          {/* Buscador */}
+          {!isLoadingStock && positionGroups.length > 0 && (
+            <div className="relative mt-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Buscar por posición, almacén o producto..."
+                className="pl-9 pr-9 h-9 text-sm bg-background"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          )}
         </CardHeader>
 
         <CardContent className="pt-4">
@@ -316,21 +387,44 @@ export default function DashboardPage() {
                 </div>
               ))}
             </div>
-          ) : positionGroups.length === 0 ? (
+          ) : filteredGroups.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-violet-100 to-indigo-100 dark:from-violet-900/30 dark:to-indigo-900/30">
-                <Warehouse className="h-8 w-8 text-violet-400 dark:text-violet-500" />
+                {searchQuery ? (
+                  <Search className="h-8 w-8 text-violet-400 dark:text-violet-500" />
+                ) : (
+                  <Warehouse className="h-8 w-8 text-violet-400 dark:text-violet-500" />
+                )}
               </div>
               <div className="text-center">
-                <p className="font-medium">No hay stock activo en ningún almacén</p>
-                <p className="text-sm mt-1 opacity-70">
-                  Registra entradas de mercancía para que aparezcan aquí
-                </p>
+                {searchQuery ? (
+                  <>
+                    <p className="font-medium">Sin resultados para «{searchQuery}»</p>
+                    <p className="text-sm mt-1 opacity-70">
+                      Prueba con otro nombre de posición, almacén o producto
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 text-violet-600 dark:text-violet-400"
+                      onClick={() => setSearchQuery("")}
+                    >
+                      Limpiar búsqueda
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-medium">No hay stock activo en ningún almacén</p>
+                    <p className="text-sm mt-1 opacity-70">
+                      Registra entradas de mercancía para que aparezcan aquí
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           ) : (
             <div className="space-y-3">
-              {positionGroups.map((pg) => {
+              {filteredGroups.map((pg) => {
                 const isPosExpanded = expandedPositions.has(pg.posicion_cerrada);
                 return (
                   <div key={pg.posicion_cerrada}>
@@ -348,7 +442,7 @@ export default function DashboardPage() {
                         "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all duration-200",
                         isPosExpanded
                           ? "bg-gradient-to-br from-violet-500 to-indigo-600 shadow-sm"
-                          : "bg-muted border border-border group-hover:bg-violet-100"
+                          : "bg-muted border border-border"
                       )}>
                         <MapPin className={cn("h-5 w-5", isPosExpanded ? "text-white" : "text-muted-foreground")} />
                       </div>
@@ -460,7 +554,7 @@ export default function DashboardPage() {
                                             <div className="absolute left-[-4px] top-1/2 w-5 h-0.5 bg-blue-200 dark:bg-blue-800" />
                                             <div className="ml-5 rounded-lg border bg-card hover:bg-gradient-to-r hover:from-cyan-50/60 hover:to-transparent dark:hover:from-cyan-950/20 dark:hover:to-transparent hover:border-cyan-200 dark:hover:border-cyan-800 transition-all duration-150 group">
                                               <div className="flex items-center gap-3 px-4 py-3">
-                                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30 border border-cyan-200 dark:border-cyan-800 group-hover:from-cyan-200 group-hover:to-blue-200 dark:group-hover:from-cyan-900/50 transition-all duration-150">
+                                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30 border border-cyan-200 dark:border-cyan-800 group-hover:from-cyan-200 group-hover:to-blue-200 transition-all duration-150">
                                                   <Package className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
                                                 </div>
 
