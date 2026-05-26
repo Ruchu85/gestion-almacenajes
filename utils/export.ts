@@ -65,6 +65,14 @@ export async function exportToExcel<T extends Record<string, unknown>>(
   });
   worksheet["!cols"] = colWidths;
 
+  if (data.length > 0) {
+    const lastCol = XLSX.utils.encode_col(columns.length - 1);
+    worksheet["!autofilter"] = { ref: `A1:${lastCol}${data.length + 1}` };
+  }
+
+  // Freeze header row
+  worksheet["!views"] = [{ state: "frozen", ySplit: 1 }];
+
   XLSX.utils.book_append_sheet(workbook, worksheet, title);
   XLSX.writeFile(workbook, `${filename}.xlsx`);
 }

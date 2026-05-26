@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ClipboardList, ChevronLeft } from "lucide-react";
+import { Plus, ClipboardList, Download, ChevronLeft, Search, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { WarehousesService } from "@/services/warehouses.service";
 import { ProductsService } from "@/services/products.service";
@@ -16,9 +16,20 @@ import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { PuestaForm } from "@/modules/puestas/components/puesta-form";
 import { getPuestaColumns } from "@/modules/puestas/components/puesta-columns";
 import { toast } from "@/hooks/use-toast";
+import { exportToExcel } from "@/utils/export";
+import { formatDate } from "@/utils/format";
 import {
   createPuesta,
   updatePuesta,
@@ -44,12 +55,19 @@ export default function PuestasPage() {
   const [presetProductName, setPresetProductName] = useState<string>("");
   const [backUrl, setBackUrl] = useState<string>("");
 
+  const [search, setSearch] = useState("");
+  const [filterWarehouse, setFilterWarehouse] = useState("all");
+  const [filterProduct, setFilterProduct] = useState("all");
+  const [filterCustomer, setFilterCustomer] = useState("all");
+  const [filterEstado, setFilterEstado] = useState("all");
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+
   const supabase = useMemo(() => createClient(), []);
   const warehousesService = useMemo(() => new WarehousesService(supabase), [supabase]);
   const productsService   = useMemo(() => new ProductsService(supabase), [supabase]);
   const customersService  = useMemo(() => new CustomersService(supabase), [supabase]);
 
-  // Load select options once
   useEffect(() => {
     async function loadOptions() {
       const [wRes, pRes, cRes] = await Promise.all([
@@ -80,7 +98,6 @@ export default function PuestasPage() {
 
   useEffect(() => { loadSummaries(); }, [loadSummaries]);
 
-  // Read preset URL params on mount
   useEffect(() => {
     const search = typeof window !== "undefined" ? window.location.search : "";
     const urlParams = new URLSearchParams(search);
@@ -93,7 +110,6 @@ export default function PuestasPage() {
     if (whId && prId) { setEditingPuesta(null); setFormOpen(true); }
   }, []);
 
-  // Resolve preset names once options are loaded
   useEffect(() => {
     if (presetWarehouseId && warehouses.length > 0) {
       const wh = warehouses.find((w) => w.id === presetWarehouseId);
@@ -104,6 +120,61 @@ export default function PuestasPage() {
       if (pr) setPresetProductName(pr.name);
     }
   }, [warehouses, products, presetWarehouseId, presetProductId]);
+
+  // Unique values for filter dropdowns derived from loaded summaries
+  const uniqueWarehouses = useMemo(
+    () => Array.from(new Set(summaries.map((s) => s.warehouse_name))).sort(),
+    [summaries]
+  );
+  const uniqueProducts = useMemo(
+    () => Array.from(new Set(summaries.map((s) => s.product_name))).sort(),
+    [summaries]
+  );
+  const uniqueCustomers = useMemo(
+    () => Array.from(new Set(summaries.map((s) => s.customer_name))).sort(),
+    [summaries]
+  );
+
+  const filteredSummaries = useMemo(() => {
+    let data = summaries;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      data = data.filter(
+        (s) =>
+          s.numero_contrato.toLowerCase().includes(q) ||
+          s.customer_name.toLowerCase().includes(q) ||
+          s.product_name.toLowerCase().includes(q) ||
+          s.product_code.toLowerCase().includes(q) ||
+          s.warehouse_name.toLowerCase().includes(q)
+      );
+    }
+    if (filterWarehouse !== "all") data = data.filter((s) => s.warehouse_name === filterWarehouse);
+    if (filterProduct !== "all") data = data.filter((s) => s.product_name === filterProduct);
+    if (filterCustomer !== "all") data = data.filter((s) => s.customer_name === filterCustomer);
+    if (filterEstado !== "all") data = data.filter((s) => s.estado === filterEstado);
+    if (filterDateFrom) data = data.filter((s) => s.fecha_puesta >= filterDateFrom);
+    if (filterDateTo) data = data.filter((s) => s.fecha_puesta <= filterDateTo);
+    return data;
+  }, [summaries, search, filterWarehouse, filterProduct, filterCustomer, filterEstado, filterDateFrom, filterDateTo]);
+
+  const hasActiveFilters =
+    search.trim() !== "" ||
+    filterWarehouse !== "all" ||
+    filterProduct !== "all" ||
+    filterCustomer !== "all" ||
+    filterEstado !== "all" ||
+    filterDateFrom !== "" ||
+    filterDateTo !== "";
+
+  function clearFilters() {
+    setSearch("");
+    setFilterWarehouse("all");
+    setFilterProduct("all");
+    setFilterCustomer("all");
+    setFilterEstado("all");
+    setFilterDateFrom("");
+    setFilterDateTo("");
+  }
 
   async function handleCreate(values: PuestaFormValues) {
     setIsSaving(true);
@@ -170,7 +241,6 @@ export default function PuestasPage() {
   }
 
   async function handleEdit(puesta: PuestaSummary) {
-    // Fetch full record to get FK ids for the form selects
     const { data, error } = await supabase
       .from("puestas_a_disposicion")
       .select("*")
@@ -182,6 +252,44 @@ export default function PuestasPage() {
     }
     setEditingPuesta(data as PuestaADisposicion);
     setFormOpen(true);
+  }
+
+  async function handleExportExcel() {
+    await exportToExcel(
+      filteredSummaries.map((s) => ({
+        contrato: s.numero_contrato,
+        cliente: s.customer_name,
+        producto: `${s.product_code} - ${s.product_name}`,
+        almacen: s.warehouse_name,
+        fecha_puesta: formatDate(s.fecha_puesta),
+        dias_plancha: s.dias_plancha,
+        fecha_fin_plancha: formatDate(s.fecha_fin_plancha),
+        cantidad_inicial: Number(s.cantidad_inicial),
+        cantidad_salida: Number(s.cantidad_salida),
+        cantidad_pendiente: Number(s.cantidad_pendiente),
+        unidad: s.unit,
+        dias_activos: s.dias_activos,
+        coste_acumulado: Number(s.coste_acumulado),
+        estado: s.estado,
+      })),
+      [
+        { key: "contrato" as const, header: "Contrato" },
+        { key: "cliente" as const, header: "Cliente" },
+        { key: "producto" as const, header: "Producto" },
+        { key: "almacen" as const, header: "Almacén" },
+        { key: "fecha_puesta" as const, header: "Fecha Puesta" },
+        { key: "dias_plancha" as const, header: "Días Plancha" },
+        { key: "fecha_fin_plancha" as const, header: "Fin Plancha" },
+        { key: "cantidad_inicial" as const, header: "Cantidad Inicial" },
+        { key: "cantidad_salida" as const, header: "Cantidad Salida" },
+        { key: "cantidad_pendiente" as const, header: "Cantidad Pendiente" },
+        { key: "unidad" as const, header: "Unidad" },
+        { key: "dias_activos" as const, header: "Días Activos" },
+        { key: "coste_acumulado" as const, header: "Coste Acumulado (€)" },
+        { key: "estado" as const, header: "Estado" },
+      ],
+      { filename: "puestas-a-disposicion", title: "Puestas a Disposición" }
+    );
   }
 
   const columns = getPuestaColumns(handleView, handleEdit, handleDelete, handleChangeEstado);
@@ -199,12 +307,117 @@ export default function PuestasPage() {
                 Volver
               </Button>
             )}
+            <Button variant="outline" onClick={handleExportExcel} disabled={filteredSummaries.length === 0}>
+              <Download className="mr-2 h-4 w-4" />
+              Excel
+            </Button>
             <Button onClick={() => { setEditingPuesta(null); setFormOpen(true); }}>
               <Plus className="mr-2 h-4 w-4" />Nueva puesta
             </Button>
           </>
         }
       />
+
+      <Card>
+        <CardContent className="pt-4 pb-4">
+          <div className="flex flex-col gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por contrato, cliente, producto o almacén..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2 items-center">
+              <Select value={filterWarehouse} onValueChange={setFilterWarehouse}>
+                <SelectTrigger className="w-52">
+                  <SelectValue placeholder="Todos los almacenes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los almacenes</SelectItem>
+                  {uniqueWarehouses.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={filterProduct} onValueChange={setFilterProduct}>
+                <SelectTrigger className="w-52">
+                  <SelectValue placeholder="Todos los productos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los productos</SelectItem>
+                  {uniqueProducts.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={filterCustomer} onValueChange={setFilterCustomer}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Todos los clientes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los clientes</SelectItem>
+                  {uniqueCustomers.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={filterEstado} onValueChange={setFilterEstado}>
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Todos los estados" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los estados</SelectItem>
+                  <SelectItem value="abierta">Abierta</SelectItem>
+                  <SelectItem value="finalizada">Finalizada</SelectItem>
+                  <SelectItem value="cerrada_manual">Cerrada</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm text-muted-foreground whitespace-nowrap">Desde</span>
+                <Input
+                  type="date"
+                  value={filterDateFrom}
+                  onChange={(e) => setFilterDateFrom(e.target.value)}
+                  className="w-36"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm text-muted-foreground whitespace-nowrap">Hasta</span>
+                <Input
+                  type="date"
+                  value={filterDateTo}
+                  onChange={(e) => setFilterDateTo(e.target.value)}
+                  className="w-36"
+                />
+              </div>
+
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" onClick={clearFilters}>
+                  <X className="mr-1 h-3 w-3" />
+                  Limpiar
+                </Button>
+              )}
+
+              <span className="ml-auto text-sm text-muted-foreground">
+                {filteredSummaries.length} de {summaries.length} puestas
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {!isLoading && summaries.length === 0 ? (
         <EmptyState
@@ -216,9 +429,7 @@ export default function PuestasPage() {
       ) : (
         <DataTable
           columns={columns}
-          data={summaries}
-          searchKey="numero_contrato"
-          searchPlaceholder="Buscar por contrato o cliente..."
+          data={filteredSummaries}
           isLoading={isLoading}
         />
       )}
