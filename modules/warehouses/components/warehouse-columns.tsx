@@ -61,9 +61,9 @@ function WarehouseActions({
               Eliminar
             </DropdownMenuItem>
           }
-          title="¿Eliminar almacén?"
-          description={`Esta acción no se puede deshacer. Se eliminará el almacén "${warehouse.name}" permanentemente.`}
-          confirmLabel="Eliminar"
+          title={`¿Eliminar el almacén "${warehouse.name}"?`}
+          description={`ATENCIÓN: Esta acción eliminará permanentemente el almacén y TODOS los datos asociados en la base de datos: entradas, salidas, puestas a disposición, costes de almacenaje y facturas vinculadas. Esta operación no se puede deshacer.`}
+          confirmLabel="Sí, eliminar todo"
           onConfirm={() => onDelete(warehouse.id)}
         />
       </DropdownMenuContent>

@@ -46,6 +46,33 @@ export async function updateWarehouse(id: string, values: WarehouseFormValues): 
 export async function deleteWarehouse(id: string): Promise<{ error?: string }> {
   await requireAuth();
   const supabase = await createServiceClient();
+
+  // ── 1. Eliminar costes y facturas asociados al almacén ────────────────────
+  const cascadeErrors = await Promise.all([
+    supabase.from("storage_costs").delete().eq("warehouse_id", id),
+    supabase.from("monthly_invoices").delete().eq("warehouse_id", id),
+  ]);
+  for (const r of cascadeErrors) {
+    if (r.error) return { error: r.error.message };
+  }
+
+  // ── 2. Eliminar puestas (cascada a salidas_parciales y facturacion_meses) ─
+  const { error: puestasErr } = await supabase
+    .from("puestas_a_disposicion")
+    .delete()
+    .eq("warehouse_id", id);
+  if (puestasErr) return { error: puestasErr.message };
+
+  // ── 3. Eliminar movimientos de entrada y salida ───────────────────────────
+  const movErrors = await Promise.all([
+    supabase.from("outbound_movements").delete().eq("warehouse_id", id),
+    supabase.from("inbound_movements").delete().eq("warehouse_id", id),
+  ]);
+  for (const r of movErrors) {
+    if (r.error) return { error: r.error.message };
+  }
+
+  // ── 4. Eliminar el almacén ────────────────────────────────────────────────
   const { error } = await supabase.from("warehouses").delete().eq("id", id);
   if (error) return { error: error.message };
   return {};

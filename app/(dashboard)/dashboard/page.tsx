@@ -122,7 +122,6 @@ export default function DashboardPage() {
       const w = row.warehouse as { id: string; name: string; posicion_cerrada: string | null; active: boolean; storage_daily_price: number } | null;
       const p = row.product as { id: string; name: string; code: string; unit: string } | null;
       if (!w || !p) continue;
-      // Excluir almacenes inactivos del dashboard
       if (!w.active) continue;
       const key = `${row.warehouse_id}||${row.product_id}`;
       if (!stockMap.has(key)) {
@@ -151,7 +150,6 @@ export default function DashboardPage() {
       }
     }
 
-    // Build warehouse groups
     const warehouseMap = new Map<string, WarehouseGroup>();
     for (const item of stockMap.values()) {
       item.pending_stock = Math.max(0, item.total_inbound - item.total_outbound);
@@ -174,7 +172,6 @@ export default function DashboardPage() {
       wg.totalPendingStock += item.pending_stock;
     }
 
-    // Build position groups
     const positionMap = new Map<string, PositionGroup>();
     for (const wg of warehouseMap.values()) {
       wg.products.sort((a, b) => b.pending_stock - a.pending_stock);
@@ -193,7 +190,6 @@ export default function DashboardPage() {
       pg.totalPendingStock += wg.totalPendingStock;
     }
 
-    // Sort: named positions alphabetically, SIN_POSICION last
     const sorted = Array.from(positionMap.values()).sort((a, b) => {
       if (a.posicion_cerrada === SIN_POSICION) return 1;
       if (b.posicion_cerrada === SIN_POSICION) return -1;
@@ -205,7 +201,6 @@ export default function DashboardPage() {
     }
 
     setPositionGroups(sorted);
-    // Auto-expand first position and its first warehouse
     if (sorted.length > 0) {
       setExpandedPositions(new Set([sorted[0].posicion_cerrada]));
       if (sorted[0].warehouses.length > 0) {
@@ -247,7 +242,7 @@ export default function DashboardPage() {
         description="Resumen general de almacenajes y costes"
       />
 
-      {/* KPIs compactos */}
+      {/* KPIs */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <StatsCard
           title="Coste hoy"
@@ -283,22 +278,22 @@ export default function DashboardPage() {
       </div>
 
       {/* Organigrama en árbol 3 niveles */}
-      <Card>
-        <CardHeader className="pb-4">
+      <Card className="border-0 shadow-sm">
+        <CardHeader className="pb-4 bg-gradient-to-r from-violet-500/5 via-transparent to-transparent rounded-t-xl border-b">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
-                <Warehouse className="h-5 w-5 text-primary" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 shadow-sm">
+                <Warehouse className="h-5 w-5 text-white" />
               </div>
               <div>
-                <CardTitle>Organigrama de almacenes</CardTitle>
+                <CardTitle className="text-base">Organigrama de almacenes</CardTitle>
                 <CardDescription>
                   Posición cerrada → Almacén → Productos
                 </CardDescription>
               </div>
             </div>
             {!isLoadingStock && totalWarehouses > 0 && (
-              <Badge variant="outline">
+              <Badge variant="outline" className="border-violet-300 text-violet-600 dark:border-violet-700 dark:text-violet-400">
                 {totalWarehouses}{" "}
                 {totalWarehouses === 1 ? "almacén activo" : "almacenes activos"}
               </Badge>
@@ -306,7 +301,7 @@ export default function DashboardPage() {
           </div>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="pt-4">
           {isLoadingStock ? (
             <div className="space-y-4">
               {[1, 2, 3].map((i) => (
@@ -323,8 +318,8 @@ export default function DashboardPage() {
             </div>
           ) : positionGroups.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                <Warehouse className="h-8 w-8 opacity-40" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-violet-100 to-indigo-100 dark:from-violet-900/30 dark:to-indigo-900/30">
+                <Warehouse className="h-8 w-8 text-violet-400 dark:text-violet-500" />
               </div>
               <div className="text-center">
                 <p className="font-medium">No hay stock activo en ningún almacén</p>
@@ -343,23 +338,25 @@ export default function DashboardPage() {
                     <button
                       onClick={() => togglePosition(pg.posicion_cerrada)}
                       className={cn(
-                        "w-full flex items-center gap-4 p-4 rounded-xl border text-left transition-all",
+                        "w-full flex items-center gap-4 p-4 rounded-xl border text-left transition-all duration-200",
                         isPosExpanded
-                          ? "bg-violet-50 dark:bg-violet-950/20 border-violet-300 dark:border-violet-700 shadow-sm"
-                          : "bg-card hover:bg-muted/40 border-border"
+                          ? "bg-gradient-to-r from-violet-50 to-violet-50/30 dark:from-violet-950/30 dark:to-violet-950/10 border-violet-300 dark:border-violet-700 shadow-sm"
+                          : "bg-card hover:bg-gradient-to-r hover:from-violet-50/50 hover:to-transparent dark:hover:from-violet-950/20 dark:hover:to-transparent border-border hover:border-violet-200 dark:hover:border-violet-800 hover:shadow-sm"
                       )}
                     >
                       <div className={cn(
-                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition-colors",
+                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all duration-200",
                         isPosExpanded
-                          ? "bg-violet-100 dark:bg-violet-900/40 border-violet-300 dark:border-violet-700"
-                          : "bg-muted border-border"
+                          ? "bg-gradient-to-br from-violet-500 to-indigo-600 shadow-sm"
+                          : "bg-muted border border-border group-hover:bg-violet-100"
                       )}>
-                        <MapPin className={cn("h-5 w-5", isPosExpanded ? "text-violet-600 dark:text-violet-400" : "text-muted-foreground")} />
+                        <MapPin className={cn("h-5 w-5", isPosExpanded ? "text-white" : "text-muted-foreground")} />
                       </div>
 
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-base truncate">{pg.posicion_cerrada}</p>
+                        <p className={cn("font-semibold text-base truncate", isPosExpanded && "text-violet-700 dark:text-violet-300")}>
+                          {pg.posicion_cerrada}
+                        </p>
                         <p className="text-sm text-muted-foreground">
                           {pg.warehouses.length}{" "}
                           {pg.warehouses.length === 1 ? "almacén" : "almacenes"}
@@ -377,45 +374,54 @@ export default function DashboardPage() {
                         <div className="h-8 w-px bg-border hidden md:block" />
                         <div className="text-right hidden md:block">
                           <p className="text-xs text-muted-foreground">Coste/día</p>
-                          <p className="font-semibold tabular-nums text-violet-600 dark:text-violet-400">{formatCurrency(pg.totalDailyCost)}</p>
+                          <p className="font-bold tabular-nums text-violet-600 dark:text-violet-400">{formatCurrency(pg.totalDailyCost)}</p>
                         </div>
-                        <ChevronDown className={cn(
-                          "h-4 w-4 text-muted-foreground transition-transform duration-200",
-                          isPosExpanded && "rotate-180"
-                        )} />
+                        <div className={cn(
+                          "flex h-6 w-6 items-center justify-center rounded-full transition-all duration-200",
+                          isPosExpanded ? "bg-violet-100 dark:bg-violet-900/40" : "bg-muted"
+                        )}>
+                          <ChevronDown className={cn(
+                            "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
+                            isPosExpanded && "rotate-180 text-violet-600 dark:text-violet-400"
+                          )} />
+                        </div>
                       </div>
                     </button>
 
                     {/* ── Nivel 2: Almacenes ───────────────────────── */}
                     {isPosExpanded && (
                       <div className="ml-5 mt-1 relative">
-                        <div className="absolute left-0 top-0 bottom-3 w-0.5 bg-border/60 rounded-full" />
+                        <div className="absolute left-0 top-0 bottom-3 w-0.5 bg-gradient-to-b from-violet-300 to-transparent dark:from-violet-700 rounded-full" />
                         <div className="space-y-1.5 pl-1">
                           {pg.warehouses.map((group) => {
                             const isExpanded = expandedWarehouses.has(group.warehouse_id);
                             return (
                               <div key={group.warehouse_id} className="relative">
-                                <div className="absolute left-[-4px] top-[22px] w-5 h-0.5 bg-border/60" />
+                                <div className="absolute left-[-4px] top-[22px] w-5 h-0.5 bg-violet-200 dark:bg-violet-800" />
                                 <div className="ml-5">
                                   {/* ── Nodo Almacén ─────────────────── */}
                                   <button
                                     onClick={() => toggleWarehouse(group.warehouse_id)}
                                     className={cn(
-                                      "w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-all",
+                                      "w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-all duration-200",
                                       isExpanded
-                                        ? "bg-primary/5 border-primary/30 shadow-sm"
-                                        : "bg-card hover:bg-muted/40 border-border"
+                                        ? "bg-gradient-to-r from-blue-50 to-blue-50/30 dark:from-blue-950/30 dark:to-blue-950/10 border-blue-300 dark:border-blue-700 shadow-sm"
+                                        : "bg-card hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent dark:hover:from-blue-950/20 dark:hover:to-transparent border-border hover:border-blue-200 dark:hover:border-blue-800 hover:shadow-sm"
                                     )}
                                   >
                                     <div className={cn(
-                                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition-colors",
-                                      isExpanded ? "bg-primary/15 border-primary/30" : "bg-muted border-border"
+                                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
+                                      isExpanded
+                                        ? "bg-gradient-to-br from-blue-500 to-indigo-600 shadow-sm"
+                                        : "bg-muted border border-border"
                                     )}>
-                                      <Warehouse className={cn("h-4 w-4", isExpanded ? "text-primary" : "text-muted-foreground")} />
+                                      <Warehouse className={cn("h-4 w-4", isExpanded ? "text-white" : "text-muted-foreground")} />
                                     </div>
 
                                     <div className="flex-1 min-w-0">
-                                      <p className="font-semibold text-sm truncate">{group.warehouse_name}</p>
+                                      <p className={cn("font-semibold text-sm truncate", isExpanded && "text-blue-700 dark:text-blue-300")}>
+                                        {group.warehouse_name}
+                                      </p>
                                       <p className="text-xs text-muted-foreground">
                                         {group.products.length}{" "}
                                         {group.products.length === 1 ? "producto" : "productos"} con stock activo
@@ -430,27 +436,32 @@ export default function DashboardPage() {
                                       <div className="h-6 w-px bg-border hidden md:block" />
                                       <div className="text-right hidden md:block">
                                         <p className="text-xs text-muted-foreground">Coste/día</p>
-                                        <p className="font-semibold tabular-nums text-sm text-primary">{formatCurrency(group.totalDailyCost)}</p>
+                                        <p className="font-bold tabular-nums text-sm text-blue-600 dark:text-blue-400">{formatCurrency(group.totalDailyCost)}</p>
                                       </div>
-                                      <ChevronDown className={cn(
-                                        "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
-                                        isExpanded && "rotate-180"
-                                      )} />
+                                      <div className={cn(
+                                        "flex h-5 w-5 items-center justify-center rounded-full transition-all duration-200",
+                                        isExpanded ? "bg-blue-100 dark:bg-blue-900/40" : "bg-muted"
+                                      )}>
+                                        <ChevronDown className={cn(
+                                          "h-3 w-3 text-muted-foreground transition-transform duration-200",
+                                          isExpanded && "rotate-180 text-blue-600 dark:text-blue-400"
+                                        )} />
+                                      </div>
                                     </div>
                                   </button>
 
                                   {/* ── Nivel 3: Productos ─────────────── */}
                                   {isExpanded && (
                                     <div className="ml-5 mt-1 relative">
-                                      <div className="absolute left-0 top-0 bottom-3 w-0.5 bg-border/60 rounded-full" />
+                                      <div className="absolute left-0 top-0 bottom-3 w-0.5 bg-gradient-to-b from-blue-300 to-transparent dark:from-blue-700 rounded-full" />
                                       <div className="space-y-1.5 pl-1">
                                         {group.products.map((product) => (
                                           <div key={product.product_id} className="relative">
-                                            <div className="absolute left-[-4px] top-1/2 w-5 h-0.5 bg-border/60" />
-                                            <div className="ml-5 rounded-lg border bg-background/80 hover:bg-muted/20 transition-colors">
+                                            <div className="absolute left-[-4px] top-1/2 w-5 h-0.5 bg-blue-200 dark:bg-blue-800" />
+                                            <div className="ml-5 rounded-lg border bg-card hover:bg-gradient-to-r hover:from-cyan-50/60 hover:to-transparent dark:hover:from-cyan-950/20 dark:hover:to-transparent hover:border-cyan-200 dark:hover:border-cyan-800 transition-all duration-150 group">
                                               <div className="flex items-center gap-3 px-4 py-3">
-                                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted border">
-                                                  <Package className="h-4 w-4 text-muted-foreground" />
+                                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30 border border-cyan-200 dark:border-cyan-800 group-hover:from-cyan-200 group-hover:to-blue-200 dark:group-hover:from-cyan-900/50 transition-all duration-150">
+                                                  <Package className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
                                                 </div>
 
                                                 <div className="flex-1 min-w-0">
@@ -463,28 +474,31 @@ export default function DashboardPage() {
                                                 </div>
 
                                                 <div className="flex items-center gap-4 shrink-0">
-                                                  <div className="hidden sm:flex items-center gap-4 text-sm">
+                                                  <div className="hidden sm:flex items-center gap-3 text-sm">
                                                     <div className="text-right">
                                                       <p className="text-xs text-muted-foreground">Entradas</p>
-                                                      <p className="tabular-nums text-green-600 dark:text-green-400 font-medium">
+                                                      <p className="tabular-nums text-emerald-600 dark:text-emerald-400 font-semibold">
                                                         +{formatQuantity(product.total_inbound, product.unit)}
                                                       </p>
                                                     </div>
                                                     <div className="text-right">
                                                       <p className="text-xs text-muted-foreground">Salidas</p>
-                                                      <p className="tabular-nums text-red-600 dark:text-red-400 font-medium">
+                                                      <p className="tabular-nums text-rose-600 dark:text-rose-400 font-semibold">
                                                         -{formatQuantity(product.total_outbound, product.unit)}
                                                       </p>
                                                     </div>
                                                     <div className="text-right">
                                                       <p className="text-xs text-muted-foreground">Pendiente</p>
-                                                      <p className="tabular-nums font-bold text-amber-600 dark:text-amber-400">
+                                                      <Badge
+                                                        variant="outline"
+                                                        className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300 font-bold tabular-nums"
+                                                      >
                                                         {formatQuantity(product.pending_stock, product.unit)}
-                                                      </p>
+                                                      </Badge>
                                                     </div>
                                                     <div className="text-right hidden lg:block">
                                                       <p className="text-xs text-muted-foreground">Coste/día</p>
-                                                      <p className="tabular-nums font-semibold text-primary">
+                                                      <p className="tabular-nums font-bold text-blue-600 dark:text-blue-400">
                                                         {formatCurrency(product.daily_cost)}
                                                       </p>
                                                     </div>
@@ -492,7 +506,11 @@ export default function DashboardPage() {
 
                                                   <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
-                                                      <Button variant="outline" size="sm" className="gap-1.5">
+                                                      <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="gap-1.5 border-violet-200 hover:border-violet-400 hover:bg-violet-50 dark:border-violet-800 dark:hover:border-violet-600 dark:hover:bg-violet-950/50 text-violet-600 dark:text-violet-400 transition-colors"
+                                                      >
                                                         <Plus className="h-3.5 w-3.5" />
                                                         Acciones
                                                         <ChevronDown className="h-3 w-3 opacity-60" />
@@ -505,13 +523,13 @@ export default function DashboardPage() {
                                                       <DropdownMenuSeparator />
 
                                                       <DropdownMenuItem asChild>
-                                                        <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}`}>
+                                                        <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}`} className="cursor-pointer">
                                                           <CalendarDays className="mr-2 h-4 w-4 text-blue-500" />
                                                           Ver calendario de stock
                                                         </Link>
                                                       </DropdownMenuItem>
                                                       <DropdownMenuItem asChild>
-                                                        <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}?tab=puestas`}>
+                                                        <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}?tab=puestas`} className="cursor-pointer">
                                                           <FileText className="mr-2 h-4 w-4 text-violet-500" />
                                                           Ver puestas activas
                                                         </Link>
@@ -520,19 +538,19 @@ export default function DashboardPage() {
                                                       <DropdownMenuSeparator />
 
                                                       <DropdownMenuItem asChild>
-                                                        <Link href={`/movements/inbound?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`}>
-                                                          <ArrowDownToLine className="mr-2 h-4 w-4 text-green-500" />
+                                                        <Link href={`/movements/inbound?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`} className="cursor-pointer">
+                                                          <ArrowDownToLine className="mr-2 h-4 w-4 text-emerald-500" />
                                                           Nueva entrada
                                                         </Link>
                                                       </DropdownMenuItem>
                                                       <DropdownMenuItem asChild>
-                                                        <Link href={`/movements/outbound?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`}>
-                                                          <ArrowUpFromLine className="mr-2 h-4 w-4 text-red-500" />
+                                                        <Link href={`/movements/outbound?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`} className="cursor-pointer">
+                                                          <ArrowUpFromLine className="mr-2 h-4 w-4 text-rose-500" />
                                                           Nueva salida
                                                         </Link>
                                                       </DropdownMenuItem>
                                                       <DropdownMenuItem asChild>
-                                                        <Link href={`/puestas?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`}>
+                                                        <Link href={`/puestas?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`} className="cursor-pointer">
                                                           <ClipboardList className="mr-2 h-4 w-4 text-amber-500" />
                                                           Nueva puesta a disposición
                                                         </Link>
