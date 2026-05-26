@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { Calculator, RefreshCw, Download } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { StorageCostsService } from "@/services/storage-costs.service";
+import { recalculateStorageCosts } from "./actions";
 import type { StorageCostWithRelations } from "@/types";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
@@ -52,7 +53,7 @@ export default function StorageCostsPage() {
       return;
     }
     setIsRecalculating(true);
-    const result = await service.recalculate(recalcStart, recalcEnd);
+    const result = await recalculateStorageCosts(recalcStart, recalcEnd);
     if (result.error) {
       toast({ variant: "destructive", title: "Error en recálculo", description: result.error });
     } else {
