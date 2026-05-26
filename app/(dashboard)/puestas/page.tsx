@@ -123,15 +123,15 @@ export default function PuestasPage() {
 
   // Unique values for filter dropdowns derived from loaded summaries
   const uniqueWarehouses = useMemo(
-    () => Array.from(new Set(summaries.map((s) => s.warehouse_name))).sort(),
+    () => Array.from(new Set(summaries.map((s) => s.warehouse_name))).filter(Boolean).sort(),
     [summaries]
   );
   const uniqueProducts = useMemo(
-    () => Array.from(new Set(summaries.map((s) => s.product_name))).sort(),
+    () => Array.from(new Set(summaries.map((s) => s.product_name))).filter(Boolean).sort(),
     [summaries]
   );
   const uniqueCustomers = useMemo(
-    () => Array.from(new Set(summaries.map((s) => s.customer_name))).sort(),
+    () => Array.from(new Set(summaries.map((s) => s.customer_name))).filter(Boolean).sort(),
     [summaries]
   );
 
