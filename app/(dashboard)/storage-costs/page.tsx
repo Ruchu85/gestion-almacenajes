@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Calculator, RefreshCw, Download } from "lucide-react";
+import { Calculator, RefreshCw, Download, RotateCcw, Info } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { StorageCostsService } from "@/services/storage-costs.service";
-import { recalculateStorageCosts } from "./actions";
+import { recalculateStorageCosts, recalculateAllStorageCosts } from "./actions";
 import type { StorageCostWithRelations } from "@/types";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
@@ -25,6 +25,7 @@ export default function StorageCostsPage() {
   const [costs, setCosts] = useState<StorageCostWithRelations[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRecalculating, setIsRecalculating] = useState(false);
+  const [isRecalculatingAll, setIsRecalculatingAll] = useState(false);
   const [recalcStart, setRecalcStart] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [recalcEnd, setRecalcEnd] = useState(format(new Date(), "yyyy-MM-dd"));
 
@@ -61,6 +62,18 @@ export default function StorageCostsPage() {
       await loadCosts();
     }
     setIsRecalculating(false);
+  }
+
+  async function handleRecalculateAll() {
+    setIsRecalculatingAll(true);
+    const result = await recalculateAllStorageCosts();
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error en recálculo global", description: result.error });
+    } else {
+      toast({ title: `Recálculo completo — ${result.data} registros generados` });
+      await loadCosts();
+    }
+    setIsRecalculatingAll(false);
   }
 
   const totalCost = costs.reduce((acc, c) => acc + Number(c.total_cost), 0);
@@ -126,6 +139,16 @@ export default function StorageCostsPage() {
         }
       />
 
+      {/* Aviso: cuando se borran movimientos hay que recalcular */}
+      <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-800 dark:text-amber-300">
+        <Info className="h-4 w-4 mt-0.5 shrink-0" />
+        <span>
+          Si has eliminado o modificado entradas o salidas, haz clic en{" "}
+          <strong>Recalcular todo el histórico</strong> para actualizar los costes a los
+          movimientos actuales. Los datos mostrados corresponden al último cálculo realizado.
+        </span>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
@@ -145,10 +168,10 @@ export default function StorageCostsPage() {
           <CardHeader>
             <CardTitle className="text-base">Recalcular costes</CardTitle>
             <CardDescription>
-              Recalcula los costes para un rango de fechas específico
+              Elimina y regenera los costes del rango seleccionado desde los movimientos actuales
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <div className="flex items-end gap-3">
               <div className="space-y-1">
                 <Label>Desde</Label>
@@ -168,14 +191,32 @@ export default function StorageCostsPage() {
                   className="w-36"
                 />
               </div>
-              <Button onClick={handleRecalculate} disabled={isRecalculating}>
+              <Button onClick={handleRecalculate} disabled={isRecalculating || isRecalculatingAll}>
                 {isRecalculating ? (
                   <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <RefreshCw className="mr-2 h-4 w-4" />
                 )}
-                Recalcular
+                Recalcular rango
               </Button>
+            </div>
+            <div className="border-t pt-3">
+              <Button
+                variant="outline"
+                className="w-full border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                onClick={handleRecalculateAll}
+                disabled={isRecalculating || isRecalculatingAll}
+              >
+                {isRecalculatingAll ? (
+                  <RotateCcw className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                )}
+                Recalcular todo el histórico
+              </Button>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Borra todos los costes y los regenera desde el primer movimiento hasta hoy
+              </p>
             </div>
           </CardContent>
         </Card>
