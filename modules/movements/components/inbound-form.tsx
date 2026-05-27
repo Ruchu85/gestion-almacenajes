@@ -73,7 +73,7 @@ export function InboundForm({
       warehouse_id: "",
       product_id: "",
       supplier_id: null,
-      quantity: 0,
+      quantity: undefined as unknown as number,
       movement_date: new Date().toISOString().split("T")[0],
       free_days: 0,
       comments: "",
@@ -108,7 +108,7 @@ export function InboundForm({
         warehouse_id: presetWarehouseId ?? "",
         product_id: presetProductId ?? "",
         supplier_id: null,
-        quantity: 0,
+        quantity: undefined as unknown as number,
         movement_date: new Date().toISOString().split("T")[0],
         free_days: 0,
         comments: "",
@@ -307,9 +307,10 @@ export function InboundForm({
                         type="number"
                         step="0.001"
                         min="0.001"
-                        placeholder="0.000"
+                        placeholder="Ej: 100.000"
                         {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
                       />
                     </FormControl>
                     <FormMessage />

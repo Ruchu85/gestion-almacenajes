@@ -82,7 +82,7 @@ export function PuestaForm({
       customer_id: null,
       product_id: "",
       warehouse_id: "",
-      cantidad_inicial: 0,
+      cantidad_inicial: undefined as unknown as number,
       fecha_puesta: new Date().toISOString().split("T")[0],
       dias_plancha: 0,
       estado: "abierta",
@@ -127,7 +127,7 @@ export function PuestaForm({
           customer_id: null,
           product_id: presetProductId ?? "",
           warehouse_id: presetWarehouseId ?? "",
-          cantidad_inicial: 0,
+          cantidad_inicial: undefined as unknown as number,
           fecha_puesta: new Date().toISOString().split("T")[0],
           dias_plancha: 0,
           estado: "abierta",
@@ -342,10 +342,12 @@ export function PuestaForm({
                     <FormControl>
                       <Input
                         type="number"
-                        min="0"
+                        min="0.001"
                         step="0.001"
+                        placeholder="Ej: 100.000"
                         {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
                       />
                     </FormControl>
                     <FormMessage />

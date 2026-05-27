@@ -102,7 +102,10 @@ export default function DashboardPage() {
   const loadOrganigrama = useCallback(async () => {
     setIsLoadingStock(true);
 
-    const [inboundRes, outboundRes] = await Promise.all([
+    type WRow = { id: string; name: string; posicion_cerrada: string | null; active: boolean; storage_daily_price: number };
+    type PRow = { id: string; name: string; code: string; unit: string };
+
+    const [inboundRes, outboundRes, puestasRes] = await Promise.all([
       supabase
         .from("inbound_movements")
         .select(
@@ -111,6 +114,12 @@ export default function DashboardPage() {
       supabase
         .from("outbound_movements")
         .select("warehouse_id, product_id, quantity"),
+      supabase
+        .from("puestas_a_disposicion")
+        .select(
+          "warehouse_id, product_id, cantidad_inicial, salidas_parciales(cantidad), warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
+        )
+        .eq("estado", "abierta"),
     ]);
 
     if (inboundRes.error) {
@@ -123,8 +132,8 @@ export default function DashboardPage() {
     const stockMap = new Map<string, StockEntry>();
 
     for (const row of inboundRes.data ?? []) {
-      const w = row.warehouse as { id: string; name: string; posicion_cerrada: string | null; active: boolean; storage_daily_price: number } | null;
-      const p = row.product as { id: string; name: string; code: string; unit: string } | null;
+      const w = row.warehouse as WRow | null;
+      const p = row.product as PRow | null;
       if (!w || !p) continue;
       if (!w.active) continue;
       const key = `${row.warehouse_id}||${row.product_id}`;
@@ -154,9 +163,48 @@ export default function DashboardPage() {
       }
     }
 
+    // Complementar con puestas activas: si hay puestas con stock pendiente
+    // pero los movimientos dan saldo 0 (p.ej. por migración o auto-salida),
+    // seguimos mostrando el producto con el stock de las puestas abiertas.
+    const puestaStockByKey = new Map<string, number>();
+    for (const puesta of puestasRes.data ?? []) {
+      const w = puesta.warehouse as WRow | null;
+      const p = puesta.product as PRow | null;
+      if (!w || !p || !w.active) continue;
+
+      const totalSalida = ((puesta.salidas_parciales ?? []) as { cantidad: number }[])
+        .reduce((sum, s) => sum + Number(s.cantidad), 0);
+      const puestaPending = Math.max(0, Number(puesta.cantidad_inicial) - totalSalida);
+      if (puestaPending <= 0) continue;
+
+      const key = `${puesta.warehouse_id}||${puesta.product_id}`;
+      puestaStockByKey.set(key, (puestaStockByKey.get(key) ?? 0) + puestaPending);
+
+      // Si no hay entradas para este almacén+producto, añadirlo igualmente
+      if (!stockMap.has(key)) {
+        stockMap.set(key, {
+          warehouse_id: puesta.warehouse_id,
+          warehouse_name: w.name,
+          posicion_cerrada: w.posicion_cerrada ?? null,
+          product_id: puesta.product_id,
+          product_name: p.name,
+          product_code: p.code,
+          unit: p.unit ?? "ud",
+          total_inbound: 0,
+          total_outbound: 0,
+          pending_stock: 0,
+          daily_price: Number(w.storage_daily_price ?? 0),
+          daily_cost: 0,
+        });
+      }
+    }
+
     const warehouseMap = new Map<string, WarehouseGroup>();
     for (const item of stockMap.values()) {
-      item.pending_stock = Math.max(0, item.total_inbound - item.total_outbound);
+      const movementPending = Math.max(0, item.total_inbound - item.total_outbound);
+      const key = `${item.warehouse_id}||${item.product_id}`;
+      const puestaPending = puestaStockByKey.get(key) ?? 0;
+      item.pending_stock = Math.max(movementPending, puestaPending);
       item.daily_cost = item.pending_stock * item.daily_price;
       if (item.pending_stock <= 0) continue;
 
