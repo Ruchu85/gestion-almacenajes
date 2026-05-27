@@ -184,6 +184,7 @@ export interface Database {
           movement_date: string;
           free_days: number;
           comments: string | null;
+          numero_albaran: string | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -197,6 +198,7 @@ export interface Database {
           movement_date: string;
           free_days?: number;
           comments?: string | null;
+          numero_albaran?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -210,6 +212,7 @@ export interface Database {
           movement_date?: string;
           free_days?: number;
           comments?: string | null;
+          numero_albaran?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -248,6 +251,7 @@ export interface Database {
           movement_date: string;
           free_days: number;
           comments: string | null;
+          numero_albaran: string | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -261,6 +265,7 @@ export interface Database {
           movement_date: string;
           free_days?: number;
           comments?: string | null;
+          numero_albaran?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -274,6 +279,7 @@ export interface Database {
           movement_date?: string;
           free_days?: number;
           comments?: string | null;
+          numero_albaran?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
