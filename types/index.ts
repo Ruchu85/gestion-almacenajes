@@ -14,6 +14,7 @@ export type StorageCost = Tables<"storage_costs">;
 export type PuestaADisposicion = Tables<"puestas_a_disposicion">;
 export type SalidaParcial = Tables<"salidas_parciales">;
 export type TarifaTramo = Tables<"tarifa_tramos">;
+export type Matricula = Tables<"matriculas">;
 
 // ============================================================
 // TIPOS ENRIQUECIDOS (con relaciones joined)

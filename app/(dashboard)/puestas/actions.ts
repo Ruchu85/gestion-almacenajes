@@ -5,6 +5,7 @@ import { puestaSchema, type PuestaFormValues } from "@/validations/puesta.schema
 import { salidaParcialSchema, type SalidaParcialFormValues } from "@/validations/salida-parcial.schema";
 import type { PuestaADisposicion, SalidaParcial } from "@/types";
 import { redirect } from "next/navigation";
+import { upsertMatricula } from "@/lib/actions/matriculas";
 
 async function requireAuth() {
   const supabase = await createClient();
@@ -147,6 +148,8 @@ export async function createSalidaParcial(
 
   if (error) return { error: error.message };
 
+  if (parsed.data.matricula) await upsertMatricula(parsed.data.matricula);
+
   // Determine plancha boundary
   const fechaPuesta = new Date(puesta.fecha_puesta + "T00:00:00");
   const fechaFinPlancha = new Date(fechaPuesta);
@@ -287,6 +290,9 @@ export async function updateSalidaParcial(
     .single();
 
   if (error) return { error: error.message };
+
+  if (parsed.data.matricula) await upsertMatricula(parsed.data.matricula);
+
   return { data: data as SalidaParcial };
 }
 

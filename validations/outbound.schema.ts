@@ -41,6 +41,12 @@ export const outboundSchema = z.object({
     .optional()
     .nullable()
     .transform((v) => v || null),
+  matricula: z
+    .string()
+    .max(50, "Máximo 50 caracteres")
+    .optional()
+    .nullable()
+    .transform((v) => (v ? v.trim().toUpperCase() : null)),
 });
 
 export const outboundUpdateSchema = outboundSchema.partial();

@@ -61,6 +61,15 @@ export function getOutboundColumns(
       ),
     },
     {
+      accessorKey: "matricula",
+      header: "Matrícula",
+      cell: ({ row }) => (
+        <span className="font-mono text-sm">
+          {(row.getValue("matricula") as string | null) ?? "-"}
+        </span>
+      ),
+    },
+    {
       accessorKey: "comments",
       header: "Comentarios",
       cell: ({ row }) => (

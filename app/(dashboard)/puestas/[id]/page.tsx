@@ -37,6 +37,7 @@ import {
   markMonthAsInvoiced,
   unmarkMonthAsInvoiced,
 } from "../actions";
+import { getMatriculas, upsertMatricula } from "@/lib/actions/matriculas";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -84,6 +85,7 @@ export default function PuestaDetailPage() {
 
   const [salidaFormOpen, setSalidaFormOpen] = useState(false);
   const [editingSalida, setEditingSalida]   = useState<SalidaParcial | null>(null);
+  const [matriculas, setMatriculas]         = useState<string[]>([]);
 
   const [desaplicarOpen, setDesaplicarOpen]         = useState(false);
   const [isSavingDesaplicar, setIsSavingDesaplicar] = useState(false);
@@ -106,7 +108,7 @@ export default function PuestaDetailPage() {
   const loadData = useCallback(async () => {
     setIsLoading(true);
 
-    const [summaryRes, breakdownRes, salidasRes, puestaRes, invoicedRes] = await Promise.all([
+    const [summaryRes, breakdownRes, salidasRes, puestaRes, invoicedRes, mats] = await Promise.all([
       supabase.rpc("get_puesta_summary", { p_puesta_id: id, p_fecha: today }),
       supabase.rpc("get_puesta_daily_breakdown", {
         p_puesta_id: id,
@@ -128,6 +130,7 @@ export default function PuestaDetailPage() {
         .select("year_month, invoiced_at")
         .eq("puesta_id", id)
         .order("year_month", { ascending: false }),
+      getMatriculas(),
     ]);
 
     if (summaryRes.error) {
@@ -155,6 +158,7 @@ export default function PuestaDetailPage() {
           setSalidas((salRes2.data ?? []) as SalidaParcial[]);
           if (!puestaRes.error) setComentarios(puestaRes.data?.comentarios ?? null);
           if (!invoicedRes.error) setInvoicedMonths((invoicedRes.data ?? []) as { year_month: string; invoiced_at: string }[]);
+          setMatriculas(mats);
           setIsLoading(false);
           return;
         }
@@ -165,6 +169,7 @@ export default function PuestaDetailPage() {
     if (!salidasRes.error) setSalidas((salidasRes.data ?? []) as SalidaParcial[]);
     if (!puestaRes.error) setComentarios(puestaRes.data?.comentarios ?? null);
     if (!invoicedRes.error) setInvoicedMonths((invoicedRes.data ?? []) as { year_month: string; invoiced_at: string }[]);
+    setMatriculas(mats);
 
     setIsLoading(false);
   }, [supabase, id, today]);
@@ -177,6 +182,11 @@ export default function PuestaDetailPage() {
     if (result.error) {
       toast({ variant: "destructive", title: "Error al registrar salida", description: result.error });
     } else {
+      if (values.matricula) {
+        setMatriculas((prev) =>
+          prev.includes(values.matricula!) ? prev : [...prev, values.matricula!].sort()
+        );
+      }
       toast({ title: "Salida registrada correctamente" });
       setSalidaFormOpen(false);
       await loadData();
@@ -789,6 +799,7 @@ export default function PuestaDetailPage() {
         unit={summary.unit}
         defaultValues={editingSalida ?? undefined}
         fechaMinima={summary.fecha_puesta}
+        matriculas={matriculas}
       />
 
       {/* Desaplicar dialog */}

@@ -8,6 +8,7 @@ import { outboundSchema, type OutboundFormValues } from "@/validations/outbound.
 import type { Warehouse, Product } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MatriculaInput } from "@/components/shared/matricula-input";
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
 } from "@/components/ui/form";
@@ -28,6 +29,7 @@ interface OutboundFormProps {
   products: Product[];
   /** customers kept in signature for backwards compat but not rendered */
   customers?: unknown[];
+  matriculas?: string[];
   presetWarehouseId?: string;
   presetWarehouseName?: string;
   presetProductId?: string;
@@ -53,6 +55,7 @@ export function OutboundForm({
   isLoading = false,
   warehouses,
   products,
+  matriculas = [],
   presetWarehouseId,
   presetWarehouseName,
   presetProductId,
@@ -68,6 +71,7 @@ export function OutboundForm({
       movement_date: new Date().toISOString().split("T")[0],
       free_days: 0,
       comments: "",
+      matricula: "",
     },
   });
 
@@ -84,6 +88,7 @@ export function OutboundForm({
         movement_date: new Date().toISOString().split("T")[0],
         free_days: 0,
         comments: "",
+        matricula: "",
       });
     }
   }, [open, form, presetWarehouseId, presetProductId]);
@@ -190,6 +195,25 @@ export function OutboundForm({
                 )}
               />
             </div>
+
+            {/* Matrícula */}
+            <FormField
+              control={form.control}
+              name="matricula"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Matrícula</FormLabel>
+                  <FormControl>
+                    <MatriculaInput
+                      value={field.value ?? ""}
+                      onChange={field.onChange}
+                      matriculas={matriculas}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             {/* Comentarios */}
             <FormField

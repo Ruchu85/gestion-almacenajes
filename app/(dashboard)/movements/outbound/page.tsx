@@ -33,6 +33,7 @@ import { getOutboundColumns } from "@/modules/movements/components/outbound-colu
 import { toast } from "@/hooks/use-toast";
 import { exportToCSV, exportToExcel } from "@/utils/export";
 import { formatDate } from "@/utils/format";
+import { getMatriculas, upsertMatricula } from "@/lib/actions/matriculas";
 
 export default function OutboundMovementsPage() {
   const router = useRouter();
@@ -40,6 +41,7 @@ export default function OutboundMovementsPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [matriculas, setMatriculas] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -65,12 +67,13 @@ export default function OutboundMovementsPage() {
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
-    const [movResult, whResult, prResult, custResult, { data: { user } }] = await Promise.all([
+    const [movResult, whResult, prResult, custResult, { data: { user } }, mats] = await Promise.all([
       movementsService.getAll({}, { sortBy: "movement_date", sortOrder: "desc", pageSize: 500 }),
       warehousesService.getActive(),
       productsService.getActive(),
       customersService.getActive(),
       supabase.auth.getUser(),
+      getMatriculas(),
     ]);
 
     if (movResult.error) {
@@ -81,6 +84,7 @@ export default function OutboundMovementsPage() {
     setWarehouses(whResult.data ?? []);
     setProducts(prResult.data ?? []);
     setCustomers(custResult.data ?? []);
+    setMatriculas(mats);
     if (user) setUserId(user.id);
     setIsLoading(false);
   }, []);
@@ -155,6 +159,12 @@ export default function OutboundMovementsPage() {
     if (result.error) {
       toast({ variant: "destructive", title: "Error al registrar", description: result.error });
     } else {
+      if (values.matricula) {
+        await upsertMatricula(values.matricula);
+        setMatriculas((prev) =>
+          prev.includes(values.matricula!) ? prev : [...prev, values.matricula!].sort()
+        );
+      }
       toast({ title: "Salida registrada correctamente" });
       setFormOpen(false);
       if (backUrl) {
@@ -184,6 +194,7 @@ export default function OutboundMovementsPage() {
       cliente: m.customer?.name ?? "",
       cantidad: Number(m.quantity),
       unidad: m.product.unit,
+      matricula: m.matricula ?? "",
       comentarios: m.comments ?? "",
     }));
 
@@ -194,6 +205,7 @@ export default function OutboundMovementsPage() {
     { key: "cliente" as const, header: "Cliente" },
     { key: "cantidad" as const, header: "Cantidad" },
     { key: "unidad" as const, header: "Unidad" },
+    { key: "matricula" as const, header: "Matrícula" },
     { key: "comentarios" as const, header: "Comentarios" },
   ];
 
@@ -351,6 +363,7 @@ export default function OutboundMovementsPage() {
         warehouses={warehouses}
         products={products}
         customers={customers}
+        matriculas={matriculas}
         presetWarehouseId={presetWarehouseId || undefined}
         presetWarehouseName={presetWarehouseName || undefined}
         presetProductId={presetProductId || undefined}

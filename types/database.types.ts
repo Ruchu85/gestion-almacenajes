@@ -252,6 +252,7 @@ export interface Database {
           free_days: number;
           comments: string | null;
           numero_albaran: string | null;
+          matricula: string | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -266,6 +267,7 @@ export interface Database {
           free_days?: number;
           comments?: string | null;
           numero_albaran?: string | null;
+          matricula?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -280,6 +282,7 @@ export interface Database {
           free_days?: number;
           comments?: string | null;
           numero_albaran?: string | null;
+          matricula?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -307,6 +310,24 @@ export interface Database {
             referencedColumns: ["id"];
           }
         ];
+      };
+      matriculas: {
+        Row: {
+          id: string;
+          value: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          value: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          value?: string;
+          created_at?: string;
+        };
+        Relationships: [];
       };
       tarifa_tramos: {
         Row: {

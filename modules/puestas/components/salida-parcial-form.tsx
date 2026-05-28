@@ -22,6 +22,7 @@ import {
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { MatriculaInput } from "@/components/shared/matricula-input";
 import { formatNumber } from "@/utils/format";
 import { cn } from "@/lib/utils";
 
@@ -35,6 +36,7 @@ interface SalidaParcialFormProps {
   unit?: string;
   defaultValues?: SalidaParcial;
   fechaMinima?: string;
+  matriculas?: string[];
 }
 
 export function SalidaParcialForm({
@@ -47,6 +49,7 @@ export function SalidaParcialForm({
   unit = "ud",
   defaultValues,
   fechaMinima,
+  matriculas = [],
 }: SalidaParcialFormProps) {
   const isEditing = !!defaultValues;
   const [pendingOverflowValues, setPendingOverflowValues] = useState<SalidaParcialFormValues | null>(null);
@@ -165,11 +168,10 @@ export function SalidaParcialForm({
                   <FormItem>
                     <FormLabel>Matrícula *</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="1234 ABC"
-                        {...field}
+                      <MatriculaInput
                         value={field.value ?? ""}
-                        onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                        onChange={field.onChange}
+                        matriculas={matriculas}
                       />
                     </FormControl>
                     <FormMessage />
