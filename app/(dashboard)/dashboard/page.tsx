@@ -802,87 +802,81 @@ export default function DashboardPage() {
                                                     {isPuestasExpanded && (
                                                       <div className="px-3 pb-3">
                                                         <div className="rounded-md border border-amber-200/60 dark:border-amber-800/40 overflow-hidden">
-                                                          {/* Cabecera */}
-                                                          <div className="flex items-center px-3 py-1.5 bg-amber-50/70 dark:bg-amber-950/20 border-b border-amber-200/60 dark:border-amber-800/40">
-                                                            <div className="flex items-center gap-4 flex-1 min-w-0">
-                                                              <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide w-36 shrink-0">Nº Puesta</span>
-                                                              <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide w-20 shrink-0 hidden sm:block">Fecha</span>
-                                                              <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide hidden md:block flex-1">Cliente</span>
-                                                              <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide w-20 shrink-0 hidden sm:block">Cant. Inicial</span>
-                                                              <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide w-20 shrink-0">Cant. Pte.</span>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 shrink-0">
-                                                              <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide hidden sm:block">Nueva Salida</span>
-                                                              <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Detalle</span>
-                                                            </div>
+                                                          {/* Cabecera — mismo grid que las filas */}
+                                                          <div className="grid grid-cols-[minmax(120px,2fr)_80px_minmax(80px,1fr)_78px_78px_100px_82px] items-center gap-x-2 px-3 py-1.5 bg-amber-50/70 dark:bg-amber-950/20 border-b border-amber-200/60 dark:border-amber-800/40">
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Nº Puesta</span>
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide hidden sm:block">Fecha</span>
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide hidden md:block">Cliente</span>
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide text-right hidden sm:block">Cant. Inicial</span>
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide text-right">Cant. Pte.</span>
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide text-center hidden sm:block">Nueva Salida</span>
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide text-center">Detalle</span>
                                                           </div>
 
-                                                          {/* Filas de puestas */}
+                                                          {/* Filas de puestas — mismo grid que la cabecera */}
                                                           {product.puestas.map((puesta, idx) => (
                                                             <div
                                                               key={puesta.id}
                                                               className={cn(
-                                                                "flex items-center px-3 py-2",
+                                                                "grid grid-cols-[minmax(120px,2fr)_80px_minmax(80px,1fr)_78px_78px_100px_82px] items-center gap-x-2 px-3 py-2",
                                                                 idx % 2 === 0
                                                                   ? "bg-white dark:bg-transparent"
                                                                   : "bg-amber-50/30 dark:bg-amber-950/10",
                                                                 idx < product.puestas.length - 1 && "border-b border-amber-100/60 dark:border-amber-900/30"
                                                               )}
                                                             >
-                                                              {/* Datos — izquierda */}
-                                                              <div className="flex items-center gap-4 flex-1 min-w-0">
-                                                                {/* Nº Puesta */}
-                                                                <span className="text-xs font-mono font-medium truncate w-36 shrink-0 text-foreground">
-                                                                  {puesta.numero_contrato ?? `#${puesta.id.slice(0, 8).toUpperCase()}`}
-                                                                </span>
+                                                              {/* Nº Puesta */}
+                                                              <span className="text-xs font-mono font-medium truncate text-foreground">
+                                                                {puesta.numero_contrato ?? `#${puesta.id.slice(0, 8).toUpperCase()}`}
+                                                              </span>
 
-                                                                {/* Fecha */}
-                                                                <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap w-20 shrink-0 hidden sm:block">
-                                                                  {formatDate(puesta.fecha_puesta)}
-                                                                </span>
+                                                              {/* Fecha */}
+                                                              <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap hidden sm:block">
+                                                                {formatDate(puesta.fecha_puesta)}
+                                                              </span>
 
-                                                                {/* Cliente */}
-                                                                <span className="text-xs text-muted-foreground truncate hidden md:block flex-1">
-                                                                  {puesta.customer_name ?? "-"}
-                                                                </span>
+                                                              {/* Cliente */}
+                                                              <span className="text-xs text-muted-foreground truncate hidden md:block">
+                                                                {puesta.customer_name ?? "-"}
+                                                              </span>
 
-                                                                {/* Cant. Inicial */}
-                                                                <span className="text-xs tabular-nums text-muted-foreground w-20 shrink-0 hidden sm:block">
-                                                                  {formatQuantity(puesta.cantidad_inicial, product.unit)}
-                                                                </span>
+                                                              {/* Cant. Inicial */}
+                                                              <span className="text-xs tabular-nums text-muted-foreground text-right hidden sm:block">
+                                                                {formatQuantity(puesta.cantidad_inicial, product.unit)}
+                                                              </span>
 
-                                                                {/* Cant. Pendiente */}
-                                                                <div className="w-20 shrink-0">
-                                                                  <Badge
-                                                                    variant="outline"
-                                                                    className={cn(
-                                                                      "text-[11px] tabular-nums font-semibold px-1.5",
-                                                                      puesta.cantidad_pendiente > 0
-                                                                        ? "border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300"
-                                                                        : "border-muted text-muted-foreground"
-                                                                    )}
-                                                                  >
-                                                                    {formatQuantity(puesta.cantidad_pendiente, product.unit)}
-                                                                  </Badge>
-                                                                </div>
+                                                              {/* Cant. Pendiente */}
+                                                              <div className="flex justify-end">
+                                                                <Badge
+                                                                  variant="outline"
+                                                                  className={cn(
+                                                                    "text-[11px] tabular-nums font-semibold px-1.5",
+                                                                    puesta.cantidad_pendiente > 0
+                                                                      ? "border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300"
+                                                                      : "border-muted text-muted-foreground"
+                                                                  )}
+                                                                >
+                                                                  {formatQuantity(puesta.cantidad_pendiente, product.unit)}
+                                                                </Badge>
                                                               </div>
 
-                                                              {/* Acciones — derecha */}
-                                                              <div className="flex items-center gap-2 shrink-0">
-                                                                {/* Nueva salida */}
+                                                              {/* Nueva salida */}
+                                                              <div className="flex justify-center hidden sm:flex">
                                                                 <Button
                                                                   asChild
                                                                   size="sm"
                                                                   variant="outline"
-                                                                  className="h-6 px-2 text-[11px] gap-1 border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-400 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/30 hidden sm:inline-flex"
+                                                                  className="h-6 px-2 text-[11px] gap-1 border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-400 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/30"
                                                                 >
                                                                   <Link href={`/puestas/${puesta.id}?back=%2Fdashboard&autoSalida=1`}>
                                                                     <Truck className="h-3 w-3" />
                                                                     Nueva salida
                                                                   </Link>
                                                                 </Button>
+                                                              </div>
 
-                                                                {/* Ver detalle */}
+                                                              {/* Ver detalle */}
+                                                              <div className="flex justify-center">
                                                                 <Button
                                                                   asChild
                                                                   size="sm"
