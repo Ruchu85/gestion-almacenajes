@@ -803,7 +803,7 @@ export default function DashboardPage() {
                                                       <div className="px-3 pb-3">
                                                         <div className="rounded-md border border-amber-200/60 dark:border-amber-800/40 overflow-hidden">
                                                           {/* Cabecera — mismo grid que las filas */}
-                                                          <div className="grid grid-cols-[minmax(120px,2fr)_80px_minmax(80px,1fr)_78px_78px_100px_82px] items-center gap-x-2 px-3 py-1.5 bg-amber-50/70 dark:bg-amber-950/20 border-b border-amber-200/60 dark:border-amber-800/40">
+                                                          <div className="grid grid-cols-[160px_80px_1fr_78px_78px_100px_82px] items-center gap-x-2 px-3 py-1.5 bg-amber-50/70 dark:bg-amber-950/20 border-b border-amber-200/60 dark:border-amber-800/40">
                                                             <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Nº Puesta</span>
                                                             <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide hidden sm:block">Fecha</span>
                                                             <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide hidden md:block">Cliente</span>
@@ -818,7 +818,7 @@ export default function DashboardPage() {
                                                             <div
                                                               key={puesta.id}
                                                               className={cn(
-                                                                "grid grid-cols-[minmax(120px,2fr)_80px_minmax(80px,1fr)_78px_78px_100px_82px] items-center gap-x-2 px-3 py-2",
+                                                                "grid grid-cols-[160px_80px_1fr_78px_78px_100px_82px] items-center gap-x-2 px-3 py-2",
                                                                 idx % 2 === 0
                                                                   ? "bg-white dark:bg-transparent"
                                                                   : "bg-amber-50/30 dark:bg-amber-950/10",
