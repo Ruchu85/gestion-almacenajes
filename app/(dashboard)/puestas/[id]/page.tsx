@@ -98,8 +98,10 @@ export default function PuestaDetailPage() {
 
   useEffect(() => {
     const search = typeof window !== "undefined" ? window.location.search : "";
-    const back = new URLSearchParams(search).get("back");
+    const params = new URLSearchParams(search);
+    const back = params.get("back");
     if (back) setBackUrl(decodeURIComponent(back));
+    if (params.get("autoSalida") === "1") setSalidaFormOpen(true);
   }, []);
 
   const supabase = useMemo(() => createClient(), []);

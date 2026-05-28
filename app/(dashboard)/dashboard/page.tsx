@@ -17,6 +17,7 @@ import {
   MapPin,
   Search,
   X,
+  Truck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { StorageCostsService } from "@/services/storage-costs.service";
@@ -44,7 +45,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
-import { formatCurrency, formatNumber, formatQuantity } from "@/utils/format";
+import { formatCurrency, formatNumber, formatQuantity, formatDate } from "@/utils/format";
+
+interface PuestaItem {
+  id: string;
+  numero_contrato: string | null;
+  fecha_puesta: string;
+  customer_name: string | null;
+  cantidad_inicial: number;
+  cantidad_pendiente: number;
+}
 
 interface ProductStock {
   product_id: string;
@@ -56,6 +66,7 @@ interface ProductStock {
   pending_stock: number;
   daily_price: number;
   daily_cost: number;
+  puestas: PuestaItem[];
 }
 
 interface WarehouseGroup {
@@ -81,6 +92,7 @@ export default function DashboardPage() {
   const [positionGroups, setPositionGroups] = useState<PositionGroup[]>([]);
   const [expandedPositions, setExpandedPositions] = useState<Set<string>>(new Set());
   const [expandedWarehouses, setExpandedWarehouses] = useState<Set<string>>(new Set());
+  const [expandedPuestas, setExpandedPuestas] = useState<Set<string>>(new Set());
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
   const [isLoadingStock, setIsLoadingStock] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -117,7 +129,7 @@ export default function DashboardPage() {
       supabase
         .from("puestas_a_disposicion")
         .select(
-          "warehouse_id, product_id, cantidad_inicial, salidas_parciales(cantidad), warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
+          "id, numero_contrato, fecha_puesta, warehouse_id, product_id, cantidad_inicial, salidas_parciales(cantidad), customer:customers(name), warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
         )
         .eq("estado", "abierta"),
     ]);
@@ -151,6 +163,7 @@ export default function DashboardPage() {
           pending_stock: 0,
           daily_price: Number(w.storage_daily_price ?? 0),
           daily_cost: 0,
+          puestas: [],
         });
       }
       stockMap.get(key)!.total_inbound += Number(row.quantity);
@@ -163,22 +176,38 @@ export default function DashboardPage() {
       }
     }
 
-    // Complementar con puestas activas: si hay puestas con stock pendiente
-    // pero los movimientos dan saldo 0 (p.ej. por migración o auto-salida),
-    // seguimos mostrando el producto con el stock de las puestas abiertas.
+    // Construir mapa de puestas activas por key (warehouse_id||product_id)
+    const puestasMap = new Map<string, PuestaItem[]>();
     const puestaStockByKey = new Map<string, number>();
+
     for (const puesta of puestasRes.data ?? []) {
       const w = puesta.warehouse as WRow | null;
       const p = puesta.product as PRow | null;
+      const customer = puesta.customer as { name: string } | null;
       if (!w || !p || !w.active) continue;
 
       const totalSalida = ((puesta.salidas_parciales ?? []) as { cantidad: number }[])
         .reduce((sum, s) => sum + Number(s.cantidad), 0);
       const puestaPending = Math.max(0, Number(puesta.cantidad_inicial) - totalSalida);
-      if (puestaPending <= 0) continue;
 
       const key = `${puesta.warehouse_id}||${puesta.product_id}`;
-      puestaStockByKey.set(key, (puestaStockByKey.get(key) ?? 0) + puestaPending);
+
+      // Acumular stock de puestas
+      if (puestaPending > 0) {
+        puestaStockByKey.set(key, (puestaStockByKey.get(key) ?? 0) + puestaPending);
+      }
+
+      // Registrar la puesta en el mapa (incluso con pendiente 0, para mostrarla)
+      const puestaItem: PuestaItem = {
+        id: puesta.id,
+        numero_contrato: puesta.numero_contrato ?? null,
+        fecha_puesta: puesta.fecha_puesta,
+        customer_name: customer?.name ?? null,
+        cantidad_inicial: Number(puesta.cantidad_inicial),
+        cantidad_pendiente: puestaPending,
+      };
+      if (!puestasMap.has(key)) puestasMap.set(key, []);
+      puestasMap.get(key)!.push(puestaItem);
 
       // Si no hay entradas para este almacén+producto, añadirlo igualmente
       if (!stockMap.has(key)) {
@@ -195,6 +224,7 @@ export default function DashboardPage() {
           pending_stock: 0,
           daily_price: Number(w.storage_daily_price ?? 0),
           daily_cost: 0,
+          puestas: [],
         });
       }
     }
@@ -207,6 +237,9 @@ export default function DashboardPage() {
       item.pending_stock = Math.max(movementPending, puestaPending);
       item.daily_cost = item.pending_stock * item.daily_price;
       if (item.pending_stock <= 0) continue;
+
+      // Asignar puestas al producto
+      item.puestas = puestasMap.get(key) ?? [];
 
       if (!warehouseMap.has(item.warehouse_id)) {
         warehouseMap.set(item.warehouse_id, {
@@ -331,6 +364,15 @@ export default function DashboardPage() {
     });
   }
 
+  function togglePuestas(key: string) {
+    setExpandedPuestas((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   const totalWarehouses = positionGroups.reduce((sum, pg) => sum + pg.warehouses.length, 0);
 
   return (
@@ -375,7 +417,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Almacenes Activos – árbol 3 niveles */}
+      {/* Almacenes Activos – árbol 4 niveles */}
       <Card className="border-0 shadow-sm">
         <CardHeader className="pb-4 bg-gradient-to-r from-violet-500/5 via-transparent to-transparent rounded-t-xl border-b">
           <div className="flex items-center justify-between">
@@ -386,7 +428,7 @@ export default function DashboardPage() {
               <div>
                 <CardTitle className="text-base">Almacenes Activos</CardTitle>
                 <CardDescription>
-                  Posición cerrada → Almacén → Productos
+                  Posición cerrada → Almacén → Productos → Ptas a Disposición
                 </CardDescription>
               </div>
             </div>
@@ -597,113 +639,241 @@ export default function DashboardPage() {
                                     <div className="ml-5 mt-1 relative">
                                       <div className="absolute left-0 top-0 bottom-3 w-0.5 bg-gradient-to-b from-blue-300 to-transparent dark:from-blue-700 rounded-full" />
                                       <div className="space-y-1.5 pl-1">
-                                        {group.products.map((product) => (
-                                          <div key={product.product_id} className="relative">
-                                            <div className="absolute left-[-4px] top-1/2 w-5 h-0.5 bg-blue-200 dark:bg-blue-800" />
-                                            <div className="ml-5 rounded-lg border bg-card hover:bg-gradient-to-r hover:from-cyan-50/60 hover:to-transparent dark:hover:from-cyan-950/20 dark:hover:to-transparent hover:border-cyan-200 dark:hover:border-cyan-800 transition-all duration-150 group">
-                                              <div className="flex items-center gap-3 px-4 py-3">
-                                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30 border border-cyan-200 dark:border-cyan-800 group-hover:from-cyan-200 group-hover:to-blue-200 transition-all duration-150">
-                                                  <Package className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
-                                                </div>
+                                        {group.products.map((product) => {
+                                          const puestasKey = `${group.warehouse_id}||${product.product_id}`;
+                                          const isPuestasExpanded = expandedPuestas.has(puestasKey);
+                                          const hasPuestas = product.puestas.length > 0;
 
-                                                <div className="flex-1 min-w-0">
-                                                  <p className="font-medium text-sm leading-tight truncate">
-                                                    {product.product_name}
-                                                  </p>
-                                                  <p className="text-xs text-muted-foreground font-mono">
-                                                    {product.product_code}
-                                                  </p>
-                                                </div>
+                                          return (
+                                            <div key={product.product_id} className="relative">
+                                              <div className="absolute left-[-4px] top-[22px] w-5 h-0.5 bg-blue-200 dark:bg-blue-800" />
+                                              <div className="ml-5 rounded-lg border bg-card hover:border-cyan-200 dark:hover:border-cyan-800 transition-all duration-150 overflow-hidden">
 
-                                                <div className="flex items-center gap-4 shrink-0">
-                                                  <div className="hidden sm:flex items-center gap-3 text-sm">
-                                                    <div className="text-right">
-                                                      <p className="text-xs text-muted-foreground">Entradas</p>
-                                                      <p className="tabular-nums text-emerald-600 dark:text-emerald-400 font-semibold">
-                                                        +{formatQuantity(product.total_inbound, product.unit)}
-                                                      </p>
-                                                    </div>
-                                                    <div className="text-right">
-                                                      <p className="text-xs text-muted-foreground">Salidas</p>
-                                                      <p className="tabular-nums text-rose-600 dark:text-rose-400 font-semibold">
-                                                        -{formatQuantity(product.total_outbound, product.unit)}
-                                                      </p>
-                                                    </div>
-                                                    <div className="text-right">
-                                                      <p className="text-xs text-muted-foreground">Pendiente</p>
-                                                      <Badge
-                                                        variant="outline"
-                                                        className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300 font-bold tabular-nums"
-                                                      >
-                                                        {formatQuantity(product.pending_stock, product.unit)}
-                                                      </Badge>
-                                                    </div>
-                                                    <div className="text-right hidden lg:block">
-                                                      <p className="text-xs text-muted-foreground">Coste/día</p>
-                                                      <p className="tabular-nums font-bold text-blue-600 dark:text-blue-400">
-                                                        {formatCurrency(product.daily_cost)}
-                                                      </p>
-                                                    </div>
+                                                {/* Fila del producto */}
+                                                <div className="flex items-center gap-3 px-4 py-3 hover:bg-gradient-to-r hover:from-cyan-50/60 hover:to-transparent dark:hover:from-cyan-950/20 dark:hover:to-transparent transition-all duration-150 group">
+                                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30 border border-cyan-200 dark:border-cyan-800 group-hover:from-cyan-200 group-hover:to-blue-200 transition-all duration-150">
+                                                    <Package className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
                                                   </div>
 
-                                                  <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                      <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="gap-1.5 border-violet-200 hover:border-violet-400 hover:bg-violet-50 dark:border-violet-800 dark:hover:border-violet-600 dark:hover:bg-violet-950/50 text-violet-600 dark:text-violet-400 transition-colors"
-                                                      >
-                                                        <Plus className="h-3.5 w-3.5" />
-                                                        Acciones
-                                                        <ChevronDown className="h-3 w-3 opacity-60" />
-                                                      </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end" className="w-58">
-                                                      <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
-                                                        {product.product_name}
-                                                      </DropdownMenuLabel>
-                                                      <DropdownMenuSeparator />
+                                                  <div className="flex-1 min-w-0">
+                                                    <p className="font-medium text-sm leading-tight truncate">
+                                                      {product.product_name}
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground font-mono">
+                                                      {product.product_code}
+                                                    </p>
+                                                  </div>
 
-                                                      <DropdownMenuItem asChild>
-                                                        <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}`} className="cursor-pointer">
-                                                          <CalendarDays className="mr-2 h-4 w-4 text-blue-500" />
-                                                          Ver calendario de stock
-                                                        </Link>
-                                                      </DropdownMenuItem>
-                                                      <DropdownMenuItem asChild>
-                                                        <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}?tab=puestas`} className="cursor-pointer">
-                                                          <FileText className="mr-2 h-4 w-4 text-violet-500" />
-                                                          Ver puestas activas
-                                                        </Link>
-                                                      </DropdownMenuItem>
+                                                  <div className="flex items-center gap-4 shrink-0">
+                                                    <div className="hidden sm:flex items-center gap-3 text-sm">
+                                                      <div className="text-right">
+                                                        <p className="text-xs text-muted-foreground">Entradas</p>
+                                                        <p className="tabular-nums text-emerald-600 dark:text-emerald-400 font-semibold">
+                                                          +{formatQuantity(product.total_inbound, product.unit)}
+                                                        </p>
+                                                      </div>
+                                                      <div className="text-right">
+                                                        <p className="text-xs text-muted-foreground">Salidas</p>
+                                                        <p className="tabular-nums text-rose-600 dark:text-rose-400 font-semibold">
+                                                          -{formatQuantity(product.total_outbound, product.unit)}
+                                                        </p>
+                                                      </div>
+                                                      <div className="text-right">
+                                                        <p className="text-xs text-muted-foreground">Pendiente</p>
+                                                        <Badge
+                                                          variant="outline"
+                                                          className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300 font-bold tabular-nums"
+                                                        >
+                                                          {formatQuantity(product.pending_stock, product.unit)}
+                                                        </Badge>
+                                                      </div>
+                                                      <div className="text-right hidden lg:block">
+                                                        <p className="text-xs text-muted-foreground">Coste/día</p>
+                                                        <p className="tabular-nums font-bold text-blue-600 dark:text-blue-400">
+                                                          {formatCurrency(product.daily_cost)}
+                                                        </p>
+                                                      </div>
+                                                    </div>
 
-                                                      <DropdownMenuSeparator />
+                                                    <DropdownMenu>
+                                                      <DropdownMenuTrigger asChild>
+                                                        <Button
+                                                          variant="outline"
+                                                          size="sm"
+                                                          className="gap-1.5 border-violet-200 hover:border-violet-400 hover:bg-violet-50 dark:border-violet-800 dark:hover:border-violet-600 dark:hover:bg-violet-950/50 text-violet-600 dark:text-violet-400 transition-colors"
+                                                        >
+                                                          <Plus className="h-3.5 w-3.5" />
+                                                          Acciones
+                                                          <ChevronDown className="h-3 w-3 opacity-60" />
+                                                        </Button>
+                                                      </DropdownMenuTrigger>
+                                                      <DropdownMenuContent align="end" className="w-58">
+                                                        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+                                                          {product.product_name}
+                                                        </DropdownMenuLabel>
+                                                        <DropdownMenuSeparator />
 
-                                                      <DropdownMenuItem asChild>
-                                                        <Link href={`/movements/inbound?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`} className="cursor-pointer">
-                                                          <ArrowDownToLine className="mr-2 h-4 w-4 text-emerald-500" />
-                                                          Nueva entrada
-                                                        </Link>
-                                                      </DropdownMenuItem>
-                                                      <DropdownMenuItem asChild>
-                                                        <Link href={`/movements/outbound?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`} className="cursor-pointer">
-                                                          <ArrowUpFromLine className="mr-2 h-4 w-4 text-rose-500" />
-                                                          Nueva salida
-                                                        </Link>
-                                                      </DropdownMenuItem>
-                                                      <DropdownMenuItem asChild>
-                                                        <Link href={`/puestas?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`} className="cursor-pointer">
-                                                          <ClipboardList className="mr-2 h-4 w-4 text-amber-500" />
-                                                          Nueva puesta a disposición
-                                                        </Link>
-                                                      </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                  </DropdownMenu>
+                                                        <DropdownMenuItem asChild>
+                                                          <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}`} className="cursor-pointer">
+                                                            <CalendarDays className="mr-2 h-4 w-4 text-blue-500" />
+                                                            Ver calendario de stock
+                                                          </Link>
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem asChild>
+                                                          <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}?tab=puestas`} className="cursor-pointer">
+                                                            <FileText className="mr-2 h-4 w-4 text-violet-500" />
+                                                            Ver puestas activas
+                                                          </Link>
+                                                        </DropdownMenuItem>
+
+                                                        <DropdownMenuSeparator />
+
+                                                        <DropdownMenuItem asChild>
+                                                          <Link href={`/movements/inbound?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`} className="cursor-pointer">
+                                                            <ArrowDownToLine className="mr-2 h-4 w-4 text-emerald-500" />
+                                                            Nueva entrada
+                                                          </Link>
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem asChild>
+                                                          <Link href={`/movements/outbound?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`} className="cursor-pointer">
+                                                            <ArrowUpFromLine className="mr-2 h-4 w-4 text-rose-500" />
+                                                            Nueva salida
+                                                          </Link>
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem asChild>
+                                                          <Link href={`/puestas?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`} className="cursor-pointer">
+                                                            <ClipboardList className="mr-2 h-4 w-4 text-amber-500" />
+                                                            Nueva puesta a disposición
+                                                          </Link>
+                                                        </DropdownMenuItem>
+                                                      </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                  </div>
                                                 </div>
+
+                                                {/* Toggle Ptas a Disposición */}
+                                                {hasPuestas && (
+                                                  <div className="border-t border-dashed border-amber-200/80 dark:border-amber-800/50">
+                                                    <button
+                                                      onClick={() => togglePuestas(puestasKey)}
+                                                      className="w-full flex items-center gap-2 px-4 py-2 text-xs font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-50/60 dark:hover:bg-amber-950/20 transition-colors"
+                                                    >
+                                                      <ClipboardList className="h-3.5 w-3.5" />
+                                                      Ptas a Disposición
+                                                      <Badge
+                                                        variant="outline"
+                                                        className="h-4 px-1.5 text-[10px] border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400"
+                                                      >
+                                                        {product.puestas.length}
+                                                      </Badge>
+                                                      <ChevronDown className={cn(
+                                                        "h-3 w-3 ml-auto transition-transform duration-200",
+                                                        isPuestasExpanded && "rotate-180"
+                                                      )} />
+                                                    </button>
+
+                                                    {/* ── Nivel 4: Puestas ─────────── */}
+                                                    {isPuestasExpanded && (
+                                                      <div className="px-3 pb-3">
+                                                        <div className="rounded-md border border-amber-200/60 dark:border-amber-800/40 overflow-hidden">
+                                                          {/* Cabecera */}
+                                                          <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto_auto] gap-x-3 px-3 py-1.5 bg-amber-50/70 dark:bg-amber-950/20 border-b border-amber-200/60 dark:border-amber-800/40">
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Nº Puesta</span>
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide text-right">Fecha</span>
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide text-right hidden md:block">Cliente</span>
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide text-right hidden sm:block">Cant. Inicial</span>
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide text-right">Cant. Pte.</span>
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide text-right hidden sm:block">Nueva salida</span>
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide text-right">Detalle</span>
+                                                          </div>
+
+                                                          {/* Filas de puestas */}
+                                                          {product.puestas.map((puesta, idx) => (
+                                                            <div
+                                                              key={puesta.id}
+                                                              className={cn(
+                                                                "grid grid-cols-[1fr_auto_auto_auto_auto_auto_auto] gap-x-3 items-center px-3 py-2",
+                                                                idx % 2 === 0
+                                                                  ? "bg-white dark:bg-transparent"
+                                                                  : "bg-amber-50/30 dark:bg-amber-950/10",
+                                                                idx < product.puestas.length - 1 && "border-b border-amber-100/60 dark:border-amber-900/30"
+                                                              )}
+                                                            >
+                                                              {/* Nº Puesta */}
+                                                              <span className="text-xs font-mono font-medium truncate text-foreground">
+                                                                {puesta.numero_contrato ?? `#${puesta.id.slice(0, 8).toUpperCase()}`}
+                                                              </span>
+
+                                                              {/* Fecha */}
+                                                              <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap text-right">
+                                                                {formatDate(puesta.fecha_puesta)}
+                                                              </span>
+
+                                                              {/* Cliente */}
+                                                              <span className="text-xs text-muted-foreground truncate max-w-[120px] text-right hidden md:block">
+                                                                {puesta.customer_name ?? "-"}
+                                                              </span>
+
+                                                              {/* Cant. Inicial */}
+                                                              <span className="text-xs tabular-nums text-muted-foreground text-right hidden sm:block">
+                                                                {formatQuantity(puesta.cantidad_inicial, product.unit)}
+                                                              </span>
+
+                                                              {/* Cant. Pendiente */}
+                                                              <div className="text-right">
+                                                                <Badge
+                                                                  variant="outline"
+                                                                  className={cn(
+                                                                    "text-[11px] tabular-nums font-semibold px-1.5",
+                                                                    puesta.cantidad_pendiente > 0
+                                                                      ? "border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300"
+                                                                      : "border-muted text-muted-foreground"
+                                                                  )}
+                                                                >
+                                                                  {formatQuantity(puesta.cantidad_pendiente, product.unit)}
+                                                                </Badge>
+                                                              </div>
+
+                                                              {/* Nueva salida */}
+                                                              <div className="text-right hidden sm:block">
+                                                                <Button
+                                                                  asChild
+                                                                  size="sm"
+                                                                  variant="outline"
+                                                                  className="h-6 px-2 text-[11px] gap-1 border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-400 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/30"
+                                                                >
+                                                                  <Link href={`/puestas/${puesta.id}?back=%2Fdashboard&autoSalida=1`}>
+                                                                    <Truck className="h-3 w-3" />
+                                                                    Nueva salida
+                                                                  </Link>
+                                                                </Button>
+                                                              </div>
+
+                                                              {/* Ver detalle */}
+                                                              <div className="text-right">
+                                                                <Button
+                                                                  asChild
+                                                                  size="sm"
+                                                                  variant="outline"
+                                                                  className="h-6 px-2 text-[11px] gap-1 border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-400 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                                                                >
+                                                                  <Link href={`/puestas/${puesta.id}?back=%2Fdashboard`}>
+                                                                    <FileText className="h-3 w-3" />
+                                                                    Ver detalle
+                                                                  </Link>
+                                                                </Button>
+                                                              </div>
+                                                            </div>
+                                                          ))}
+                                                        </div>
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                )}
                                               </div>
                                             </div>
-                                          </div>
-                                        ))}
+                                          );
+                                        })}
                                       </div>
                                     </div>
                                   )}
