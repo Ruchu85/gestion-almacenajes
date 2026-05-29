@@ -66,6 +66,7 @@ interface ProductStock {
   pending_stock: number;
   daily_price: number;
   daily_cost: number;
+  cant_invendida: number;
   puestas: PuestaItem[];
 }
 
@@ -143,7 +144,7 @@ export default function DashboardPage() {
     type WRow = { id: string; name: string; posicion_cerrada: string | null; active: boolean; storage_daily_price: number };
     type PRow = { id: string; name: string; code: string; unit: string };
 
-    const [inboundRes, outboundRes, puestasRes] = await Promise.all([
+    const [inboundRes, outboundRes, puestasRes, allPuestasRes] = await Promise.all([
       supabase
         .from("inbound_movements")
         .select(
@@ -151,13 +152,17 @@ export default function DashboardPage() {
         ),
       supabase
         .from("outbound_movements")
-        .select("warehouse_id, product_id, quantity"),
+        .select("warehouse_id, product_id, quantity, from_puesta"),
       supabase
         .from("puestas_a_disposicion")
         .select(
           "id, numero_contrato, fecha_puesta, warehouse_id, product_id, cantidad_inicial, salidas_parciales(cantidad, tipo), customer:customers(name), warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
         )
         .eq("estado", "abierta"),
+      // Todas las puestas (cualquier estado) para calcular Cant. Invendida
+      supabase
+        .from("puestas_a_disposicion")
+        .select("warehouse_id, product_id, cantidad_inicial"),
     ]);
 
     if (inboundRes.error) {
@@ -189,17 +194,30 @@ export default function DashboardPage() {
           pending_stock: 0,
           daily_price: Number(w.storage_daily_price ?? 0),
           daily_cost: 0,
+          cant_invendida: 0,
           puestas: [],
         });
       }
       stockMap.get(key)!.total_inbound += Number(row.quantity);
     }
 
+    // Mapa de salidas manuales (from_puesta = false) para Cant. Invendida
+    const manualOutboundByKey = new Map<string, number>();
     for (const row of outboundRes.data ?? []) {
       const key = `${row.warehouse_id}||${row.product_id}`;
       if (stockMap.has(key)) {
         stockMap.get(key)!.total_outbound += Number(row.quantity);
       }
+      if (!row.from_puesta) {
+        manualOutboundByKey.set(key, (manualOutboundByKey.get(key) ?? 0) + Number(row.quantity));
+      }
+    }
+
+    // Mapa de cantidad inicial total de puestas (todos los estados) para Cant. Invendida
+    const allPuestaQtyByKey = new Map<string, number>();
+    for (const p of allPuestasRes.data ?? []) {
+      const key = `${p.warehouse_id}||${p.product_id}`;
+      allPuestaQtyByKey.set(key, (allPuestaQtyByKey.get(key) ?? 0) + Number(p.cantidad_inicial));
     }
 
     // Construir mapa de puestas activas por key (warehouse_id||product_id)
@@ -253,6 +271,7 @@ export default function DashboardPage() {
           pending_stock: 0,
           daily_price: Number(w.storage_daily_price ?? 0),
           daily_cost: 0,
+          cant_invendida: 0,
           puestas: [],
         });
       }
@@ -265,6 +284,12 @@ export default function DashboardPage() {
       const puestaPending = puestaStockByKey.get(key) ?? 0;
       item.pending_stock = Math.max(movementPending, puestaPending);
       item.daily_cost = item.pending_stock * item.daily_price;
+
+      // Cant. Invendida = Total Entradas - Total cant. inicial puestas (todos estados) - Salidas manuales
+      const totalPuestaQty   = allPuestaQtyByKey.get(key) ?? 0;
+      const totalManualOut   = manualOutboundByKey.get(key) ?? 0;
+      item.cant_invendida = item.total_inbound - totalPuestaQty - totalManualOut;
+
       if (item.pending_stock <= 0) continue;
 
       // Asignar puestas al producto
@@ -720,6 +745,12 @@ export default function DashboardPage() {
                                                         <p className="text-xs text-muted-foreground">Coste/día</p>
                                                         <p className="tabular-nums font-bold text-blue-600 dark:text-blue-400">
                                                           {formatCurrency(product.daily_cost)}
+                                                        </p>
+                                                      </div>
+                                                      <div className="text-right hidden xl:block">
+                                                        <p className="text-xs text-muted-foreground">Cant. Invendida</p>
+                                                        <p className={`tabular-nums font-semibold ${product.cant_invendida < 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-600 dark:text-slate-400"}`}>
+                                                          {formatQuantity(product.cant_invendida, product.unit)}
                                                         </p>
                                                       </div>
                                                     </div>

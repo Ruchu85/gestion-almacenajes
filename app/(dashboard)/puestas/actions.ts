@@ -166,6 +166,7 @@ export async function createSalidaParcial(
       free_days: 0,
       customer_id: puesta.customer_id ?? null,
       comments: `Retirada puesta a disposición${parsed.data.n_camion ? ` (camión: ${parsed.data.n_camion})` : ""}`,
+      from_puesta: true,
       created_by: user.id,
     });
   } else {
@@ -187,6 +188,7 @@ export async function createSalidaParcial(
         free_days: 0,
         customer_id: puesta.customer_id ?? null,
         comments: `Rebase${customerRef ? ` cliente ${customerRef}` : ""} pta a disposicion ${puestaRef}`,
+        from_puesta: true,
         created_by: user.id,
       });
     }
@@ -260,6 +262,7 @@ export async function triggerPlanchaAutoExit(puestaId: string): Promise<{ error?
     free_days: 0,
     customer_id: puesta.customer_id ?? null,
     comments: `Auto-salida fin de plancha${puesta.numero_contrato ? ` (${puesta.numero_contrato})` : ""}`,
+    from_puesta: true,
     created_by: user.id,
   });
   if (outboundError) return { error: outboundError.message };
