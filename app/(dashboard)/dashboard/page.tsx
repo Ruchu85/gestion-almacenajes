@@ -155,7 +155,7 @@ export default function DashboardPage() {
       supabase
         .from("puestas_a_disposicion")
         .select(
-          "id, numero_contrato, fecha_puesta, warehouse_id, product_id, cantidad_inicial, salidas_parciales(cantidad), customer:customers(name), warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
+          "id, numero_contrato, fecha_puesta, warehouse_id, product_id, cantidad_inicial, salidas_parciales(cantidad, tipo), customer:customers(name), warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
         )
         .eq("estado", "abierta"),
     ]);
@@ -212,9 +212,12 @@ export default function DashboardPage() {
       const customer = puesta.customer as { name: string } | null;
       if (!w || !p || !w.active) continue;
 
-      const totalSalida = ((puesta.salidas_parciales ?? []) as { cantidad: number }[])
+      // Solo salidas reales (camión) reducen la cant. pte. del cliente.
+      // Las de tipo 'plancha' y 'desaplicacion' son contables, no físicas.
+      const totalRealSalida = ((puesta.salidas_parciales ?? []) as { cantidad: number; tipo: string }[])
+        .filter((s) => s.tipo === "real")
         .reduce((sum, s) => sum + Number(s.cantidad), 0);
-      const puestaPending = Math.max(0, Number(puesta.cantidad_inicial) - totalSalida);
+      const puestaPending = Math.max(0, Number(puesta.cantidad_inicial) - totalRealSalida);
 
       const key = `${puesta.warehouse_id}||${puesta.product_id}`;
 

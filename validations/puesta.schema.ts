@@ -15,11 +15,13 @@ export const puestaSchema = z.object({
     .max(999999, "Máximo 999.999"),
   fecha_puesta: z.string().min(1, "La fecha es obligatoria"),
   dias_plancha: z
-    .number({ invalid_type_error: "Debe ser un número" })
+    .number({
+      required_error: "Los días de plancha son obligatorios",
+      invalid_type_error: "Debe ser un número entero",
+    })
     .int("Debe ser un número entero")
     .min(0, "Mínimo 0 días")
-    .max(365, "Máximo 365 días")
-    .default(0),
+    .max(365, "Máximo 365 días"),
   estado: z
     .enum(["abierta", "finalizada", "cerrada_manual"])
     .default("abierta"),

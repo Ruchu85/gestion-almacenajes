@@ -84,7 +84,7 @@ export function PuestaForm({
       warehouse_id: "",
       cantidad_inicial: undefined as unknown as number,
       fecha_puesta: new Date().toISOString().split("T")[0],
-      dias_plancha: 0,
+      dias_plancha: undefined as unknown as number,
       estado: "abierta",
       comentarios: "",
     },
@@ -94,7 +94,7 @@ export function PuestaForm({
   const diasPlancha = form.watch("dias_plancha");
 
   useEffect(() => {
-    if (fechaPuesta && diasPlancha >= 0) {
+    if (fechaPuesta && diasPlancha !== undefined && diasPlancha >= 0) {
       try {
         const d = addDays(parseISO(fechaPuesta), diasPlancha);
         setFinPlancha(d.toISOString().split("T")[0]);
@@ -129,7 +129,7 @@ export function PuestaForm({
           warehouse_id: presetWarehouseId ?? "",
           cantidad_inicial: undefined as unknown as number,
           fecha_puesta: new Date().toISOString().split("T")[0],
-          dias_plancha: 0,
+          dias_plancha: undefined as unknown as number,
           estado: "abierta",
           comentarios: "",
         });
@@ -376,7 +376,7 @@ export function PuestaForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="flex items-center gap-1">
-                    Días de plancha
+                    Días de plancha *
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
@@ -393,8 +393,13 @@ export function PuestaForm({
                       min="0"
                       max="365"
                       step="1"
-                      {...field}
-                      onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                      placeholder="Ej: 7"
+                      value={field.value ?? ""}
+                      onChange={(e) =>
+                        field.onChange(
+                          e.target.value === "" ? undefined : parseInt(e.target.value)
+                        )
+                      }
                     />
                   </FormControl>
                   {finPlancha && (
