@@ -2,33 +2,38 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { Database } from "@/types/database.types";
-import { ENV_COOKIE, getEnvModeFromValue, getSupabaseCredentials } from "@/lib/env-mode";
+import { ENV_COOKIE, getEnvModeFromValue, getDbSchema } from "@/lib/env-mode";
 
-async function resolveCredentials() {
+async function resolveSchema(): Promise<{ schema: string; cookieStore: Awaited<ReturnType<typeof cookies>> }> {
   const cookieStore = await cookies();
   const mode = getEnvModeFromValue(cookieStore.get(ENV_COOKIE)?.value);
-  return { creds: getSupabaseCredentials(mode), cookieStore };
+  return { schema: getDbSchema(mode), cookieStore };
 }
 
 export async function createClient() {
-  const { creds, cookieStore } = await resolveCredentials();
+  const { schema, cookieStore } = await resolveSchema();
 
-  return createServerClient<Database>(creds.url, creds.anonKey, {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll();
+  return createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      db: { schema },
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options);
+            });
+          } catch {
+            // Called from Server Component — cookies set by middleware
+          }
+        },
       },
-      setAll(cookiesToSet) {
-        try {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
-          });
-        } catch {
-          // Called from Server Component — cookies set by middleware
-        }
-      },
-    },
-  });
+    }
+  );
 }
 
 /**
@@ -36,12 +41,17 @@ export async function createClient() {
  * RLS queda completamente desactivado.
  */
 export async function createServiceClient() {
-  const { creds } = await resolveCredentials();
+  const { schema } = await resolveSchema();
 
-  return createSupabaseClient<Database>(creds.url, creds.serviceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
+  return createSupabaseClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    {
+      db: { schema },
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
 }

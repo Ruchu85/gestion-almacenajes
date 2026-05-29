@@ -13,17 +13,7 @@ export function getClientEnvMode(): EnvMode {
   return getEnvModeFromValue(match?.[1]);
 }
 
-export function getSupabaseCredentials(mode: EnvMode) {
-  if (mode === "development") {
-    return {
-      url:        process.env.NEXT_PUBLIC_SUPABASE_URL_DEV  ?? process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      anonKey:    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY_DEV ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY_DEV ?? process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    };
-  }
-  return {
-    url:        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    anonKey:    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  };
+/** Returns the Postgres schema name for the given env mode */
+export function getDbSchema(mode: EnvMode): string {
+  return mode === "development" ? "dev" : "public";
 }
