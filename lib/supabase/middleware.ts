@@ -1,13 +1,15 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/database.types";
+import { ENV_COOKIE, getEnvModeFromValue, getSupabaseCredentials } from "@/lib/env-mode";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
-  const supabase = createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  const envMode = getEnvModeFromValue(request.cookies.get(ENV_COOKIE)?.value);
+  const { url, anonKey } = getSupabaseCredentials(envMode);
+
+  const supabase = createServerClient<Database>(url, anonKey,
     {
       cookies: {
         getAll() {

@@ -4,6 +4,7 @@ import { useTheme } from "next-themes";
 import { Moon, Sun, LogOut, User, Settings, Warehouse } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { EnvSwitcher } from "@/components/shared/env-switcher";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -49,6 +50,8 @@ export function Header({ userEmail, userName, userRole }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-2">
+        <EnvSwitcher />
+
         <Button
           variant="ghost"
           size="icon"

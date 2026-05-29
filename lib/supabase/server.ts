@@ -2,46 +2,46 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import type { Database } from "@/types/database.types";
+import { ENV_COOKIE, getEnvModeFromValue, getSupabaseCredentials } from "@/lib/env-mode";
+
+async function resolveCredentials() {
+  const cookieStore = await cookies();
+  const mode = getEnvModeFromValue(cookieStore.get(ENV_COOKIE)?.value);
+  return { creds: getSupabaseCredentials(mode), cookieStore };
+}
 
 export async function createClient() {
-  const cookieStore = await cookies();
+  const { creds, cookieStore } = await resolveCredentials();
 
-  return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options);
-            });
-          } catch {
-            // Called from Server Component — cookies set by middleware
-          }
-        },
+  return createServerClient<Database>(creds.url, creds.anonKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
       },
-    }
-  );
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        } catch {
+          // Called from Server Component — cookies set by middleware
+        }
+      },
+    },
+  });
 }
 
 /**
  * Cliente con service role key usando @supabase/supabase-js puro.
- * A diferencia de createServerClient (SSR), este cliente NO hereda la sesión
- * de las cookies del usuario, por lo que RLS queda completamente desactivado.
+ * RLS queda completamente desactivado.
  */
 export async function createServiceClient() {
-  return createSupabaseClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    }
-  );
+  const { creds } = await resolveCredentials();
+
+  return createSupabaseClient<Database>(creds.url, creds.serviceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }
