@@ -720,6 +720,26 @@ export default function DashboardPage() {
 
                                                   <div className="flex items-center gap-4 shrink-0">
                                                     <div className="hidden sm:flex items-center gap-3 text-sm">
+                                                      {/* Cant. Invendida — recuadro destacado, en primer lugar */}
+                                                      <div className={cn(
+                                                        "text-right px-2.5 py-1 rounded-md border",
+                                                        product.cant_invendida < 0
+                                                          ? "bg-rose-50 border-rose-200 dark:bg-rose-950/30 dark:border-rose-800"
+                                                          : "bg-slate-50 border-slate-200 dark:bg-slate-900/40 dark:border-slate-700"
+                                                      )}>
+                                                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Cant. Invendida</p>
+                                                        <p className={cn(
+                                                          "tabular-nums font-bold text-sm",
+                                                          product.cant_invendida < 0
+                                                            ? "text-rose-600 dark:text-rose-400"
+                                                            : "text-slate-700 dark:text-slate-300"
+                                                        )}>
+                                                          {formatQuantity(product.cant_invendida, product.unit)}
+                                                        </p>
+                                                      </div>
+
+                                                      <div className="w-px h-8 bg-border" />
+
                                                       <div className="text-right">
                                                         <p className="text-xs text-muted-foreground">Entradas</p>
                                                         <p className="tabular-nums text-emerald-600 dark:text-emerald-400 font-semibold">
@@ -745,12 +765,6 @@ export default function DashboardPage() {
                                                         <p className="text-xs text-muted-foreground">Coste/día</p>
                                                         <p className="tabular-nums font-bold text-blue-600 dark:text-blue-400">
                                                           {formatCurrency(product.daily_cost)}
-                                                        </p>
-                                                      </div>
-                                                      <div className="text-right hidden xl:block">
-                                                        <p className="text-xs text-muted-foreground">Cant. Invendida</p>
-                                                        <p className={`tabular-nums font-semibold ${product.cant_invendida < 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-600 dark:text-slate-400"}`}>
-                                                          {formatQuantity(product.cant_invendida, product.unit)}
                                                         </p>
                                                       </div>
                                                     </div>
