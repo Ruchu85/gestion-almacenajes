@@ -18,6 +18,7 @@ import {
   Search,
   X,
   Truck,
+  PackageMinus,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { StorageCostsService } from "@/services/storage-costs.service";
@@ -429,6 +430,34 @@ export default function DashboardPage() {
 
   const totalWarehouses = positionGroups.reduce((sum, pg) => sum + pg.warehouses.length, 0);
 
+  // Stock Invendido agrupado por producto (suma de todos los almacenes)
+  const invendidoByProduct = useMemo(() => {
+    const map = new Map<string, { name: string; code: string; unit: string; total: number }>();
+    for (const pg of positionGroups) {
+      for (const wg of pg.warehouses) {
+        for (const p of wg.products) {
+          const prev = map.get(p.product_id);
+          if (prev) {
+            prev.total += p.cant_invendida;
+          } else {
+            map.set(p.product_id, {
+              name: p.product_name,
+              code: p.product_code,
+              unit: p.unit,
+              total: p.cant_invendida,
+            });
+          }
+        }
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [positionGroups]);
+
+  const totalInvendido = useMemo(
+    () => invendidoByProduct.reduce((sum, p) => sum + p.total, 0),
+    [invendidoByProduct]
+  );
+
   return (
     <>
       <PageHeader
@@ -438,37 +467,106 @@ export default function DashboardPage() {
 
       {/* KPIs */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        <StatsCard
-          title="Coste hoy"
-          value={formatCurrency(kpis?.total_cost_today ?? 0)}
-          description="Generado hoy"
-          icon={Euro}
-          variant="default"
-          isLoading={isLoadingKpis}
-        />
-        <StatsCard
-          title="Coste del mes"
-          value={formatCurrency(kpis?.total_cost_month ?? 0)}
-          description="Mes en curso"
-          icon={TrendingUp}
-          variant="success"
-          isLoading={isLoadingKpis}
-        />
-        <StatsCard
-          title="Stock pendiente"
-          value={formatNumber(kpis?.pending_stock_units ?? 0)}
-          description="Unidades en almacén"
-          icon={Package}
-          variant="warning"
-          isLoading={isLoadingKpis}
-        />
-        <StatsCard
-          title="Almacenes activos"
-          value={formatNumber(kpis?.active_warehouses ?? 0)}
-          description="Instalaciones operativas"
-          icon={Warehouse}
-          isLoading={isLoadingKpis}
-        />
+
+        {/* Coste hoy */}
+        <div className="rounded-xl border bg-card shadow-sm p-4">
+          {isLoadingKpis ? (
+            <div className="space-y-2"><Skeleton className="h-3 w-20" /><Skeleton className="h-6 w-28" /><Skeleton className="h-3 w-16" /></div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Coste hoy</p>
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-100 dark:bg-violet-900/30">
+                  <Euro className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                </div>
+              </div>
+              <p className="text-lg font-bold tabular-nums text-violet-700 dark:text-violet-300">
+                {formatCurrency(kpis?.total_cost_today ?? 0)}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Generado hoy</p>
+            </>
+          )}
+        </div>
+
+        {/* Coste del mes */}
+        <div className="rounded-xl border bg-card shadow-sm p-4">
+          {isLoadingKpis ? (
+            <div className="space-y-2"><Skeleton className="h-3 w-20" /><Skeleton className="h-6 w-28" /><Skeleton className="h-3 w-16" /></div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Coste del mes</p>
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-100 dark:bg-emerald-900/30">
+                  <TrendingUp className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+              </div>
+              <p className="text-lg font-bold tabular-nums text-emerald-700 dark:text-emerald-300">
+                {formatCurrency(kpis?.total_cost_month ?? 0)}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Mes en curso</p>
+            </>
+          )}
+        </div>
+
+        {/* Stock pendiente */}
+        <div className="rounded-xl border bg-card shadow-sm p-4">
+          {isLoadingKpis ? (
+            <div className="space-y-2"><Skeleton className="h-3 w-20" /><Skeleton className="h-6 w-28" /><Skeleton className="h-3 w-16" /></div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Stock pendiente</p>
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+                  <Package className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                </div>
+              </div>
+              <p className="text-lg font-bold tabular-nums text-amber-700 dark:text-amber-300">
+                {formatQuantity(kpis?.pending_stock_units ?? 0, "TNS")}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">En almacén</p>
+            </>
+          )}
+        </div>
+
+        {/* Stock Invendido — con desglose por producto */}
+        <div className="rounded-xl border bg-card shadow-sm p-4">
+          {isLoadingStock ? (
+            <div className="space-y-2"><Skeleton className="h-3 w-20" /><Skeleton className="h-6 w-28" /><Skeleton className="h-3 w-full" /><Skeleton className="h-3 w-full" /></div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Stock invendido</p>
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 dark:bg-slate-800">
+                  <PackageMinus className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
+                </div>
+              </div>
+              <p className={cn(
+                "text-lg font-bold tabular-nums",
+                totalInvendido < 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-700 dark:text-slate-300"
+              )}>
+                {formatQuantity(totalInvendido, "TNS")}
+              </p>
+              {invendidoByProduct.length > 0 ? (
+                <div className="mt-1.5 space-y-0.5">
+                  {invendidoByProduct.map((p) => (
+                    <div key={p.code} className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[60%]">{p.name}</span>
+                      <span className={cn(
+                        "text-[10px] tabular-nums font-semibold",
+                        p.total < 0 ? "text-rose-500" : "text-slate-600 dark:text-slate-400"
+                      )}>
+                        {formatQuantity(p.total, p.unit)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground mt-0.5">Sin datos</p>
+              )}
+            </>
+          )}
+        </div>
+
       </div>
 
       {/* Almacenes Activos – árbol 4 niveles */}
