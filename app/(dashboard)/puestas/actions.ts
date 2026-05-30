@@ -157,7 +157,7 @@ export async function createSalidaParcial(
   const fechaFinStr = fechaFinPlancha.toISOString().split("T")[0];
 
   if (parsed.data.fecha_salida <= fechaFinStr) {
-    // Within plancha: create outbound for the full quantity
+    // Within plancha: create outbound for the real salida
     await supabase.from("outbound_movements").insert({
       warehouse_id: puesta.warehouse_id,
       product_id: puesta.product_id,
@@ -169,6 +169,56 @@ export async function createSalidaParcial(
       from_puesta: true,
       created_by: user.id,
     });
+
+    // ── Recalcular la salida automática de fin de plancha si ya existía ──
+    // La salida_parcial nueva ya está en BD, así que la suma incluye la nueva cantidad.
+    const { data: planchaExit } = await supabase
+      .from("salidas_parciales")
+      .select("id, cantidad")
+      .eq("puesta_id", parsed.data.puesta_id)
+      .eq("tipo", "plancha")
+      .maybeSingle();
+
+    if (planchaExit) {
+      const { data: realUpToPlancha } = await supabase
+        .from("salidas_parciales")
+        .select("cantidad")
+        .eq("puesta_id", parsed.data.puesta_id)
+        .eq("tipo", "real")
+        .lte("fecha_salida", fechaFinStr);
+
+      const totalRealUpToPlancha = (realUpToPlancha ?? [])
+        .reduce((sum, s) => sum + Number(s.cantidad), 0);
+      const newPendingAtPlancha = Math.max(
+        0,
+        Number(puesta.cantidad_inicial) - totalRealUpToPlancha
+      );
+
+      if (newPendingAtPlancha <= 0) {
+        // Toda la mercancía ya fue retirada antes del fin de plancha → eliminar auto-salida
+        await supabase.from("salidas_parciales").delete().eq("id", planchaExit.id);
+        await supabase
+          .from("outbound_movements")
+          .delete()
+          .eq("warehouse_id", puesta.warehouse_id)
+          .eq("product_id", puesta.product_id)
+          .eq("movement_date", fechaFinStr)
+          .eq("from_puesta", true);
+      } else if (newPendingAtPlancha !== Number(planchaExit.cantidad)) {
+        // Quedan unidades pero menos de las originales → actualizar cantidad
+        await supabase
+          .from("salidas_parciales")
+          .update({ cantidad: newPendingAtPlancha })
+          .eq("id", planchaExit.id);
+        await supabase
+          .from("outbound_movements")
+          .update({ quantity: newPendingAtPlancha })
+          .eq("warehouse_id", puesta.warehouse_id)
+          .eq("product_id", puesta.product_id)
+          .eq("movement_date", fechaFinStr)
+          .eq("from_puesta", true);
+      }
+    }
   } else {
     // Outside plancha: the plancha auto-exit already generated an outbound for the
     // full pending quantity. Only create an additional outbound for any excess (rebase).
