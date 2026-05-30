@@ -18,6 +18,7 @@ import {
   Truck,
   Plus,
   Trash2,
+  Pencil,
 } from "lucide-react";
 import {
   format,
@@ -40,12 +41,26 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { MatriculaInput } from "@/components/shared/matricula-input";
+import { getMatriculas, upsertMatricula } from "@/lib/actions/matriculas";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate, formatQuantity } from "@/utils/format";
 import { toast } from "@/hooks/use-toast";
-import { addMonthlyInvoice, updateMonthlyInvoice, deleteMonthlyInvoice } from "./actions";
+import {
+  addMonthlyInvoice,
+  updateMonthlyInvoice,
+  deleteMonthlyInvoice,
+  updateInboundMovement,
+  deleteInboundMovement,
+  updateOutboundMovement,
+  deleteOutboundMovement,
+} from "./actions";
 import { SalidaParcialForm } from "@/modules/puestas/components/salida-parcial-form";
 import { createSalidaParcial, triggerPlanchaAutoExit } from "../../../puestas/actions";
 import type { SalidaParcialFormValues } from "@/validations/salida-parcial.schema";
@@ -83,6 +98,7 @@ interface InboundRow {
   id: string;
   movement_date: string;
   quantity: number;
+  free_days: number;
   comments: string | null;
   supplier: { name: string } | null;
 }
@@ -92,6 +108,8 @@ interface OutboundRow {
   movement_date: string;
   quantity: number;
   comments: string | null;
+  matricula: string | null;
+  from_puesta: boolean;
   customer: { name: string } | null;
 }
 
@@ -316,6 +334,19 @@ export default function WarehouseProductPage() {
   const [isLoadingCalendar, setIsLoadingCalendar] = useState(true);
   const [currentMonthIdx, setCurrentMonthIdx] = useState(0); // 0 = most recent
 
+  // Matrículas para autocompletado
+  const [matriculas, setMatriculas] = useState<string[]>([]);
+
+  // Edit inbound state
+  const [editingInbound, setEditingInbound] = useState<InboundRow | null>(null);
+  const [inboundEditValues, setInboundEditValues] = useState({ movement_date: "", quantity: "", free_days: "0", comments: "" });
+  const [isSavingInbound, setIsSavingInbound] = useState(false);
+
+  // Edit outbound state
+  const [editingOutbound, setEditingOutbound] = useState<OutboundRow | null>(null);
+  const [outboundEditValues, setOutboundEditValues] = useState({ movement_date: "", quantity: "", matricula: "", comments: "" });
+  const [isSavingOutbound, setIsSavingOutbound] = useState(false);
+
   // Grabar salida state
   const [salidaFormOpen, setSalidaFormOpen] = useState(false);
   const [salidaPuestaId, setSalidaPuestaId] = useState<string>("");
@@ -339,18 +370,18 @@ export default function WarehouseProductPage() {
   // ── Load meta + tabs data ─────────────────────────────────────
   const loadMeta = useCallback(async () => {
     setIsLoadingMeta(true);
-    const [warehouseRes, productRes, inboundRes, outboundRes, puestaRes] = await Promise.all([
+    const [warehouseRes, productRes, inboundRes, outboundRes, puestaRes, mats] = await Promise.all([
       supabase.from("warehouses").select("name").eq("id", params.id).single(),
       supabase.from("products").select("name, code, unit").eq("id", params.productId).single(),
       supabase
         .from("inbound_movements")
-        .select("id, movement_date, quantity, comments, supplier:suppliers(name)")
+        .select("id, movement_date, quantity, free_days, comments, supplier:suppliers(name)")
         .eq("warehouse_id", params.id)
         .eq("product_id", params.productId)
         .order("movement_date", { ascending: false }),
       supabase
         .from("outbound_movements")
-        .select("id, movement_date, quantity, comments, customer:customers(name)")
+        .select("id, movement_date, quantity, comments, matricula, from_puesta, customer:customers(name)")
         .eq("warehouse_id", params.id)
         .eq("product_id", params.productId)
         .order("movement_date", { ascending: false }),
@@ -360,9 +391,11 @@ export default function WarehouseProductPage() {
         .eq("warehouse_id", params.id)
         .eq("product_id", params.productId)
         .order("fecha_puesta", { ascending: false }),
+      getMatriculas(),
     ]);
 
     if (warehouseRes.data) setWarehouseName(warehouseRes.data.name);
+    setMatriculas(mats);
     if (productRes.data) {
       setProductName(productRes.data.name);
       setProductCode(productRes.data.code);
@@ -402,7 +435,7 @@ export default function WarehouseProductPage() {
           .order("fecha_puesta", { ascending: false }),
         supabase
           .from("outbound_movements")
-          .select("id, movement_date, quantity, comments, customer:customers(name)")
+          .select("id, movement_date, quantity, comments, matricula, from_puesta, customer:customers(name)")
           .eq("warehouse_id", params.id)
           .eq("product_id", params.productId)
           .order("movement_date", { ascending: false }),
@@ -549,6 +582,119 @@ export default function WarehouseProductPage() {
   useEffect(() => { loadCalendar(); }, [loadCalendar]);
   // Reset to most-recent month whenever calendar data reloads
   useEffect(() => { setCurrentMonthIdx(0); }, [monthGroups]);
+
+  // ── Edit/Delete inbound ───────────────────────────────────────
+  function openEditInbound(row: InboundRow) {
+    setEditingInbound(row);
+    setInboundEditValues({
+      movement_date: row.movement_date,
+      quantity: String(row.quantity),
+      free_days: String(row.free_days ?? 0),
+      comments: row.comments ?? "",
+    });
+  }
+
+  async function handleSaveInbound() {
+    if (!editingInbound) return;
+    setIsSavingInbound(true);
+    const qty = parseFloat(inboundEditValues.quantity);
+    if (isNaN(qty) || qty <= 0) {
+      toast({ variant: "destructive", title: "Cantidad inválida" });
+      setIsSavingInbound(false);
+      return;
+    }
+    const result = await updateInboundMovement(
+      editingInbound.id,
+      {
+        movement_date: inboundEditValues.movement_date,
+        quantity: qty,
+        free_days: parseInt(inboundEditValues.free_days) || 0,
+        comments: inboundEditValues.comments.trim() || null,
+      },
+      params.id,
+      params.productId,
+      editingInbound.movement_date,
+    );
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al actualizar", description: result.error });
+    } else {
+      toast({ title: "Entrada actualizada y costes recalculados" });
+      setEditingInbound(null);
+      await loadMeta();
+      await loadCalendar();
+    }
+    setIsSavingInbound(false);
+  }
+
+  async function handleDeleteInbound(row: InboundRow) {
+    const result = await deleteInboundMovement(row.id, params.id, params.productId, row.movement_date);
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al eliminar", description: result.error });
+    } else {
+      toast({ title: "Entrada eliminada y costes recalculados" });
+      await loadMeta();
+      await loadCalendar();
+    }
+  }
+
+  // ── Edit/Delete outbound ──────────────────────────────────────
+  function openEditOutbound(row: OutboundRow) {
+    setEditingOutbound(row);
+    setOutboundEditValues({
+      movement_date: row.movement_date,
+      quantity: String(row.quantity),
+      matricula: row.matricula ?? "",
+      comments: row.comments ?? "",
+    });
+  }
+
+  async function handleSaveOutbound() {
+    if (!editingOutbound) return;
+    setIsSavingOutbound(true);
+    const qty = parseFloat(outboundEditValues.quantity);
+    if (isNaN(qty) || qty <= 0) {
+      toast({ variant: "destructive", title: "Cantidad inválida" });
+      setIsSavingOutbound(false);
+      return;
+    }
+    const mat = outboundEditValues.matricula.trim().toUpperCase() || null;
+    const result = await updateOutboundMovement(
+      editingOutbound.id,
+      {
+        movement_date: outboundEditValues.movement_date,
+        quantity: qty,
+        matricula: mat,
+        comments: outboundEditValues.comments.trim() || null,
+      },
+      params.id,
+      params.productId,
+      editingOutbound.movement_date,
+    );
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al actualizar", description: result.error });
+    } else {
+      if (mat) {
+        await upsertMatricula(mat);
+        setMatriculas((prev) => prev.includes(mat) ? prev : [...prev, mat].sort());
+      }
+      toast({ title: "Salida actualizada y costes recalculados" });
+      setEditingOutbound(null);
+      await loadMeta();
+      await loadCalendar();
+    }
+    setIsSavingOutbound(false);
+  }
+
+  async function handleDeleteOutbound(row: OutboundRow) {
+    const result = await deleteOutboundMovement(row.id, params.id, params.productId, row.movement_date);
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al eliminar", description: result.error });
+    } else {
+      toast({ title: "Salida eliminada y costes recalculados" });
+      await loadMeta();
+      await loadCalendar();
+    }
+  }
 
   // ── Grabar salida handlers ────────────────────────────────────
   function handleGrabarSalida(row: PuestaRow) {
@@ -917,11 +1063,12 @@ export default function WarehouseProductPage() {
                         <th className="h-10 px-4 text-left font-medium text-muted-foreground">Cantidad</th>
                         <th className="h-10 px-4 text-left font-medium text-muted-foreground">Proveedor</th>
                         <th className="h-10 px-4 text-left font-medium text-muted-foreground">Comentarios</th>
+                        <th className="h-10 px-4" />
                       </tr>
                     </thead>
                     <tbody>
                       {allInbound.map((row) => (
-                        <tr key={row.id} className="border-b hover:bg-muted/50 transition-colors">
+                        <tr key={row.id} className="border-b hover:bg-muted/50 transition-colors group">
                           <td className="p-4 font-mono text-sm">{formatDate(row.movement_date)}</td>
                           <td className="p-4">
                             <Badge className="bg-green-100 text-green-700 border-green-300 dark:bg-green-950/40 dark:text-green-400 tabular-nums font-semibold">
@@ -930,6 +1077,20 @@ export default function WarehouseProductPage() {
                           </td>
                           <td className="p-4 text-sm">{row.supplier?.name ?? <span className="text-muted-foreground">—</span>}</td>
                           <td className="p-4 text-sm text-muted-foreground">{row.comments ?? "—"}</td>
+                          <td className="p-4">
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditInbound(row)}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="sm" variant="ghost"
+                                className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                onClick={() => { if (confirm("¿Eliminar esta entrada? Se recalcularán los costes.")) handleDeleteInbound(row); }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -967,12 +1128,14 @@ export default function WarehouseProductPage() {
                         <th className="h-10 px-4 text-left font-medium text-muted-foreground">Fecha</th>
                         <th className="h-10 px-4 text-left font-medium text-muted-foreground">Cantidad</th>
                         <th className="h-10 px-4 text-left font-medium text-muted-foreground">Cliente</th>
+                        <th className="h-10 px-4 text-left font-medium text-muted-foreground">Matrícula</th>
                         <th className="h-10 px-4 text-left font-medium text-muted-foreground">Comentarios</th>
+                        <th className="h-10 px-4" />
                       </tr>
                     </thead>
                     <tbody>
                       {allOutbound.map((row) => (
-                        <tr key={row.id} className="border-b hover:bg-muted/50 transition-colors">
+                        <tr key={row.id} className="border-b hover:bg-muted/50 transition-colors group">
                           <td className="p-4 font-mono text-sm">{formatDate(row.movement_date)}</td>
                           <td className="p-4">
                             <Badge className="bg-red-100 text-red-700 border-red-300 dark:bg-red-950/40 dark:text-red-400 tabular-nums font-semibold">
@@ -980,7 +1143,26 @@ export default function WarehouseProductPage() {
                             </Badge>
                           </td>
                           <td className="p-4 text-sm">{row.customer?.name ?? <span className="text-muted-foreground">—</span>}</td>
-                          <td className="p-4 text-sm text-muted-foreground">{row.comments ?? "—"}</td>
+                          <td className="p-4 font-mono text-sm">{row.matricula ?? <span className="text-muted-foreground">—</span>}</td>
+                          <td className="p-4 text-sm text-muted-foreground max-w-[200px] truncate">{row.comments ?? "—"}</td>
+                          <td className="p-4">
+                            {!row.from_puesta ? (
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEditOutbound(row)}>
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  size="sm" variant="ghost"
+                                  className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                  onClick={() => { if (confirm("¿Eliminar esta salida? Se recalcularán los costes.")) handleDeleteOutbound(row); }}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground opacity-0 group-hover:opacity-70">desde puesta</span>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1125,6 +1307,90 @@ export default function WarehouseProductPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* ── Dialog: Editar entrada ── */}
+      <Dialog open={!!editingInbound} onOpenChange={(o) => { if (!o) setEditingInbound(null); }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Editar entrada</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="text-sm font-medium">Fecha *</label>
+              <Input type="date" value={inboundEditValues.movement_date}
+                onChange={(e) => setInboundEditValues((v) => ({ ...v, movement_date: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Cantidad *</label>
+              <Input type="number" step="0.001" min="0.001"
+                value={inboundEditValues.quantity}
+                onChange={(e) => setInboundEditValues((v) => ({ ...v, quantity: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Días de plancha</label>
+              <Input type="number" min="0" max="365" step="1"
+                value={inboundEditValues.free_days}
+                onChange={(e) => setInboundEditValues((v) => ({ ...v, free_days: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Comentarios</label>
+              <Input value={inboundEditValues.comments}
+                onChange={(e) => setInboundEditValues((v) => ({ ...v, comments: e.target.value }))} />
+            </div>
+            <p className="text-xs text-muted-foreground">Los costes de almacenaje se recalcularán automáticamente.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingInbound(null)} disabled={isSavingInbound}>Cancelar</Button>
+            <Button onClick={handleSaveInbound} disabled={isSavingInbound}>
+              {isSavingInbound && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Guardar cambios
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Editar salida manual ── */}
+      <Dialog open={!!editingOutbound} onOpenChange={(o) => { if (!o) setEditingOutbound(null); }}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Editar salida</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="text-sm font-medium">Fecha *</label>
+              <Input type="date" value={outboundEditValues.movement_date}
+                onChange={(e) => setOutboundEditValues((v) => ({ ...v, movement_date: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Cantidad *</label>
+              <Input type="number" step="0.001" min="0.001"
+                value={outboundEditValues.quantity}
+                onChange={(e) => setOutboundEditValues((v) => ({ ...v, quantity: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Matrícula</label>
+              <MatriculaInput
+                value={outboundEditValues.matricula}
+                onChange={(val) => setOutboundEditValues((v) => ({ ...v, matricula: val }))}
+                matriculas={matriculas}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Comentarios</label>
+              <Input value={outboundEditValues.comments}
+                onChange={(e) => setOutboundEditValues((v) => ({ ...v, comments: e.target.value }))} />
+            </div>
+            <p className="text-xs text-muted-foreground">Los costes de almacenaje se recalcularán automáticamente.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingOutbound(null)} disabled={isSavingOutbound}>Cancelar</Button>
+            <Button onClick={handleSaveOutbound} disabled={isSavingOutbound}>
+              {isSavingOutbound && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Guardar cambios
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Salida parcial dialog */}
       <SalidaParcialForm
