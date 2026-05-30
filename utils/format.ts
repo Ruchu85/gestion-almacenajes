@@ -66,21 +66,35 @@ export function formatCurrencyLong(value: number | null | undefined): string {
 // FORMATEADORES DE NÚMEROS
 // ============================================================
 
-const numberFormatter = new Intl.NumberFormat("es-ES", {
+// Para contadores enteros (nº almacenes, nº productos…)
+const intFormatter = new Intl.NumberFormat("es-ES", {
   minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+  useGrouping: true,
+});
+
+// Para cantidades decimales (stock, toneladas, kg…)
+// Siempre muestra separador de miles y al menos 2 decimales
+const quantityFormatter = new Intl.NumberFormat("es-ES", {
+  minimumFractionDigits: 2,
   maximumFractionDigits: 3,
+  useGrouping: true,
 });
 
 export function formatNumber(value: number | null | undefined): string {
   if (value == null || isNaN(value)) return "0";
-  return numberFormatter.format(value);
+  // Si es entero puro lo mostramos sin decimales; si tiene decimales, con formato cantidad
+  return Number.isInteger(value)
+    ? intFormatter.format(value)
+    : quantityFormatter.format(value);
 }
 
 export function formatQuantity(
   value: number | null | undefined,
   unit?: string
 ): string {
-  const formatted = formatNumber(value);
+  if (value == null || isNaN(value)) return unit ? `0,00 ${unit}` : "0,00";
+  const formatted = quantityFormatter.format(value);
   return unit ? `${formatted} ${unit}` : formatted;
 }
 

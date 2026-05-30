@@ -607,7 +607,7 @@ export default function DashboardPage() {
                       <div className="flex items-center gap-4 shrink-0">
                         <div className="text-right hidden sm:block">
                           <p className="text-xs text-muted-foreground">Stock total</p>
-                          <p className="font-semibold tabular-nums">{formatNumber(pg.totalPendingStock)} uds</p>
+                          <p className="font-semibold tabular-nums">{formatQuantity(pg.totalPendingStock, "uds")}</p>
                         </div>
                         <div className="h-8 w-px bg-border hidden md:block" />
                         <div className="text-right hidden md:block">
@@ -669,7 +669,7 @@ export default function DashboardPage() {
                                     <div className="flex items-center gap-3 shrink-0">
                                       <div className="text-right hidden sm:block">
                                         <p className="text-xs text-muted-foreground">Stock</p>
-                                        <p className="font-semibold tabular-nums text-sm">{formatNumber(group.totalPendingStock)} uds</p>
+                                        <p className="font-semibold tabular-nums text-sm">{formatQuantity(group.totalPendingStock, "uds")}</p>
                                       </div>
                                       <div className="h-6 w-px bg-border hidden md:block" />
                                       <div className="text-right hidden md:block">
