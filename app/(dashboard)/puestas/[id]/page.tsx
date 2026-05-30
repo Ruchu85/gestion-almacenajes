@@ -31,6 +31,7 @@ import {
   updateSalidaParcial,
   deleteSalidaParcial,
   triggerPlanchaAutoExit,
+  recalcularPlanchaAutoExit,
   changePuestaEstado,
   updatePuestaComentarios,
   createDesaplicacion,
@@ -87,8 +88,9 @@ export default function PuestaDetailPage() {
   const [editingSalida, setEditingSalida]   = useState<SalidaParcial | null>(null);
   const [matriculas, setMatriculas]         = useState<string[]>([]);
 
-  const [desaplicarOpen, setDesaplicarOpen]         = useState(false);
-  const [isSavingDesaplicar, setIsSavingDesaplicar] = useState(false);
+  const [desaplicarOpen, setDesaplicarOpen]           = useState(false);
+  const [isSavingDesaplicar, setIsSavingDesaplicar]   = useState(false);
+  const [isRecalcPlancha, setIsRecalcPlancha]         = useState(false);
 
   const [comentariosDialogOpen, setComentariosDialogOpen] = useState(false);
   const [comentariosText, setComentariosText] = useState("");
@@ -219,6 +221,23 @@ export default function PuestaDetailPage() {
       toast({ title: "Salida eliminada" });
       await loadData();
     }
+  }
+
+  async function handleRecalcularPlancha() {
+    setIsRecalcPlancha(true);
+    const result = await recalcularPlanchaAutoExit(id);
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al recalcular", description: result.error });
+    } else if (result.action === "deleted") {
+      toast({ title: "Auto-salida de plancha eliminada", description: "La cantidad pendiente en fecha de fin de plancha era 0." });
+      await loadData();
+    } else if (result.action === "updated") {
+      toast({ title: "Auto-salida de plancha recalculada correctamente" });
+      await loadData();
+    } else {
+      toast({ title: "Sin cambios", description: "La auto-salida de plancha ya era correcta." });
+    }
+    setIsRecalcPlancha(false);
   }
 
   async function handleReactivar() {
@@ -629,11 +648,28 @@ export default function PuestaDetailPage() {
               )}
             </CardDescription>
           </div>
-          {summary.estado === "abierta" && realPending > 0 && (
-            <Button size="sm" onClick={() => { setEditingSalida(null); setSalidaFormOpen(true); }}>
-              <Truck className="mr-2 h-4 w-4" />Registrar retirada
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {salidaPlancha && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/30"
+                onClick={handleRecalcularPlancha}
+                disabled={isRecalcPlancha}
+              >
+                {isRecalcPlancha
+                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  : <RotateCcw className="mr-2 h-4 w-4" />
+                }
+                Recalcular auto-salida plancha
+              </Button>
+            )}
+            {summary.estado === "abierta" && realPending > 0 && (
+              <Button size="sm" onClick={() => { setEditingSalida(null); setSalidaFormOpen(true); }}>
+                <Truck className="mr-2 h-4 w-4" />Registrar retirada
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {salidas.length === 0 ? (

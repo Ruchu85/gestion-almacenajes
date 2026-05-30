@@ -320,6 +320,69 @@ export async function triggerPlanchaAutoExit(puestaId: string): Promise<{ error?
   return {};
 }
 
+export async function recalcularPlanchaAutoExit(
+  puestaId: string
+): Promise<{ action?: "deleted" | "updated" | "unchanged"; error?: string }> {
+  await requireAuth();
+  const supabase = await createServiceClient();
+
+  const { data: puesta, error: puestaErr } = await supabase
+    .from("puestas_a_disposicion")
+    .select("fecha_puesta, dias_plancha, warehouse_id, product_id, cantidad_inicial")
+    .eq("id", puestaId)
+    .single();
+
+  if (puestaErr || !puesta) return { error: "No se pudo cargar la puesta" };
+
+  const fechaFinPlancha = new Date(puesta.fecha_puesta + "T00:00:00");
+  fechaFinPlancha.setDate(fechaFinPlancha.getDate() + Number(puesta.dias_plancha ?? 0));
+  const fechaFinStr = fechaFinPlancha.toISOString().split("T")[0];
+
+  const { data: planchaExit } = await supabase
+    .from("salidas_parciales")
+    .select("id, cantidad")
+    .eq("puesta_id", puestaId)
+    .eq("tipo", "plancha")
+    .maybeSingle();
+
+  if (!planchaExit) return { action: "unchanged" };
+
+  const { data: realSalidas } = await supabase
+    .from("salidas_parciales")
+    .select("cantidad")
+    .eq("puesta_id", puestaId)
+    .eq("tipo", "real")
+    .lte("fecha_salida", fechaFinStr);
+
+  const totalReal = (realSalidas ?? []).reduce((sum, s) => sum + Number(s.cantidad), 0);
+  const newPending = Math.max(0, Number(puesta.cantidad_inicial) - totalReal);
+
+  if (newPending <= 0) {
+    await supabase.from("salidas_parciales").delete().eq("id", planchaExit.id);
+    await supabase
+      .from("outbound_movements")
+      .delete()
+      .eq("warehouse_id", puesta.warehouse_id)
+      .eq("product_id", puesta.product_id)
+      .eq("movement_date", fechaFinStr)
+      .eq("from_puesta", true);
+    return { action: "deleted" };
+  }
+
+  if (newPending === Number(planchaExit.cantidad)) return { action: "unchanged" };
+
+  await supabase.from("salidas_parciales").update({ cantidad: newPending }).eq("id", planchaExit.id);
+  await supabase
+    .from("outbound_movements")
+    .update({ quantity: newPending })
+    .eq("warehouse_id", puesta.warehouse_id)
+    .eq("product_id", puesta.product_id)
+    .eq("movement_date", fechaFinStr)
+    .eq("from_puesta", true);
+
+  return { action: "updated" };
+}
+
 export async function updateSalidaParcial(
   id: string,
   values: SalidaParcialFormValues
