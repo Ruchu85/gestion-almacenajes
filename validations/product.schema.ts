@@ -10,13 +10,7 @@ export const productSchema = z.object({
     .string()
     .min(1, "El nombre es obligatorio")
     .max(200, "Máximo 200 caracteres"),
-  storage_daily_price: z
-    .number({
-      required_error: "El precio diario es obligatorio",
-      invalid_type_error: "Debe ser un número válido",
-    })
-    .min(0, "El precio no puede ser negativo")
-    .max(99999.9999, "Precio demasiado alto"),
+  storage_daily_price: z.number().min(0).max(99999.9999).default(0).optional(),
   unit: z
     .string()
     .min(1, "La unidad es obligatoria")

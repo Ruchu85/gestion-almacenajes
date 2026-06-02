@@ -46,7 +46,7 @@ export function ProductForm({
 
   const form = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
-    defaultValues: { code: "", name: "", storage_daily_price: 0, unit: "ud", active: true },
+    defaultValues: { code: "", name: "", unit: "ud", active: true },
   });
 
   useEffect(() => {
@@ -55,12 +55,11 @@ export function ProductForm({
         form.reset({
           code: defaultValues.code,
           name: defaultValues.name,
-          storage_daily_price: Number(defaultValues.storage_daily_price),
           unit: defaultValues.unit,
           active: defaultValues.active,
         });
       } else {
-        form.reset({ code: "", name: "", storage_daily_price: 0, unit: "ud", active: true });
+        form.reset({ code: "", name: "", unit: "ud", active: true });
       }
     }
   }, [open, defaultValues, form]);
@@ -120,30 +119,6 @@ export function ProductForm({
                   <FormControl>
                     <Input placeholder="Palés de madera" {...field} />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="storage_daily_price"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Precio de almacenaje diario (€) *</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.0001"
-                      min="0"
-                      placeholder="0.5000"
-                      {...field}
-                      onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    Coste por unidad almacenada al día
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}

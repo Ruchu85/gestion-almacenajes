@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { Plus, Warehouse } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { WarehousesService } from "@/services/warehouses.service";
-import type { Warehouse as WarehouseType } from "@/types";
+import type { Warehouse as WarehouseType, WarehousePriceHistory } from "@/types";
 import type { WarehouseFormValues } from "@/validations/warehouse.schema";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
@@ -18,6 +18,8 @@ import {
   updateWarehouse,
   deleteWarehouse,
   toggleWarehouseActive,
+  getWarehousePriceHistory,
+  addWarehousePriceEntry,
 } from "./actions";
 
 export default function WarehousesPage() {
@@ -26,6 +28,8 @@ export default function WarehousesPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState<WarehouseType | null>(null);
+  const [priceHistory, setPriceHistory] = useState<WarehousePriceHistory[]>([]);
+  const [isPriceHistoryLoading, setIsPriceHistoryLoading] = useState(false);
 
   const service = useMemo(() => new WarehousesService(createClient()), []);
 
@@ -92,13 +96,41 @@ export default function WarehousesPage() {
     }
   }
 
-  function handleEdit(warehouse: WarehouseType) {
+  async function handleEdit(warehouse: WarehouseType) {
     setEditingWarehouse(warehouse);
+    setPriceHistory([]);
     setFormOpen(true);
+    // Cargar historial de precios en paralelo
+    setIsPriceHistoryLoading(true);
+    const result = await getWarehousePriceHistory(warehouse.id);
+    setPriceHistory(result.data ?? []);
+    setIsPriceHistoryLoading(false);
+  }
+
+  async function handlePriceChange(price: number, effectiveFrom: string) {
+    if (!editingWarehouse) return;
+    const result = await addWarehousePriceEntry(editingWarehouse.id, price, effectiveFrom);
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al cambiar precio", description: result.error });
+      return;
+    }
+    if (result.recalculated) {
+      toast({ title: "Precio actualizado y costes recalculados", description: `Los costes desde ${effectiveFrom} hasta hoy han sido recalculados con la nueva tarifa.` });
+    } else {
+      toast({ title: "Precio programado correctamente", description: `Se aplicará a partir del ${effectiveFrom}.` });
+    }
+    // Refrescar historial y lista de almacenes
+    const histResult = await getWarehousePriceHistory(editingWarehouse.id);
+    setPriceHistory(histResult.data ?? []);
+    // Actualizar el warehouse editando con el precio más reciente
+    const updated = (await service.getById(editingWarehouse.id)).data;
+    if (updated) setEditingWarehouse(updated);
+    await loadWarehouses();
   }
 
   function handleOpenCreate() {
     setEditingWarehouse(null);
+    setPriceHistory([]);
     setFormOpen(true);
   }
 
@@ -138,11 +170,17 @@ export default function WarehousesPage() {
         open={formOpen}
         onOpenChange={(open) => {
           setFormOpen(open);
-          if (!open) setEditingWarehouse(null);
+          if (!open) {
+            setEditingWarehouse(null);
+            setPriceHistory([]);
+          }
         }}
         onSubmit={editingWarehouse ? handleUpdate : handleCreate}
         isLoading={isSaving}
         defaultValues={editingWarehouse ?? undefined}
+        priceHistory={priceHistory}
+        isPriceHistoryLoading={isPriceHistoryLoading}
+        onPriceChange={handlePriceChange}
       />
     </>
   );

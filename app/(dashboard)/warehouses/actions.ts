@@ -3,7 +3,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { createClient } from "@/lib/supabase/server";
 import { warehouseSchema, type WarehouseFormValues } from "@/validations/warehouse.schema";
-import type { Warehouse } from "@/types";
+import type { Warehouse, WarehousePriceHistory } from "@/types";
 import { redirect } from "next/navigation";
 
 async function requireAuth() {
@@ -32,10 +32,12 @@ export async function updateWarehouse(id: string, values: WarehouseFormValues): 
   const parsed = warehouseSchema.safeParse(values);
   if (!parsed.success) return { error: parsed.error.errors[0].message };
 
+  // Excluir storage_daily_price del update normal: se gestiona solo a través del historial de precios
+  const { storage_daily_price: _price, ...updateData } = parsed.data;
   const supabase = await createServiceClient();
   const { data, error } = await supabase
     .from("warehouses")
-    .update(parsed.data)
+    .update(updateData)
     .eq("id", id)
     .select()
     .single();
@@ -80,6 +82,64 @@ export async function deleteWarehouse(id: string): Promise<{ error?: string }> {
   // ── 5. Eliminar el almacén ────────────────────────────────────────────────
   const { error } = await supabase.from("warehouses").delete().eq("id", id);
   if (error) return { error: error.message };
+  return {};
+}
+
+// ── Historial de precios ──────────────────────────────────────────────────────
+
+export async function getWarehousePriceHistory(
+  warehouseId: string,
+): Promise<{ data?: WarehousePriceHistory[]; error?: string }> {
+  await requireAuth();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("warehouse_price_history")
+    .select("*")
+    .eq("warehouse_id", warehouseId)
+    .order("effective_from", { ascending: false });
+  if (error) return { error: error.message };
+  return { data: data as WarehousePriceHistory[] };
+}
+
+export async function addWarehousePriceEntry(
+  warehouseId: string,
+  price: number,
+  effectiveFrom: string, // YYYY-MM-DD
+): Promise<{ error?: string; recalculated?: boolean }> {
+  await requireAuth();
+  const supabase = await createServiceClient();
+
+  // 1. Insertar en el historial
+  const { error: histErr } = await supabase
+    .from("warehouse_price_history")
+    .insert({ warehouse_id: warehouseId, price, effective_from: effectiveFrom });
+  if (histErr) return { error: histErr.message };
+
+  // 2. Actualizar warehouses.storage_daily_price con el precio más reciente
+  const { data: latest } = await supabase
+    .from("warehouse_price_history")
+    .select("price")
+    .eq("warehouse_id", warehouseId)
+    .order("effective_from", { ascending: false })
+    .limit(1)
+    .single();
+  if (latest) {
+    await supabase
+      .from("warehouses")
+      .update({ storage_daily_price: latest.price })
+      .eq("id", warehouseId);
+  }
+
+  // 3. Recalcular costes si la fecha es pasada o presente
+  const today = new Date().toISOString().split("T")[0];
+  if (effectiveFrom <= today) {
+    await supabase.rpc("recalculate_storage_costs", {
+      p_start_date: effectiveFrom,
+      p_end_date: today,
+    });
+    return { recalculated: true };
+  }
+
   return {};
 }
 

@@ -562,6 +562,38 @@ export interface Database {
           }
         ];
       };
+      warehouse_price_history: {
+        Row: {
+          id: string;
+          warehouse_id: string;
+          price: number;
+          effective_from: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          warehouse_id: string;
+          price: number;
+          effective_from: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          warehouse_id?: string;
+          price?: number;
+          effective_from?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "warehouse_price_history_warehouse_id_fkey";
+            columns: ["warehouse_id"];
+            isOneToOne: false;
+            referencedRelation: "warehouses";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       storage_costs: {
         Row: {
           id: string;

@@ -14,7 +14,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { formatCurrencyLong } from "@/utils/format";
 
 function ProductActions({
   product,
@@ -93,15 +92,6 @@ export function getProductColumns(
       header: "Unidad",
       cell: ({ row }) => (
         <span className="text-muted-foreground text-sm">{row.getValue("unit")}</span>
-      ),
-    },
-    {
-      accessorKey: "storage_daily_price",
-      header: "Precio/día",
-      cell: ({ row }) => (
-        <span className="font-medium tabular-nums">
-          {formatCurrencyLong(row.getValue("storage_daily_price"))}
-        </span>
       ),
     },
     {
