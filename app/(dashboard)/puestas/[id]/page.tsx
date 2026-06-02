@@ -554,14 +554,14 @@ export default function PuestaDetailPage() {
           <CardContent>
             <p className={cn(
               "text-2xl font-bold tabular-nums",
-              realPending < 0
+              realPending < -0.001
                 ? "text-red-600 dark:text-red-400"
                 : "text-amber-600 dark:text-amber-400"
             )}>
-              {formatNumber(realPending)}
+              {formatNumber(Math.max(0, realPending))}
             </p>
             <p className="text-xs text-muted-foreground">
-              {realPending < 0 ? `${summary.unit} en exceso` : `${summary.unit} pendiente`}
+              {realPending < -0.001 ? `${summary.unit} en exceso` : `${summary.unit} pendiente`}
             </p>
           </CardContent>
         </Card>

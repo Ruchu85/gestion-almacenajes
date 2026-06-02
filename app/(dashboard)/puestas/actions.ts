@@ -465,7 +465,7 @@ export async function createDesaplicacion(
     fecha_salida: today,
     cantidad,
     tipo: "desaplicacion",
-    comentarios: `Desaplicación de ${cantidad} unidades`,
+    comentarios: `Desaplicación de ${Number(cantidad).toFixed(2)} unidades`,
     created_by: user.id,
   });
   if (salidaError) return { error: salidaError.message };
@@ -547,7 +547,7 @@ export async function traspasarPuesta(
     fecha_salida: today,
     cantidad: cantidadPendiente,
     tipo: "desaplicacion",
-    comentarios: `Traspaso a almacén ${destName} — ${cantidadPendiente} uds`,
+    comentarios: `Traspaso a almacén ${destName} — ${cantidadPendiente.toFixed(2)} uds`,
     created_by: user.id,
   });
   if (salidaError) return { error: salidaError.message };
@@ -569,7 +569,7 @@ export async function traspasarPuesta(
 
   // 6. Marcar puesta original como 'traspasada' + añadir comentario
   const prevComentarios = (puesta.comentarios ?? "").trim();
-  const traspasoLine = `[${today}] Traspasada a "${destName}": ${cantidadPendiente} uds`;
+  const traspasoLine = `[${today}] Traspasada a "${destName}": ${cantidadPendiente.toFixed(2)} uds`;
   const newComentarios = prevComentarios ? `${prevComentarios}\n${traspasoLine}` : traspasoLine;
 
   const { error: updateError } = await supabase
