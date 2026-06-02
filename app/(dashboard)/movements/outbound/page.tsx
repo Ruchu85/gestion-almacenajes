@@ -125,7 +125,8 @@ export default function OutboundMovementsPage() {
           m.product.name.toLowerCase().includes(q) ||
           m.product.code.toLowerCase().includes(q) ||
           (m.customer?.name ?? "").toLowerCase().includes(q) ||
-          (m.comments ?? "").toLowerCase().includes(q)
+          (m.comments ?? "").toLowerCase().includes(q) ||
+          (m.matricula ?? "").toLowerCase().includes(q)
       );
     }
     if (filterWarehouse !== "all") data = data.filter((m) => m.warehouse_id === filterWarehouse);

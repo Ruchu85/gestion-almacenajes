@@ -297,8 +297,12 @@ export default function DashboardPage() {
 
       if (item.pending_stock <= 0) continue;
 
-      // Asignar puestas al producto
-      item.puestas = puestasMap.get(key) ?? [];
+      // Asignar puestas al producto ordenadas por cliente y fecha
+      item.puestas = (puestasMap.get(key) ?? []).sort((a, b) => {
+        const cmp = (a.customer_name ?? "").localeCompare(b.customer_name ?? "", "es");
+        if (cmp !== 0) return cmp;
+        return a.fecha_puesta.localeCompare(b.fecha_puesta);
+      });
 
       if (!warehouseMap.has(item.warehouse_id)) {
         warehouseMap.set(item.warehouse_id, {

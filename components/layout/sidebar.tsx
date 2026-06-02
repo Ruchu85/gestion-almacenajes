@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -102,6 +103,14 @@ const navItems: NavItem[] = [
     color: "text-orange-500",
     activeBg: "bg-gradient-to-r from-orange-500/15 to-orange-500/5 border-l-2 border-orange-500",
     hoverBg: "hover:bg-orange-500/8 hover:text-orange-600 dark:hover:text-orange-400",
+  },
+  {
+    title: "Buscador",
+    href: "/buscador",
+    icon: Search,
+    color: "text-purple-500",
+    activeBg: "bg-gradient-to-r from-purple-500/15 to-purple-500/5 border-l-2 border-purple-500",
+    hoverBg: "hover:bg-purple-500/8 hover:text-purple-600 dark:hover:text-purple-400",
   },
 ];
 
