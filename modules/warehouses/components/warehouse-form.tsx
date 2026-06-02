@@ -197,7 +197,7 @@ export function WarehouseForm({
                         <SelectItem value="__none__">
                           <span className="text-muted-foreground">— Sin asignar —</span>
                         </SelectItem>
-                        {PROVINCIAS_ESPANA.map((p) => (
+                        {[...PROVINCIAS_ESPANA].sort((a, b) => a.localeCompare(b, "es")).map((p) => (
                           <SelectItem key={p} value={p}>{p}</SelectItem>
                         ))}
                       </SelectContent>
