@@ -19,8 +19,6 @@ import {
   X,
   Truck,
   PackageMinus,
-  LayoutDashboard,
-  EyeOff,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { StorageCostsService } from "@/services/storage-costs.service";
@@ -469,24 +467,39 @@ export default function DashboardPage() {
       <PageHeader
         title="Dashboard"
         description="Resumen general de almacenajes y costes"
+        actions={
+          <button
+            role="switch"
+            aria-checked={showKpis}
+            onClick={() => {
+              const next = !showKpis;
+              setShowKpis(next);
+              sessionStorage.setItem("db-show-kpis", String(next));
+            }}
+            className="flex items-center gap-2 cursor-pointer group"
+          >
+            <span className={cn(
+              "text-xs font-medium transition-colors",
+              showKpis ? "text-foreground" : "text-muted-foreground"
+            )}>
+              KPIs
+            </span>
+            <span className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200",
+              showKpis
+                ? "bg-violet-600 dark:bg-violet-500"
+                : "bg-muted group-hover:bg-muted-foreground/30"
+            )}>
+              <span className={cn(
+                "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform duration-200",
+                showKpis ? "translate-x-5" : "translate-x-0"
+              )} />
+            </span>
+          </button>
+        }
       />
 
-      {/* KPIs — cabecera con toggle */}
-      <div className="flex items-center justify-between -mb-1">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Indicadores</span>
-        <button
-          onClick={() => {
-            const next = !showKpis;
-            setShowKpis(next);
-            sessionStorage.setItem("db-show-kpis", String(next));
-          }}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted"
-        >
-          {showKpis ? <EyeOff className="h-3.5 w-3.5" /> : <LayoutDashboard className="h-3.5 w-3.5" />}
-          {showKpis ? "Ocultar KPIs" : "Mostrar KPIs"}
-        </button>
-      </div>
-
+      {/* KPIs */}
       {showKpis && <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
 
         {/* Coste hoy */}
