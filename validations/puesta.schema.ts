@@ -23,7 +23,7 @@ export const puestaSchema = z.object({
     .min(0, "Mínimo 0 días")
     .max(365, "Máximo 365 días"),
   estado: z
-    .enum(["abierta", "finalizada", "cerrada_manual"])
+    .enum(["abierta", "finalizada", "cerrada_manual", "traspasada"])
     .default("abierta"),
   comentarios: z.string().max(2000, "Máximo 2000 caracteres").optional().nullable(),
 });

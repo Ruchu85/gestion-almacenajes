@@ -46,7 +46,7 @@ export function DesaplicarDialog({
     e.preventDefault();
     if (!isValid) return;
     await onSubmit(cantidadNum);
-    setCantidad("");
+    setCantidad(null);
   }
 
   return (

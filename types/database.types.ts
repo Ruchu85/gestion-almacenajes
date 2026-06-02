@@ -384,7 +384,7 @@ export interface Database {
           fecha_puesta: string;
           dias_plancha: number;
           fecha_fin_plancha: string;
-          estado: "abierta" | "finalizada" | "cerrada_manual";
+          estado: "abierta" | "finalizada" | "cerrada_manual" | "traspasada";
           comentarios: string | null;
           created_by: string | null;
           created_at: string;
@@ -399,7 +399,7 @@ export interface Database {
           cantidad_inicial: number;
           fecha_puesta: string;
           dias_plancha?: number;
-          estado?: "abierta" | "finalizada" | "cerrada_manual";
+          estado?: "abierta" | "finalizada" | "cerrada_manual" | "traspasada";
           comentarios?: string | null;
           created_by?: string | null;
           created_at?: string;
@@ -414,7 +414,7 @@ export interface Database {
           cantidad_inicial?: number;
           fecha_puesta?: string;
           dias_plancha?: number;
-          estado?: "abierta" | "finalizada" | "cerrada_manual";
+          estado?: "abierta" | "finalizada" | "cerrada_manual" | "traspasada";
           comentarios?: string | null;
           created_by?: string | null;
           created_at?: string;
