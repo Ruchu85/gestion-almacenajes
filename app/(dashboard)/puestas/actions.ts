@@ -552,20 +552,20 @@ export async function traspasarPuesta(
   });
   if (salidaError) return { error: salidaError.message };
 
-  // 5. Generar entrada de stock en almacén ORIGEN para incrementar cant_invendida.
-  //    A diferencia de Desaplicar (que solo lo hace si ha pasado la plancha),
-  //    el traspaso siempre libera la mercancía de la puesta al stock del almacén origen.
-  const { error: inboundOrigenError } = await supabase.from("inbound_movements").insert({
-    warehouse_id: puesta.warehouse_id,
-    product_id: puesta.product_id,
-    quantity: cantidadPendiente,
-    movement_date: today,
-    free_days: 1,
-    supplier_id: null,
-    comments: `Traspaso a ${destName} — pta. ${puestaRef}`,
-    created_by: user.id,
-  });
-  if (inboundOrigenError) return { error: inboundOrigenError.message };
+  // 5. Si ya ha pasado el período de plancha, generar entrada de stock (igual que Desaplicar)
+  if (today > puesta.fecha_fin_plancha) {
+    const { error: inboundError } = await supabase.from("inbound_movements").insert({
+      warehouse_id: puesta.warehouse_id,
+      product_id: puesta.product_id,
+      quantity: cantidadPendiente,
+      movement_date: today,
+      free_days: 1,
+      supplier_id: null,
+      comments: `Traspaso a ${destName} — pta. ${puestaRef}`,
+      created_by: user.id,
+    });
+    if (inboundError) return { error: inboundError.message };
+  }
 
   // 6. Marcar puesta original como 'traspasada' + añadir comentario
   const prevComentarios = (puesta.comentarios ?? "").trim();
@@ -574,7 +574,7 @@ export async function traspasarPuesta(
 
   const { error: updateError } = await supabase
     .from("puestas_a_disposicion")
-    .update({ estado: "traspasada", comentarios: newComentarios })
+    .update({ estado: "traspasada", comentarios: newComentarios, cant_traspasada: cantidadPendiente })
     .eq("id", puestaId);
   if (updateError) return { error: updateError.message };
 

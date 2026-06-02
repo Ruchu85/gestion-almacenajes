@@ -381,6 +381,7 @@ export interface Database {
           product_id: string;
           warehouse_id: string;
           cantidad_inicial: number;
+          cant_traspasada: number;
           fecha_puesta: string;
           dias_plancha: number;
           fecha_fin_plancha: string;
@@ -397,6 +398,7 @@ export interface Database {
           product_id: string;
           warehouse_id: string;
           cantidad_inicial: number;
+          cant_traspasada?: number;
           fecha_puesta: string;
           dias_plancha?: number;
           estado?: "abierta" | "finalizada" | "cerrada_manual" | "traspasada";
@@ -412,6 +414,7 @@ export interface Database {
           product_id?: string;
           warehouse_id?: string;
           cantidad_inicial?: number;
+          cant_traspasada?: number;
           fecha_puesta?: string;
           dias_plancha?: number;
           estado?: "abierta" | "finalizada" | "cerrada_manual" | "traspasada";

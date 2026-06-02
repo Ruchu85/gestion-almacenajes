@@ -167,7 +167,7 @@ export default function DashboardPage() {
       // Todas las puestas (cualquier estado) para calcular Cant. Invendida
       supabase
         .from("puestas_a_disposicion")
-        .select("warehouse_id, product_id, cantidad_inicial"),
+        .select("warehouse_id, product_id, cantidad_inicial, cant_traspasada"),
     ]);
 
     if (inboundRes.error) {
@@ -220,9 +220,11 @@ export default function DashboardPage() {
 
     // Mapa de cantidad inicial total de puestas (todos los estados) para Cant. Invendida
     const allPuestaQtyByKey = new Map<string, number>();
+    const allTraspasadaByKey = new Map<string, number>();
     for (const p of allPuestasRes.data ?? []) {
       const key = `${p.warehouse_id}||${p.product_id}`;
       allPuestaQtyByKey.set(key, (allPuestaQtyByKey.get(key) ?? 0) + Number(p.cantidad_inicial));
+      allTraspasadaByKey.set(key, (allTraspasadaByKey.get(key) ?? 0) + Number(p.cant_traspasada ?? 0));
     }
 
     // Construir mapa de puestas activas por key (warehouse_id||product_id)
@@ -290,10 +292,11 @@ export default function DashboardPage() {
       item.pending_stock = Math.max(movementPending, puestaPending);
       item.daily_cost = item.pending_stock * item.daily_price;
 
-      // Cant. Invendida = Total Entradas - Total cant. inicial puestas (todos estados) - Salidas manuales
+      // Cant. Invendida = Total Entradas - Total cant. inicial puestas (todos estados) - Salidas manuales + Cant. Traspasada
       const totalPuestaQty   = allPuestaQtyByKey.get(key) ?? 0;
       const totalManualOut   = manualOutboundByKey.get(key) ?? 0;
-      item.cant_invendida = item.total_inbound - totalPuestaQty - totalManualOut;
+      const totalTraspasada  = allTraspasadaByKey.get(key) ?? 0;
+      item.cant_invendida = item.total_inbound - totalPuestaQty - totalManualOut + totalTraspasada;
 
       if (item.pending_stock <= 0) continue;
 
