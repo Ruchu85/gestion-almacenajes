@@ -177,8 +177,19 @@ function InvoiceLineItem({
       <div className="relative">
         <Euro className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
         <input
-          type="number" step="0.01" min="0" placeholder="0,00"
+          type="text" inputMode="decimal" placeholder="0,00"
           value={amount}
+          onKeyDown={(e) => {
+            if (e.key === "." || e.key === "Decimal") {
+              e.preventDefault();
+              if (amount.includes(",")) return;
+              const el = e.currentTarget;
+              const s = el.selectionStart ?? amount.length;
+              const en = el.selectionEnd ?? amount.length;
+              const next = amount.slice(0, s) + "," + amount.slice(en);
+              setAmount(next); schedule(next, ref);
+            }
+          }}
           onChange={(e) => { setAmount(e.target.value); schedule(e.target.value, ref); }}
           onBlur={() => { if (timerRef.current) clearTimeout(timerRef.current); save(amount, ref); }}
           className="pl-8 pr-3 py-1.5 text-sm border rounded-md w-32 tabular-nums bg-background focus:outline-none focus:ring-2 focus:ring-ring"
@@ -1322,8 +1333,19 @@ export default function WarehouseProductPage() {
             </div>
             <div>
               <label className="text-sm font-medium">Cantidad *</label>
-              <Input type="number" step="0.001" min="0.001"
+              <Input type="text" inputMode="decimal"
                 value={inboundEditValues.quantity}
+                onKeyDown={(e) => {
+                  if (e.key === "." || e.key === "Decimal") {
+                    e.preventDefault();
+                    const cur = inboundEditValues.quantity;
+                    if (cur.includes(",")) return;
+                    const el = e.currentTarget;
+                    const s = el.selectionStart ?? cur.length;
+                    const en = el.selectionEnd ?? cur.length;
+                    setInboundEditValues((v) => ({ ...v, quantity: cur.slice(0, s) + "," + cur.slice(en) }));
+                  }
+                }}
                 onChange={(e) => setInboundEditValues((v) => ({ ...v, quantity: e.target.value }))} />
             </div>
             <div>
@@ -1363,8 +1385,19 @@ export default function WarehouseProductPage() {
             </div>
             <div>
               <label className="text-sm font-medium">Cantidad *</label>
-              <Input type="number" step="0.001" min="0.001"
+              <Input type="text" inputMode="decimal"
                 value={outboundEditValues.quantity}
+                onKeyDown={(e) => {
+                  if (e.key === "." || e.key === "Decimal") {
+                    e.preventDefault();
+                    const cur = outboundEditValues.quantity;
+                    if (cur.includes(",")) return;
+                    const el = e.currentTarget;
+                    const s = el.selectionStart ?? cur.length;
+                    const en = el.selectionEnd ?? cur.length;
+                    setOutboundEditValues((v) => ({ ...v, quantity: cur.slice(0, s) + "," + cur.slice(en) }));
+                  }
+                }}
                 onChange={(e) => setOutboundEditValues((v) => ({ ...v, quantity: e.target.value }))} />
             </div>
             <div>

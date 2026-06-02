@@ -8,6 +8,7 @@ import { puestaSchema, type PuestaFormValues } from "@/validations/puesta.schema
 import type { PuestaADisposicion, Warehouse, Product, Customer } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Form, FormControl, FormDescription, FormField,
@@ -340,14 +341,13 @@ export function PuestaForm({
                   <FormItem>
                     <FormLabel>Cantidad inicial *</FormLabel>
                     <FormControl>
-                      <Input
-                        type="number"
-                        min="0.001"
-                        step="0.001"
-                        placeholder="Ej: 100.000"
-                        {...field}
-                        value={field.value ?? ""}
-                        onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                      <DecimalInput
+                        placeholder="0,000"
+                        value={field.value ?? null}
+                        onChange={(n) => field.onChange(n)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormMessage />

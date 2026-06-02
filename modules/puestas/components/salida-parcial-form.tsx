@@ -8,6 +8,7 @@ import { salidaParcialSchema, type SalidaParcialFormValues } from "@/validations
 import type { SalidaParcial } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Form, FormControl, FormDescription, FormField,
@@ -187,22 +188,18 @@ export function SalidaParcialForm({
                   <FormItem>
                     <FormLabel>Cantidad *</FormLabel>
                     <FormControl>
-                      <Input
-                        type="number"
-                        min="0.001"
-                        step="0.001"
+                      <DecimalInput
                         placeholder="0,000"
                         className={cn(
                           "transition-all",
                           !field.value && "ring-2 ring-primary border-primary",
                           exceedsPending && "ring-2 ring-destructive border-destructive"
                         )}
-                        value={field.value ?? ""}
-                        onChange={(e) =>
-                          field.onChange(
-                            e.target.value === "" ? undefined : parseFloat(e.target.value)
-                          )
-                        }
+                        value={field.value ?? null}
+                        onChange={(n) => field.onChange(n)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     {exceedsPending ? (

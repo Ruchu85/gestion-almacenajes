@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Euro,
 } from "lucide-react";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import { warehouseSchema, type WarehouseFormValues } from "@/validations/warehouse.schema";
 import type { Warehouse, WarehousePriceHistory } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -91,7 +92,7 @@ export function WarehouseForm({
   const today = new Date().toISOString().split("T")[0];
 
   const [showPriceSection, setShowPriceSection] = useState(false);
-  const [newPrice, setNewPrice] = useState("");
+  const [newPrice, setNewPrice] = useState<number | null>(null);
   const [newPriceDate, setNewPriceDate] = useState(today);
   const [isSavingPrice, setIsSavingPrice] = useState(false);
   const [priceError, setPriceError] = useState("");
@@ -123,14 +124,14 @@ export function WarehouseForm({
         form.reset({ code: "", name: "", address: "", posicion_cerrada: null, storage_daily_price: 0, active: true });
       }
       setShowPriceSection(false);
-      setNewPrice("");
+      setNewPrice(null);
       setNewPriceDate(today);
       setPriceError("");
     }
   }, [open, defaultValues, form, today]);
 
   async function handleSavePrice() {
-    const price = parseFloat(newPrice);
+    const price = newPrice ?? NaN;
     if (isNaN(price) || price < 0) {
       setPriceError("Introduce un precio válido (≥ 0)");
       return;
@@ -143,13 +144,13 @@ export function WarehouseForm({
     setIsSavingPrice(true);
     await onPriceChange?.(price, newPriceDate);
     setIsSavingPrice(false);
-    setNewPrice("");
+    setNewPrice(null);
     setNewPriceDate(today);
     setShowPriceSection(false);
   }
 
   const currentPrice = defaultValues?.storage_daily_price ?? 0;
-  const isPastDate = newPriceDate && newPriceDate <= today;
+  const isPastDate = newPriceDate && newPriceDate <= today && newPrice !== null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -212,13 +213,13 @@ export function WarehouseForm({
                   <FormItem>
                     <FormLabel>Precio de almacenaje diario (€) *</FormLabel>
                     <FormControl>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.0001"
-                        placeholder="0.0000"
-                        {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                      <DecimalInput
+                        placeholder="0,0000"
+                        value={field.value ?? null}
+                        onChange={(n) => field.onChange(n)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormDescription>
@@ -304,14 +305,11 @@ export function WarehouseForm({
                       <div className="grid grid-cols-[1fr_160px] gap-2">
                         <div className="space-y-1">
                           <label className="text-xs text-muted-foreground">Precio (€/ud/día)</label>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.0001"
-                            placeholder="0.0000"
+                          <DecimalInput
+                            placeholder="0,0000"
                             className="h-8 text-sm"
                             value={newPrice}
-                            onChange={(e) => setNewPrice(e.target.value)}
+                            onChange={(n) => setNewPrice(n)}
                           />
                         </div>
                         <div className="space-y-1">

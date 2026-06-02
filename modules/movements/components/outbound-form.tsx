@@ -8,6 +8,7 @@ import { outboundSchema, type OutboundFormValues } from "@/validations/outbound.
 import type { Warehouse, Product } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import { MatriculaInput } from "@/components/shared/matricula-input";
 import {
   Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
@@ -166,17 +167,13 @@ export function OutboundForm({
                   <FormItem>
                     <FormLabel>Cantidad *</FormLabel>
                     <FormControl>
-                      <Input
-                        type="number"
-                        step="0.001"
-                        min="0.001"
-                        placeholder="Introduce la cantidad"
-                        value={field.value ?? ""}
-                        onChange={(e) =>
-                          field.onChange(
-                            e.target.value === "" ? undefined : parseFloat(e.target.value)
-                          )
-                        }
+                      <DecimalInput
+                        placeholder="0,000"
+                        value={field.value ?? null}
+                        onChange={(n) => field.onChange(n)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormMessage />

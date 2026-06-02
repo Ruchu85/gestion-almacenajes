@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Loader2, Undo2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog, DialogContent, DialogDescription,
@@ -32,14 +32,14 @@ export function DesaplicarDialog({
   isOutsidePlancha,
   puestaRef,
 }: DesaplicarDialogProps) {
-  const [cantidad, setCantidad] = useState("");
+  const [cantidad, setCantidad] = useState<number | null>(null);
 
-  const cantidadNum = parseFloat(cantidad) || 0;
+  const cantidadNum = cantidad ?? 0;
   const isValid = cantidadNum > 0 && cantidadNum <= maxCantidad;
 
   function handleClose(open: boolean) {
     onOpenChange(open);
-    if (!open) setCantidad("");
+    if (!open) setCantidad(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -71,15 +71,11 @@ export function DesaplicarDialog({
             <Label htmlFor="desaplicar-cantidad">
               Cantidad a desaplicar ({unit})
             </Label>
-            <Input
+            <DecimalInput
               id="desaplicar-cantidad"
-              type="number"
-              min="0.001"
-              max={maxCantidad}
-              step="0.001"
-              placeholder="0.000"
+              placeholder="0,000"
               value={cantidad}
-              onChange={(e) => setCantidad(e.target.value)}
+              onChange={(n) => setCantidad(n)}
               autoFocus
             />
             {cantidadNum > maxCantidad && cantidadNum > 0 && (

@@ -8,6 +8,7 @@ import { inboundSchema, type InboundFormValues } from "@/validations/inbound.sch
 import type { Warehouse, Product, Supplier } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DecimalInput } from "@/components/ui/decimal-input";
 import {
   Form, FormControl, FormDescription, FormField,
   FormItem, FormLabel, FormMessage,
@@ -303,14 +304,13 @@ export function InboundForm({
                   <FormItem>
                     <FormLabel>Cantidad *</FormLabel>
                     <FormControl>
-                      <Input
-                        type="number"
-                        step="0.001"
-                        min="0.001"
-                        placeholder="Ej: 100.000"
-                        {...field}
-                        value={field.value ?? ""}
-                        onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                      <DecimalInput
+                        placeholder="0,000"
+                        value={field.value ?? null}
+                        onChange={(n) => field.onChange(n)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormMessage />
