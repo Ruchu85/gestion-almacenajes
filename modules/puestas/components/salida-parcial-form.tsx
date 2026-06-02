@@ -198,7 +198,11 @@ export function SalidaParcialForm({
                           exceedsPending && "ring-2 ring-destructive border-destructive"
                         )}
                         value={field.value ?? ""}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || undefined)}
+                        onChange={(e) =>
+                          field.onChange(
+                            e.target.value === "" ? undefined : parseFloat(e.target.value)
+                          )
+                        }
                       />
                     </FormControl>
                     {exceedsPending ? (

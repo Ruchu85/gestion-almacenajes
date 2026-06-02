@@ -51,6 +51,8 @@ const PROVINCIAS_ESPANA = [
   "Valencia", "Valladolid", "Bizkaia",
   "Zamora", "Zaragoza",
   "Ceuta", "Melilla",
+  // Puertos / posiciones específicas
+  "Avilés", "Gijón", "Marín", "Villagarcía",
 ];
 
 interface WarehouseFormProps {

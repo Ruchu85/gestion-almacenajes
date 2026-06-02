@@ -19,6 +19,8 @@ import {
   X,
   Truck,
   PackageMinus,
+  LayoutDashboard,
+  EyeOff,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { StorageCostsService } from "@/services/storage-costs.service";
@@ -96,6 +98,10 @@ export default function DashboardPage() {
   const [expandedWarehouses, setExpandedWarehouses] = useState<Set<string>>(new Set());
   const [expandedPuestas, setExpandedPuestas] = useState<Set<string>>(new Set());
   const hasRestoredExpanded = useRef(false);
+  const [showKpis, setShowKpis] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return sessionStorage.getItem("db-show-kpis") !== "false";
+  });
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
   const [isLoadingStock, setIsLoadingStock] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -465,8 +471,23 @@ export default function DashboardPage() {
         description="Resumen general de almacenajes y costes"
       />
 
-      {/* KPIs */}
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+      {/* KPIs — cabecera con toggle */}
+      <div className="flex items-center justify-between -mb-1">
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Indicadores</span>
+        <button
+          onClick={() => {
+            const next = !showKpis;
+            setShowKpis(next);
+            sessionStorage.setItem("db-show-kpis", String(next));
+          }}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-muted"
+        >
+          {showKpis ? <EyeOff className="h-3.5 w-3.5" /> : <LayoutDashboard className="h-3.5 w-3.5" />}
+          {showKpis ? "Ocultar KPIs" : "Mostrar KPIs"}
+        </button>
+      </div>
+
+      {showKpis && <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
 
         {/* Coste hoy */}
         <div className="rounded-xl border bg-card shadow-sm p-4">
@@ -567,7 +588,7 @@ export default function DashboardPage() {
           )}
         </div>
 
-      </div>
+      </div>}
 
       {/* Almacenes Activos – árbol 4 niveles */}
       <Card className="border-0 shadow-sm">
