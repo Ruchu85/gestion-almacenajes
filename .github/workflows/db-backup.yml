@@ -1,0 +1,83 @@
+name: 🗄️ Database Backup
+
+# ──────────────────────────────────────────────────────────────
+# Ejecuta un pg_dump diario de la base de datos Supabase
+# y lo sube como artefacto de GitHub (retención: 90 días).
+#
+# SECRETS NECESARIOS (GitHub → Settings → Secrets → Actions):
+#   SUPABASE_DB_HOST      → db.<project-ref>.supabase.co
+#   SUPABASE_DB_PASSWORD  → contraseña de la base de datos
+#
+# Dónde encontrar los valores:
+#   Supabase Dashboard → Settings → Database → Connection string
+# ──────────────────────────────────────────────────────────────
+
+on:
+  schedule:
+    # Cada día a las 02:00 UTC (04:00 hora española en verano)
+    - cron: "0 2 * * *"
+
+  # Permite lanzar el backup manualmente desde
+  # GitHub → Actions → Database Backup → Run workflow
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: pg_dump → Artifact
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Instalar cliente PostgreSQL ──────────────────────
+      - name: Instalar postgresql-client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      # ── 2. Ejecutar pg_dump ────────────────────────────────
+      - name: Ejecutar pg_dump
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PGSSLMODE: require
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%d_%H-%M-%S)
+          echo "TIMESTAMP=${TIMESTAMP}" >> "$GITHUB_ENV"
+          FILENAME="backup_${TIMESTAMP}.sql.gz"
+
+          pg_dump \
+            --host="${{ secrets.SUPABASE_DB_HOST }}" \
+            --port=5432 \
+            --username=postgres \
+            --dbname=postgres \
+            --no-owner \
+            --no-acl \
+            --schema=public \
+            --schema=dev \
+          | gzip > "${FILENAME}"
+
+          SIZE=$(du -sh "${FILENAME}" | cut -f1)
+          echo "BACKUP_SIZE=${SIZE}" >> "$GITHUB_ENV"
+          echo "FILENAME=${FILENAME}"  >> "$GITHUB_ENV"
+          echo "✅ Backup generado: ${FILENAME} (${SIZE})"
+
+      # ── 3. Subir artefacto ─────────────────────────────────
+      - name: Subir artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: "db-backup-${{ env.TIMESTAMP }}"
+          path: "backup_${{ env.TIMESTAMP }}.sql.gz"
+          retention-days: 90
+          if-no-files-found: error
+
+      # ── 4. Resumen en pantalla ─────────────────────────────
+      - name: Resumen
+        run: |
+          {
+            echo "### ✅ Backup completado"
+            echo "| Campo | Valor |"
+            echo "|-------|-------|"
+            echo "| 📅 Fecha | ${{ env.TIMESTAMP }} UTC |"
+            echo "| 📦 Archivo | ${{ env.FILENAME }} |"
+            echo "| 📏 Tamaño | ${{ env.BACKUP_SIZE }} |"
+            echo "| 🕐 Retención | 90 días |"
+            echo "| 🗂️ Schemas | public + dev |"
+          } >> "$GITHUB_STEP_SUMMARY"
