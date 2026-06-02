@@ -6,6 +6,7 @@ import {
   ArrowLeft, Truck, TrendingUp, Package, Calendar,
   Clock, CheckCircle2, AlertCircle, BarChart3,
   RotateCcw, XCircle, MessageSquare, Loader2, Undo2, FileText,
+  ArrowRightLeft,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { parseISO, isBefore } from "date-fns";
@@ -24,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { SalidaParcialForm } from "@/modules/puestas/components/salida-parcial-form";
 import { getSalidaColumns } from "@/modules/puestas/components/salida-parcial-columns";
 import { DesaplicarDialog } from "@/modules/puestas/components/desaplicar-dialog";
+import { TraspassarDialog } from "@/modules/puestas/components/traspasar-dialog";
 import { toast } from "@/hooks/use-toast";
 import { formatDate, formatNumber, formatCurrency } from "@/utils/format";
 import {
@@ -35,6 +37,7 @@ import {
   changePuestaEstado,
   updatePuestaComentarios,
   createDesaplicacion,
+  traspasarPuesta,
   markMonthAsInvoiced,
   unmarkMonthAsInvoiced,
 } from "../actions";
@@ -58,6 +61,7 @@ const estadoConfig: Record<string, {
   abierta:        { label: "Abierta",        variant: "default",   icon: Clock },
   finalizada:     { label: "Finalizada",     variant: "secondary", icon: CheckCircle2 },
   cerrada_manual: { label: "Cerrada manual", variant: "outline",   icon: AlertCircle },
+  traspasada:     { label: "Traspasada",     variant: "outline",   icon: ArrowRightLeft },
 };
 
 function getPrevMonth(): string {
@@ -76,6 +80,7 @@ export default function PuestaDetailPage() {
   const [breakdown, setBreakdown]   = useState<PuestaDailyBreakdown[]>([]);
   const [salidas, setSalidas]       = useState<SalidaParcial[]>([]);
   const [comentarios, setComentarios] = useState<string | null>(null);
+  const [warehouseId, setWarehouseId] = useState<string>("");
 
   const [invoicedMonths, setInvoicedMonths] = useState<{ year_month: string; invoiced_at: string }[]>([]);
   const [selectedMonth, setSelectedMonth]   = useState(getPrevMonth);
@@ -91,6 +96,8 @@ export default function PuestaDetailPage() {
   const [desaplicarOpen, setDesaplicarOpen]           = useState(false);
   const [isSavingDesaplicar, setIsSavingDesaplicar]   = useState(false);
   const [isRecalcPlancha, setIsRecalcPlancha]         = useState(false);
+  const [traspassarOpen, setTraspassarOpen]           = useState(false);
+  const [isSavingTraspaso, setIsSavingTraspaso]       = useState(false);
 
   const [comentariosDialogOpen, setComentariosDialogOpen] = useState(false);
   const [comentariosText, setComentariosText] = useState("");
@@ -126,7 +133,7 @@ export default function PuestaDetailPage() {
         .order("fecha_salida", { ascending: false }),
       supabase
         .from("puestas_a_disposicion")
-        .select("comentarios")
+        .select("comentarios, warehouse_id")
         .eq("id", id)
         .single(),
       supabase
@@ -160,7 +167,7 @@ export default function PuestaDetailPage() {
           setSummary((sRes2.data?.[0] as PuestaSummary) ?? null);
           setBreakdown((bRes2.data ?? []) as PuestaDailyBreakdown[]);
           setSalidas((salRes2.data ?? []) as SalidaParcial[]);
-          if (!puestaRes.error) setComentarios(puestaRes.data?.comentarios ?? null);
+          if (!puestaRes.error) { setComentarios(puestaRes.data?.comentarios ?? null); setWarehouseId(puestaRes.data?.warehouse_id ?? ""); }
           if (!invoicedRes.error) setInvoicedMonths((invoicedRes.data ?? []) as { year_month: string; invoiced_at: string }[]);
           setMatriculas(mats);
           setIsLoading(false);
@@ -171,7 +178,7 @@ export default function PuestaDetailPage() {
 
     if (!breakdownRes.error) setBreakdown((breakdownRes.data ?? []) as PuestaDailyBreakdown[]);
     if (!salidasRes.error) setSalidas((salidasRes.data ?? []) as SalidaParcial[]);
-    if (!puestaRes.error) setComentarios(puestaRes.data?.comentarios ?? null);
+    if (!puestaRes.error) { setComentarios(puestaRes.data?.comentarios ?? null); setWarehouseId(puestaRes.data?.warehouse_id ?? ""); }
     if (!invoicedRes.error) setInvoicedMonths((invoicedRes.data ?? []) as { year_month: string; invoiced_at: string }[]);
     setMatriculas(mats);
 
@@ -275,6 +282,24 @@ export default function PuestaDetailPage() {
       await loadData();
     }
     setIsSavingDesaplicar(false);
+  }
+
+  async function handleTraspasar(destinoWarehouseId: string) {
+    setIsSavingTraspaso(true);
+    const result = await traspasarPuesta(id, destinoWarehouseId);
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al traspasar", description: result.error });
+    } else {
+      toast({
+        title: "Traspaso realizado correctamente",
+        description: result.nuevaPuestaId
+          ? "Se ha creado la nueva puesta en el almacén destino."
+          : undefined,
+      });
+      setTraspassarOpen(false);
+      await loadData();
+    }
+    setIsSavingTraspaso(false);
   }
 
   async function handleFacturar() {
@@ -428,15 +453,27 @@ export default function PuestaDetailPage() {
                   Cerrar manualmente
                 </Button>
                 {realPending > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setDesaplicarOpen(true)}
-                    disabled={isSaving}
-                  >
-                    <Undo2 className="mr-2 h-3.5 w-3.5" />
-                    Desaplicar
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setDesaplicarOpen(true)}
+                      disabled={isSaving}
+                    >
+                      <Undo2 className="mr-2 h-3.5 w-3.5" />
+                      Desaplicar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setTraspassarOpen(true)}
+                      disabled={isSaving}
+                      className="border-primary/40 text-primary hover:bg-primary/10"
+                    >
+                      <ArrowRightLeft className="mr-2 h-3.5 w-3.5" />
+                      Traspasar Pta.
+                    </Button>
+                  </>
                 )}
               </>
             )}
@@ -848,6 +885,21 @@ export default function PuestaDetailPage() {
         isLoading={isSavingDesaplicar}
         maxCantidad={Math.max(0, realPending)}
         unit={summary.unit}
+        isOutsidePlancha={isOutsidePlancha}
+        puestaRef={puestaRef}
+      />
+
+      {/* Traspasar dialog */}
+      <TraspassarDialog
+        open={traspassarOpen}
+        onOpenChange={setTraspassarOpen}
+        onSubmit={handleTraspasar}
+        isLoading={isSavingTraspaso}
+        currentWarehouseId={warehouseId}
+        currentWarehouseName={summary.warehouse_name}
+        cantidadPendiente={Math.max(0, realPending)}
+        unit={summary.unit}
+        fechaFinPlancha={summary.fecha_fin_plancha}
         isOutsidePlancha={isOutsidePlancha}
         puestaRef={puestaRef}
       />

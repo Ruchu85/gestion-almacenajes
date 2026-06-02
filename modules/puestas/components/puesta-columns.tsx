@@ -19,6 +19,7 @@ const estadoConfig: Record<string, { label: string; variant: "default" | "second
   abierta:        { label: "Abierta",        variant: "default" },
   finalizada:     { label: "Finalizada",     variant: "secondary" },
   cerrada_manual: { label: "Cerrada manual", variant: "outline" },
+  traspasada:     { label: "Traspasada",     variant: "outline" },
 };
 
 export function getPuestaColumns(

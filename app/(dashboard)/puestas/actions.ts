@@ -88,7 +88,7 @@ export async function deletePuesta(id: string): Promise<{ error?: string }> {
 
 export async function changePuestaEstado(
   id: string,
-  estado: "abierta" | "finalizada" | "cerrada_manual"
+  estado: "abierta" | "finalizada" | "cerrada_manual" | "traspasada"
 ): Promise<{ error?: string }> {
   await requireAuth();
   const supabase = await createServiceClient();
@@ -498,6 +498,117 @@ export async function createDesaplicacion(
   }
 
   return {};
+}
+
+// ── Traspaso de puesta a otro almacén ────────────────────────
+
+export async function traspasarPuesta(
+  puestaId: string,
+  destinoWarehouseId: string,
+): Promise<{ error?: string; nuevaPuestaId?: string }> {
+  const user = await requireAuth();
+  const supabase = await createServiceClient();
+  const today = new Date().toISOString().split("T")[0];
+
+  // 1. Cargar puesta original con sus salidas
+  const { data: puesta, error: puestaError } = await supabase
+    .from("puestas_a_disposicion")
+    .select(
+      "id, numero_contrato, customer_id, product_id, warehouse_id, cantidad_inicial, fecha_fin_plancha, estado, comentarios, salidas_parciales(cantidad, tipo)"
+    )
+    .eq("id", puestaId)
+    .single();
+
+  if (puestaError || !puesta) return { error: "No se pudo cargar la puesta a disposición" };
+  if (puesta.estado !== "abierta") return { error: "Solo se pueden traspasar puestas en estado 'abierta'" };
+  if (puesta.warehouse_id === destinoWarehouseId) return { error: "El almacén destino debe ser diferente al de origen" };
+
+  // 2. Calcular cantidad pendiente
+  const salidaList = (puesta.salidas_parciales ?? []) as { cantidad: number; tipo: string }[];
+  const totalSalidas = salidaList
+    .filter((s) => s.tipo === "real" || s.tipo === "desaplicacion")
+    .reduce((sum, s) => sum + Number(s.cantidad), 0);
+  const cantidadPendiente = Number(puesta.cantidad_inicial) - totalSalidas;
+
+  if (cantidadPendiente <= 0) return { error: "No hay cantidad pendiente para traspasar" };
+
+  // 3. Nombre del almacén destino (para los comentarios)
+  const { data: destWh } = await supabase
+    .from("warehouses")
+    .select("name")
+    .eq("id", destinoWarehouseId)
+    .single();
+  const destName = destWh?.name ?? destinoWarehouseId;
+  const puestaRef = puesta.numero_contrato || puestaId.slice(0, 8).toUpperCase();
+
+  // 4. Crear desaplicación (idéntico a createDesaplicacion)
+  const { error: salidaError } = await supabase.from("salidas_parciales").insert({
+    puesta_id: puestaId,
+    fecha_salida: today,
+    cantidad: cantidadPendiente,
+    tipo: "desaplicacion",
+    comentarios: `Traspaso a almacén ${destName} — ${cantidadPendiente} uds`,
+    created_by: user.id,
+  });
+  if (salidaError) return { error: salidaError.message };
+
+  // 5. Si ya ha pasado el período de plancha, generar entrada de stock (igual que Desaplicar)
+  if (today > puesta.fecha_fin_plancha) {
+    const { error: inboundError } = await supabase.from("inbound_movements").insert({
+      warehouse_id: puesta.warehouse_id,
+      product_id: puesta.product_id,
+      quantity: cantidadPendiente,
+      movement_date: today,
+      free_days: 1,
+      supplier_id: null,
+      comments: `Traspaso a ${destName} — pta. ${puestaRef}`,
+      created_by: user.id,
+    });
+    if (inboundError) return { error: inboundError.message };
+  }
+
+  // 6. Marcar puesta original como 'traspasada' + añadir comentario
+  const prevComentarios = (puesta.comentarios ?? "").trim();
+  const traspasoLine = `[${today}] Traspasada a "${destName}": ${cantidadPendiente} uds`;
+  const newComentarios = prevComentarios ? `${prevComentarios}\n${traspasoLine}` : traspasoLine;
+
+  const { error: updateError } = await supabase
+    .from("puestas_a_disposicion")
+    .update({ estado: "traspasada", comentarios: newComentarios })
+    .eq("id", puestaId);
+  if (updateError) return { error: updateError.message };
+
+  // 7. Calcular días de plancha para la nueva puesta
+  //    Si fecha_fin_plancha > hoy → días restantes; si no → 0
+  let nuevasDiasPlancha = 0;
+  if (puesta.fecha_fin_plancha > today) {
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const fin = new Date(puesta.fecha_fin_plancha + "T00:00:00Z").getTime();
+    const hoy = new Date(today + "T00:00:00Z").getTime();
+    nuevasDiasPlancha = Math.round((fin - hoy) / msPerDay);
+  }
+
+  // 8. Crear nueva puesta en el almacén destino
+  const { data: nuevaPuesta, error: nuevaError } = await supabase
+    .from("puestas_a_disposicion")
+    .insert({
+      numero_contrato: puesta.numero_contrato,
+      customer_id: puesta.customer_id,
+      product_id: puesta.product_id,
+      warehouse_id: destinoWarehouseId,
+      cantidad_inicial: cantidadPendiente,
+      fecha_puesta: today,
+      dias_plancha: nuevasDiasPlancha,
+      estado: "abierta",
+      comentarios: `Traspasada desde pta. ${puestaRef}`,
+      created_by: user.id,
+    })
+    .select()
+    .single();
+
+  if (nuevaError) return { error: nuevaError.message };
+
+  return { nuevaPuestaId: nuevaPuesta.id };
 }
 
 // ── Facturación mensual ──────────────────────────────────────

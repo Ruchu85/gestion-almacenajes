@@ -43,7 +43,7 @@ export type StorageCostWithRelations = StorageCost & {
 // ============================================================
 // TIPOS ENRIQUECIDOS — PUESTAS A DISPOSICIÓN
 // ============================================================
-export type PuestaEstado = "abierta" | "finalizada" | "cerrada_manual";
+export type PuestaEstado = "abierta" | "finalizada" | "cerrada_manual" | "traspasada";
 
 export interface PuestaSummary {
   puesta_id: string;
