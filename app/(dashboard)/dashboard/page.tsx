@@ -195,9 +195,12 @@ export default function DashboardPage() {
       return;
     }
 
-    // Mapa de metadatos visuales por product_id (graceful: si las columnas no existen, mapa vacío)
+    // Mapa de metadatos visuales por product_id
     const productMetaMap = new Map<string, { icon: string | null; bg: string | null }>();
-    if (!productMetaRes.error) {
+    if (productMetaRes.error) {
+      // Las columnas icon/bg_image_url no existen aún — ejecuta la migración SQL en Supabase
+      console.warn("[Dashboard] icon/bg no disponibles:", productMetaRes.error.message);
+    } else {
       for (const p of (productMetaRes.data ?? []) as { id: string; icon?: string | null; bg_image_url?: string | null }[]) {
         productMetaMap.set(p.id, { icon: p.icon ?? null, bg: p.bg_image_url ?? null });
       }

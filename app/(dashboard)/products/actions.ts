@@ -12,7 +12,7 @@ async function requireAuth() {
   if (!user) redirect("/login");
 }
 
-export async function createProduct(values: ProductFormValues): Promise<{ data?: Product; error?: string }> {
+export async function createProduct(values: ProductFormValues): Promise<{ data?: Product; error?: string; visualError?: string }> {
   await requireAuth();
   const parsed = productSchema.safeParse(values);
   if (!parsed.success) return { error: parsed.error.errors[0].message };
@@ -27,18 +27,18 @@ export async function createProduct(values: ProductFormValues): Promise<{ data?:
     .single();
   if (error) return { error: error.message };
 
-  // Guardar campos visuales por separado — falla silencioso si las columnas aún no existen en el schema cache
   if (icon !== undefined || bg_image_url !== undefined) {
-    await supabase
+    const { error: visualErr } = await supabase
       .from("products")
       .update({ icon: icon ?? null, bg_image_url: bg_image_url ?? null } as never)
       .eq("id", (data as Product).id);
+    if (visualErr) return { data: data as Product, visualError: visualErr.message };
   }
 
   return { data: data as Product };
 }
 
-export async function updateProduct(id: string, values: ProductFormValues): Promise<{ data?: Product; error?: string }> {
+export async function updateProduct(id: string, values: ProductFormValues): Promise<{ data?: Product; error?: string; visualError?: string }> {
   await requireAuth();
   const parsed = productSchema.safeParse(values);
   if (!parsed.success) return { error: parsed.error.errors[0].message };
@@ -54,12 +54,12 @@ export async function updateProduct(id: string, values: ProductFormValues): Prom
     .single();
   if (error) return { error: error.message };
 
-  // Guardar campos visuales por separado — falla silencioso si las columnas aún no existen en el schema cache
   if (icon !== undefined || bg_image_url !== undefined) {
-    await supabase
+    const { error: visualErr } = await supabase
       .from("products")
       .update({ icon: icon ?? null, bg_image_url: bg_image_url ?? null } as never)
       .eq("id", id);
+    if (visualErr) return { data: data as Product, visualError: visualErr.message };
   }
 
   return { data: data as Product };
