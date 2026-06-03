@@ -62,6 +62,8 @@ interface ProductStock {
   product_name: string;
   product_code: string;
   unit: string;
+  product_icon: string | null;
+  product_bg: string | null;
   total_inbound: number;
   total_outbound: number;
   pending_stock: number;
@@ -160,13 +162,13 @@ export default function DashboardPage() {
     setIsLoadingStock(true);
 
     type WRow = { id: string; name: string; posicion_cerrada: string | null; active: boolean; storage_daily_price: number };
-    type PRow = { id: string; name: string; code: string; unit: string };
+    type PRow = { id: string; name: string; code: string; unit: string; icon: string | null; bg_image_url: string | null };
 
     const [inboundRes, outboundRes, puestasRes, allPuestasRes] = await Promise.all([
       supabase
         .from("inbound_movements")
         .select(
-          "warehouse_id, product_id, quantity, warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
+          "warehouse_id, product_id, quantity, warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit, icon, bg_image_url)"
         ),
       supabase
         .from("outbound_movements")
@@ -174,7 +176,7 @@ export default function DashboardPage() {
       supabase
         .from("puestas_a_disposicion")
         .select(
-          "id, numero_contrato, fecha_puesta, warehouse_id, product_id, cantidad_inicial, salidas_parciales(cantidad, tipo), customer:customers(name), warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
+          "id, numero_contrato, fecha_puesta, warehouse_id, product_id, cantidad_inicial, salidas_parciales(cantidad, tipo), customer:customers(name), warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit, icon, bg_image_url)"
         )
         .eq("estado", "abierta"),
       // Todas las puestas (cualquier estado) para calcular Cant. Invendida
@@ -207,6 +209,8 @@ export default function DashboardPage() {
           product_name: p.name,
           product_code: p.code,
           unit: p.unit ?? "ud",
+          product_icon: p.icon ?? null,
+          product_bg: p.bg_image_url ?? null,
           total_inbound: 0,
           total_outbound: 0,
           pending_stock: 0,
@@ -286,6 +290,8 @@ export default function DashboardPage() {
           product_name: p.name,
           product_code: p.code,
           unit: p.unit ?? "ud",
+          product_icon: p.icon ?? null,
+          product_bg: p.bg_image_url ?? null,
           total_inbound: 0,
           total_outbound: 0,
           pending_stock: 0,
@@ -849,7 +855,7 @@ export default function DashboardPage() {
                                           const puestasKey = `${group.warehouse_id}||${product.product_id}`;
                                           const isPuestasExpanded = expandedPuestas.has(puestasKey);
                                           const hasPuestas = product.puestas.length > 0;
-                                          const productBg = getProductBg(product.product_name);
+                                          const productBg = product.product_bg ?? getProductBg(product.product_name);
 
                                           return (
                                             <div key={product.product_id} className="relative">
@@ -863,14 +869,17 @@ export default function DashboardPage() {
                                                     !productBg && "hover:bg-gradient-to-r hover:from-cyan-50/60 hover:to-transparent dark:hover:from-cyan-950/20 dark:hover:to-transparent"
                                                   )}
                                                   style={productBg ? {
-                                                    backgroundImage: `linear-gradient(to right, hsl(var(--card)) 0px, hsl(var(--card)) 195px, transparent 265px, transparent calc(100% - 490px), hsl(var(--card)) calc(100% - 440px), hsl(var(--card)) 100%), url(${productBg})`,
+                                                    backgroundImage: `linear-gradient(to right, hsl(var(--card)) 0px, hsl(var(--card)) 215px, transparent 290px, transparent calc(100% - 620px), hsl(var(--card)) calc(100% - 535px), hsl(var(--card)) 100%), url(${productBg})`,
                                                     backgroundSize: "100% 100%, cover",
-                                                    backgroundPosition: "0 0, center center",
+                                                    backgroundPosition: "0 0, calc(50% - 90px) center",
                                                     backgroundRepeat: "no-repeat, no-repeat",
                                                   } : undefined}
                                                 >
-                                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30 border border-cyan-200 dark:border-cyan-800 group-hover:from-cyan-200 group-hover:to-blue-200 transition-all duration-150">
-                                                    <Package className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30 border border-cyan-200 dark:border-cyan-800 group-hover:from-cyan-200 group-hover:to-blue-200 transition-all duration-150 text-base select-none">
+                                                    {product.product_icon
+                                                      ? <span>{product.product_icon}</span>
+                                                      : <Package className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                                                    }
                                                   </div>
 
                                                   <div className="flex-1 min-w-0">

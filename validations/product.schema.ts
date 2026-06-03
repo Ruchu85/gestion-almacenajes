@@ -17,6 +17,8 @@ export const productSchema = z.object({
     .max(50, "Máximo 50 caracteres")
     .default("ud"),
   active: z.boolean().default(true),
+  icon: z.string().max(10).nullable().optional(),
+  bg_image_url: z.string().max(500).nullable().optional(),
 });
 
 export const productUpdateSchema = productSchema.partial();

@@ -53,6 +53,8 @@ export interface Database {
           storage_daily_price: number;
           unit: string;
           active: boolean;
+          icon: string | null;
+          bg_image_url: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -63,6 +65,8 @@ export interface Database {
           storage_daily_price?: number;
           unit?: string;
           active?: boolean;
+          icon?: string | null;
+          bg_image_url?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -73,6 +77,8 @@ export interface Database {
           storage_daily_price?: number;
           unit?: string;
           active?: boolean;
+          icon?: string | null;
+          bg_image_url?: string | null;
           created_at?: string;
           updated_at?: string;
         };
