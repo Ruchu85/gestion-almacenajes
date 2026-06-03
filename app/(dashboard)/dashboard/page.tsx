@@ -89,6 +89,19 @@ interface PositionGroup {
 
 const SIN_POSICION = "(Sin posición cerrada)";
 
+function getProductBg(name: string): string | null {
+  const n = name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  if (n.includes("cebada"))                     return "/products/cebada.jpg";
+  if (n.includes("trigo"))                      return "/products/trigo.jpg";
+  if (n.includes("maiz") || n.includes("maíz")) return "/products/maiz.jpg";
+  if (n.includes("girasol"))                    return "/products/girasol.jpg";
+  if (n.includes("soja") || n.includes("soya")) return "https://images.unsplash.com/photo-1610348725531-843dff563e2c?w=700&q=60&auto=format&fit=crop";
+  if (n.includes("arroz"))                      return "https://images.unsplash.com/photo-1536304993881-ff86e0c9e6b4?w=700&q=60&auto=format&fit=crop";
+  if (n.includes("colza"))                      return "https://images.unsplash.com/photo-1490750967868-88df5691cc5a?w=700&q=60&auto=format&fit=crop";
+  if (n.includes("centeno"))                    return "/products/cebada.jpg";
+  return null;
+}
+
 export default function DashboardPage() {
   const [kpis, setKpis] = useState<DashboardKPIs | null>(null);
   const [positionGroups, setPositionGroups] = useState<PositionGroup[]>([]);
@@ -843,7 +856,18 @@ export default function DashboardPage() {
                                               <div className="ml-5 rounded-lg border bg-card hover:border-cyan-200 dark:hover:border-cyan-800 transition-all duration-150 overflow-hidden">
 
                                                 {/* Fila del producto */}
-                                                <div className="flex items-center gap-3 px-4 py-3 hover:bg-gradient-to-r hover:from-cyan-50/60 hover:to-transparent dark:hover:from-cyan-950/20 dark:hover:to-transparent transition-all duration-150 group">
+                                                <div
+                                                  className="relative flex items-center gap-3 px-4 py-3 hover:bg-gradient-to-r hover:from-cyan-50/60 hover:to-transparent dark:hover:from-cyan-950/20 dark:hover:to-transparent transition-all duration-150 group"
+                                                  style={getProductBg(product.product_name) ? {
+                                                    backgroundImage: `url(${getProductBg(product.product_name)})`,
+                                                    backgroundSize: "cover",
+                                                    backgroundPosition: "right center",
+                                                  } : undefined}
+                                                >
+                                                  {/* Gradiente que cubre el texto y deja asomar la imagen solo en el extremo derecho */}
+                                                  {getProductBg(product.product_name) && (
+                                                    <div className="absolute inset-0 pointer-events-none bg-gradient-to-r from-card from-55% via-card/90 to-card/20 dark:from-card dark:from-55% dark:via-card/90 dark:to-card/20" />
+                                                  )}
                                                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30 border border-cyan-200 dark:border-cyan-800 group-hover:from-cyan-200 group-hover:to-blue-200 transition-all duration-150">
                                                     <Package className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
                                                   </div>
