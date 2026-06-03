@@ -162,13 +162,13 @@ export default function DashboardPage() {
     setIsLoadingStock(true);
 
     type WRow = { id: string; name: string; posicion_cerrada: string | null; active: boolean; storage_daily_price: number };
-    type PRow = { id: string; name: string; code: string; unit: string; icon: string | null; bg_image_url: string | null };
+    type PRow = { id: string; name: string; code: string; unit: string };
 
-    const [inboundRes, outboundRes, puestasRes, allPuestasRes] = await Promise.all([
+    const [inboundRes, outboundRes, puestasRes, allPuestasRes, productMetaRes] = await Promise.all([
       supabase
         .from("inbound_movements")
         .select(
-          "warehouse_id, product_id, quantity, warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit, icon, bg_image_url)"
+          "warehouse_id, product_id, quantity, warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
         ),
       supabase
         .from("outbound_movements")
@@ -176,19 +176,31 @@ export default function DashboardPage() {
       supabase
         .from("puestas_a_disposicion")
         .select(
-          "id, numero_contrato, fecha_puesta, warehouse_id, product_id, cantidad_inicial, salidas_parciales(cantidad, tipo), customer:customers(name), warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit, icon, bg_image_url)"
+          "id, numero_contrato, fecha_puesta, warehouse_id, product_id, cantidad_inicial, salidas_parciales(cantidad, tipo), customer:customers(name), warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
         )
         .eq("estado", "abierta"),
       // Todas las puestas (cualquier estado) para calcular Cant. Invendida
       supabase
         .from("puestas_a_disposicion")
         .select("warehouse_id, product_id, cantidad_inicial, cant_traspasada"),
+      // Icono y fondo por producto — query separada, falla en silencio si las columnas aún no existen
+      supabase
+        .from("products")
+        .select("id, icon, bg_image_url"),
     ]);
 
     if (inboundRes.error) {
       toast({ variant: "destructive", title: "Error al cargar stock", description: inboundRes.error.message });
       setIsLoadingStock(false);
       return;
+    }
+
+    // Mapa de metadatos visuales por product_id (graceful: si las columnas no existen, mapa vacío)
+    const productMetaMap = new Map<string, { icon: string | null; bg: string | null }>();
+    if (!productMetaRes.error) {
+      for (const p of (productMetaRes.data ?? []) as { id: string; icon?: string | null; bg_image_url?: string | null }[]) {
+        productMetaMap.set(p.id, { icon: p.icon ?? null, bg: p.bg_image_url ?? null });
+      }
     }
 
     type StockEntry = ProductStock & { warehouse_id: string; warehouse_name: string; posicion_cerrada: string | null };
@@ -201,6 +213,7 @@ export default function DashboardPage() {
       if (!w.active) continue;
       const key = `${row.warehouse_id}||${row.product_id}`;
       if (!stockMap.has(key)) {
+        const meta = productMetaMap.get(row.product_id);
         stockMap.set(key, {
           warehouse_id: row.warehouse_id,
           warehouse_name: w.name,
@@ -209,8 +222,8 @@ export default function DashboardPage() {
           product_name: p.name,
           product_code: p.code,
           unit: p.unit ?? "ud",
-          product_icon: p.icon ?? null,
-          product_bg: p.bg_image_url ?? null,
+          product_icon: meta?.icon ?? null,
+          product_bg: meta?.bg ?? null,
           total_inbound: 0,
           total_outbound: 0,
           pending_stock: 0,
@@ -282,6 +295,7 @@ export default function DashboardPage() {
 
       // Si no hay entradas para este almacén+producto, añadirlo igualmente
       if (!stockMap.has(key)) {
+        const metaPuesta = productMetaMap.get(puesta.product_id);
         stockMap.set(key, {
           warehouse_id: puesta.warehouse_id,
           warehouse_name: w.name,
@@ -290,8 +304,8 @@ export default function DashboardPage() {
           product_name: p.name,
           product_code: p.code,
           unit: p.unit ?? "ud",
-          product_icon: p.icon ?? null,
-          product_bg: p.bg_image_url ?? null,
+          product_icon: metaPuesta?.icon ?? null,
+          product_bg: metaPuesta?.bg ?? null,
           total_inbound: 0,
           total_outbound: 0,
           pending_stock: 0,
