@@ -608,30 +608,6 @@ export async function traspasarPuesta(
 
   if (nuevaError) return { error: nuevaError.message };
 
-  // 9. Crear entrada de stock en el almacén DESTINO
-  //    Necesaria para que cant_invendida no quede negativa:
-  //    la nueva puesta incrementa totalPuestaQty_destino, esta entrada
-  //    incrementa total_inbound_destino en la misma cantidad → efecto neto 0
-  //    (frente al efecto -cantidadPendiente que habría sin esta entrada).
-  const origenWh = await supabase
-    .from("warehouses")
-    .select("name")
-    .eq("id", puesta.warehouse_id)
-    .single();
-  const origenName = origenWh.data?.name ?? "almacén origen";
-
-  const { error: inboundDestError } = await supabase.from("inbound_movements").insert({
-    warehouse_id: destinoWarehouseId,
-    product_id: puesta.product_id,
-    quantity: cantidadPendiente,
-    movement_date: today,
-    free_days: nuevasDiasPlancha,
-    supplier_id: null,
-    comments: `Traspaso desde ${origenName} — pta. ${puestaRef}`,
-    created_by: user.id,
-  });
-  if (inboundDestError) return { error: inboundDestError.message };
-
   return { nuevaPuestaId: nuevaPuesta.id };
 }
 
