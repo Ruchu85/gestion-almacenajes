@@ -47,6 +47,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { formatCurrency, formatNumber, formatQuantity, formatDate } from "@/utils/format";
+import { getProductVisuals } from "./actions";
 
 interface PuestaItem {
   id: string;
@@ -164,7 +165,7 @@ export default function DashboardPage() {
     type WRow = { id: string; name: string; posicion_cerrada: string | null; active: boolean; storage_daily_price: number };
     type PRow = { id: string; name: string; code: string; unit: string };
 
-    const [inboundRes, outboundRes, puestasRes, allPuestasRes, productMetaRes] = await Promise.all([
+    const [inboundRes, outboundRes, puestasRes, allPuestasRes, productVisuals] = await Promise.all([
       supabase
         .from("inbound_movements")
         .select(
@@ -183,10 +184,8 @@ export default function DashboardPage() {
       supabase
         .from("puestas_a_disposicion")
         .select("warehouse_id, product_id, cantidad_inicial, cant_traspasada"),
-      // Icono y fondo por producto — query separada, falla en silencio si las columnas aún no existen
-      supabase
-        .from("products")
-        .select("id, icon, bg_image_url"),
+      // Icono y fondo via conexión directa (bypasea PostgREST schema cache)
+      getProductVisuals(),
     ]);
 
     if (inboundRes.error) {
@@ -195,15 +194,10 @@ export default function DashboardPage() {
       return;
     }
 
-    // Mapa de metadatos visuales por product_id
+    // Mapa de metadatos visuales por product_id (vía SQL directo)
     const productMetaMap = new Map<string, { icon: string | null; bg: string | null }>();
-    if (productMetaRes.error) {
-      // Las columnas icon/bg_image_url no existen aún — ejecuta la migración SQL en Supabase
-      console.warn("[Dashboard] icon/bg no disponibles:", productMetaRes.error.message);
-    } else {
-      for (const p of (productMetaRes.data ?? []) as { id: string; icon?: string | null; bg_image_url?: string | null }[]) {
-        productMetaMap.set(p.id, { icon: p.icon ?? null, bg: p.bg_image_url ?? null });
-      }
+    for (const p of productVisuals) {
+      productMetaMap.set(p.id, { icon: p.icon ?? null, bg: p.bg_image_url ?? null });
     }
 
     type StockEntry = ProductStock & { warehouse_id: string; warehouse_name: string; posicion_cerrada: string | null };

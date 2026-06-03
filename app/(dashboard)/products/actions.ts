@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { productSchema, type ProductFormValues } from "@/validations/product.schema";
 import type { Product } from "@/types";
 import { redirect } from "next/navigation";
+import { getDb } from "@/lib/db";
 
 async function requireAuth() {
   const supabase = await createClient();
@@ -28,11 +29,13 @@ export async function createProduct(values: ProductFormValues): Promise<{ data?:
   if (error) return { error: error.message };
 
   if (icon !== undefined || bg_image_url !== undefined) {
-    const { error: visualErr } = await supabase
-      .from("products")
-      .update({ icon: icon ?? null, bg_image_url: bg_image_url ?? null } as never)
-      .eq("id", (data as Product).id);
-    if (visualErr) return { data: data as Product, visualError: visualErr.message };
+    try {
+      const db = getDb();
+      const pid = (data as Product).id;
+      await db`UPDATE products SET icon = ${icon ?? null}, bg_image_url = ${bg_image_url ?? null} WHERE id = ${pid}`;
+    } catch (e) {
+      return { data: data as Product, visualError: String(e) };
+    }
   }
 
   return { data: data as Product };
@@ -55,11 +58,12 @@ export async function updateProduct(id: string, values: ProductFormValues): Prom
   if (error) return { error: error.message };
 
   if (icon !== undefined || bg_image_url !== undefined) {
-    const { error: visualErr } = await supabase
-      .from("products")
-      .update({ icon: icon ?? null, bg_image_url: bg_image_url ?? null } as never)
-      .eq("id", id);
-    if (visualErr) return { data: data as Product, visualError: visualErr.message };
+    try {
+      const db = getDb();
+      await db`UPDATE products SET icon = ${icon ?? null}, bg_image_url = ${bg_image_url ?? null} WHERE id = ${id}`;
+    } catch (e) {
+      return { data: data as Product, visualError: String(e) };
+    }
   }
 
   return { data: data as Product };
