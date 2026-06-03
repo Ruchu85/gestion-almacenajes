@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Mockup — Fondo producto (v2)</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{background:#0f1117;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:32px}
+
+    /* ── Tarjeta ── */
+    .product-card{border-radius:8px;border:1px solid #1e293b;background:#141620;overflow:hidden;margin-bottom:10px}
+    .product-card:hover{border-color:#164e63}
+
+    /* ── Fila ── */
+    .product-row{
+      position:relative;
+      display:flex;
+      align-items:center;
+      gap:12px;
+      padding:11px 16px;
+      /* imagen centrada en la tarjeta */
+      background-size:cover;
+      background-position:center center;
+    }
+
+    /*
+      Gradiente tipo "ventana":
+      - izquierda: sólido (cubre icono + nombre ~200px)
+      - centro: transparente (muestra la imagen en la zona vacía)
+      - derecha: sólido (cubre el bloque de métricas ~480px)
+    */
+    .product-row::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      background:linear-gradient(
+        to right,
+        #141620 0px,
+        #141620 195px,
+        rgba(14,16,24,0.08) 260px,
+        rgba(14,16,24,0.08) calc(100% - 490px),
+        rgba(14,16,24,0.92) calc(100% - 440px),
+        #141620 calc(100% - 390px)
+      );
+      pointer-events:none;
+      z-index:1;
+    }
+    /* Todo el contenido por encima del overlay */
+    .product-row>*{position:relative;z-index:2}
+
+    /* ── Icono ── */
+    .icon{width:32px;height:32px;border-radius:6px;flex-shrink:0;background:linear-gradient(135deg,#164e6333,#1e3a5f33);border:1px solid #164e63;display:flex;align-items:center;justify-content:center;font-size:16px}
+
+    /* ── Nombre ── */
+    .name{width:155px;flex-shrink:0}
+    .name p{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .name small{font-size:11px;color:#64748b;font-family:monospace}
+
+    /* Espacio vacío — aquí asoma la imagen */
+    .spacer{flex:1}
+
+    /* ── Métricas ── */
+    .metrics{display:flex;align-items:center;gap:14px;flex-shrink:0}
+    .metric{text-align:right}
+    .metric .label{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.06em}
+    .metric .value{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+    .metric .value.green{color:#34d399}
+    .metric .value.red{color:#f87171}
+    .metric .value.blue{color:#60a5fa}
+
+    .badge{border:1px solid #d97706;color:#fbbf24;font-size:12px;font-weight:700;padding:2px 8px;border-radius:4px;font-variant-numeric:tabular-nums;display:inline-block}
+    .invendida-box{background:#1e293b;border:1px solid #334155;border-radius:6px;padding:4px 10px;text-align:right}
+    .invendida-box .label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8}
+    .invendida-box .value{font-size:13px;font-weight:700;color:#cbd5e1;font-variant-numeric:tabular-nums}
+    .invendida-box.neg{background:#1a0a0a;border-color:#7f1d1d}
+    .invendida-box.neg .value{color:#f87171}
+
+    .sep{width:1px;height:32px;background:#1e293b;flex-shrink:0}
+    .btn{border:1px solid #3730a3;color:#818cf8;background:transparent;font-size:11px;padding:5px 10px;border-radius:6px;cursor:pointer;display:flex;gap:4px;align-items:center;white-space:nowrap}
+
+    /* ── Imágenes locales (public/products/) ── */
+    .bg-cebada{background-image:url("public/products/cebada.jpg")}
+    .bg-trigo{background-image:url("public/products/trigo.jpg")}
+    .bg-maiz{background-image:url("public/products/maiz.jpg")}
+    .bg-girasol{background-image:url("public/products/girasol.jpg")}
+    /* Soja y arroz mantienen Unsplash hasta tener imagen propia */
+    .bg-soja{background-image:url("https://images.unsplash.com/photo-1610348725531-843dff563e2c?w=900&q=70&auto=format&fit=crop&crop=center")}
+    .bg-arroz{background-image:url("https://images.unsplash.com/photo-1536304993881-ff86e0c9e6b4?w=900&q=70&auto=format&fit=crop&crop=center")}
+
+    /* ── Layout global ── */
+    .section{margin-bottom:32px}
+    h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-bottom:14px}
+    .warehouse{background:#0d1117;border:1px solid #1e293b;border-radius:10px;padding:12px 14px;margin-bottom:6px}
+    .warehouse h3{font-size:13px;font-weight:600;color:#93c5fd;margin-bottom:10px}
+  </style>
+</head>
+<body>
+<div style="max-width:1140px;margin:0 auto">
+
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:28px">
+    <div style="width:36px;height:36px;background:linear-gradient(135deg,#7c3aed,#4f46e5);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">🏢</div>
+    <div>
+      <div style="font-size:20px;font-weight:700">Dashboard — Mockup v3</div>
+      <div style="font-size:12px;color:#64748b">Imágenes propias desde <code style="background:#1e293b;padding:1px 5px;border-radius:3px">public/products/</code></div>
+    </div>
+  </div>
+
+  <!-- A Coruña -->
+  <div class="section">
+    <h2>📍 A Coruña</h2>
+    <div class="warehouse">
+      <h3>🏭 NOGUEIRA - CORUÑA</h3>
+
+      <!-- CEBADA -->
+      <div class="product-card">
+        <div class="product-row bg-cebada">
+          <div class="icon">🌾</div>
+          <div class="name"><p>CEBADA GRANEL</p><small>011000</small></div>
+          <div class="spacer"></div>
+          <div class="metrics">
+            <div class="invendida-box"><div class="label">Cant. Invendida</div><div class="value">1.500,00 TNS</div></div>
+            <div class="sep"></div>
+            <div class="metric"><div class="label">Entradas</div><div class="value green">+1.500,00 TNS</div></div>
+            <div class="metric"><div class="label">Salidas</div><div class="value red">-0,00 TNS</div></div>
+            <div class="metric"><div class="label">Pendiente</div><span class="badge">1.500,00 TNS</span></div>
+            <div class="metric"><div class="label">Coste/día</div><div class="value blue">90,00 €</div></div>
+            <button class="btn">⚡ Acciones ▾</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- TRIGO -->
+      <div class="product-card">
+        <div class="product-row bg-trigo">
+          <div class="icon">🌾</div>
+          <div class="name"><p>TRIGO GRANEL</p><small>021000</small></div>
+          <div class="spacer"></div>
+          <div class="metrics">
+            <div class="invendida-box"><div class="label">Cant. Invendida</div><div class="value">2.000,00 TNS</div></div>
+            <div class="sep"></div>
+            <div class="metric"><div class="label">Entradas</div><div class="value green">+2.000,00 TNS</div></div>
+            <div class="metric"><div class="label">Salidas</div><div class="value red">-0,00 TNS</div></div>
+            <div class="metric"><div class="label">Pendiente</div><span class="badge">2.000,00 TNS</span></div>
+            <div class="metric"><div class="label">Coste/día</div><div class="value blue">120,00 €</div></div>
+            <button class="btn">⚡ Acciones ▾</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gijón -->
+  <div class="section">
+    <h2>📍 Gijón</h2>
+    <div class="warehouse">
+      <h3>🏭 BERGE GIJON</h3>
+
+      <div class="product-card">
+        <div class="product-row bg-cebada">
+          <div class="icon">🌾</div>
+          <div class="name"><p>CEBADA GRANEL</p><small>011000</small></div>
+          <div class="spacer"></div>
+          <div class="metrics">
+            <div class="invendida-box neg"><div class="label">Cant. Invendida</div><div class="value">-500,00 TNS</div></div>
+            <div class="sep"></div>
+            <div class="metric"><div class="label">Entradas</div><div class="value green">+0,00 TNS</div></div>
+            <div class="metric"><div class="label">Salidas</div><div class="value red">-0,00 TNS</div></div>
+            <div class="metric"><div class="label">Pendiente</div><span class="badge">500,00 TNS</span></div>
+            <div class="metric"><div class="label">Coste/día</div><div class="value blue">25,00 €</div></div>
+            <button class="btn">⚡ Acciones ▾</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="product-card">
+        <div class="product-row bg-trigo">
+          <div class="icon">🌾</div>
+          <div class="name"><p>TRIGO GRANEL</p><small>021000</small></div>
+          <div class="spacer"></div>
+          <div class="metrics">
+            <div class="invendida-box"><div class="label">Cant. Invendida</div><div class="value">0,00 TNS</div></div>
+            <div class="sep"></div>
+            <div class="metric"><div class="label">Entradas</div><div class="value green">+200,00 TNS</div></div>
+            <div class="metric"><div class="label">Salidas</div><div class="value red">-0,00 TNS</div></div>
+            <div class="metric"><div class="label">Pendiente</div><span class="badge">200,00 TNS</span></div>
+            <div class="metric"><div class="label">Coste/día</div><div class="value blue">10,00 €</div></div>
+            <button class="btn">⚡ Acciones ▾</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Otros productos -->
+  <div class="section">
+    <h2>🎨 Otros cereales (Maíz · Girasol · Soja · Arroz)</h2>
+    <div class="warehouse">
+      <h3>🏭 Ejemplos adicionales</h3>
+
+      <div class="product-card">
+        <div class="product-row bg-maiz">
+          <div class="icon">🌽</div>
+          <div class="name"><p>MAIZ GRANEL</p><small>031000</small></div>
+          <div class="spacer"></div>
+          <div class="metrics">
+            <div class="invendida-box"><div class="label">Cant. Invendida</div><div class="value">800,00 TNS</div></div>
+            <div class="sep"></div>
+            <div class="metric"><div class="label">Entradas</div><div class="value green">+800,00 TNS</div></div>
+            <div class="metric"><div class="label">Pendiente</div><span class="badge">800,00 TNS</span></div>
+            <div class="metric"><div class="label">Coste/día</div><div class="value blue">48,00 €</div></div>
+            <button class="btn">⚡ Acciones ▾</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="product-card">
+        <div class="product-row bg-girasol">
+          <div class="icon">🌻</div>
+          <div class="name"><p>GIRASOL GRANEL</p><small>041000</small></div>
+          <div class="spacer"></div>
+          <div class="metrics">
+            <div class="invendida-box"><div class="label">Cant. Invendida</div><div class="value">320,00 TNS</div></div>
+            <div class="sep"></div>
+            <div class="metric"><div class="label">Entradas</div><div class="value green">+320,00 TNS</div></div>
+            <div class="metric"><div class="label">Pendiente</div><span class="badge">320,00 TNS</span></div>
+            <div class="metric"><div class="label">Coste/día</div><div class="value blue">19,20 €</div></div>
+            <button class="btn">⚡ Acciones ▾</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="product-card">
+        <div class="product-row bg-soja">
+          <div class="icon">🫛</div>
+          <div class="name"><p>SOJA GRANEL</p><small>051000</small></div>
+          <div class="spacer"></div>
+          <div class="metrics">
+            <div class="invendida-box"><div class="label">Cant. Invendida</div><div class="value">150,00 TNS</div></div>
+            <div class="sep"></div>
+            <div class="metric"><div class="label">Entradas</div><div class="value green">+150,00 TNS</div></div>
+            <div class="metric"><div class="label">Pendiente</div><span class="badge">150,00 TNS</span></div>
+            <div class="metric"><div class="label">Coste/día</div><div class="value blue">9,00 €</div></div>
+            <button class="btn">⚡ Acciones ▾</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="product-card">
+        <div class="product-row bg-arroz">
+          <div class="icon">🌾</div>
+          <div class="name"><p>ARROZ GRANEL</p><small>061000</small></div>
+          <div class="spacer"></div>
+          <div class="metrics">
+            <div class="invendida-box"><div class="label">Cant. Invendida</div><div class="value">600,00 TNS</div></div>
+            <div class="sep"></div>
+            <div class="metric"><div class="label">Entradas</div><div class="value green">+600,00 TNS</div></div>
+            <div class="metric"><div class="label">Pendiente</div><span class="badge">600,00 TNS</span></div>
+            <div class="metric"><div class="label">Coste/día</div><div class="value blue">36,00 €</div></div>
+            <button class="btn">⚡ Acciones ▾</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <p style="font-size:11px;color:#475569;margin-top:8px;line-height:1.6">
+    ℹ️ Las imágenes se leen desde <strong style="color:#94a3b8">public/products/</strong>.
+    Coloca los 4 archivos con estos nombres exactos:<br>
+    &nbsp;&nbsp;• <code style="background:#1e293b;padding:1px 4px;border-radius:2px">cebada.jpg</code> — campo verde de cebada<br>
+    &nbsp;&nbsp;• <code style="background:#1e293b;padding:1px 4px;border-radius:2px">trigo.jpg</code> — campo dorado de trigo<br>
+    &nbsp;&nbsp;• <code style="background:#1e293b;padding:1px 4px;border-radius:2px">maiz.jpg</code> — mazorcas de maíz<br>
+    &nbsp;&nbsp;• <code style="background:#1e293b;padding:1px 4px;border-radius:2px">girasol.jpg</code> — campo de girasoles<br>
+    Abre este HTML directamente en el navegador para ver la previsualización.
+  </p>
+
+</div>
+</body>
+</html>

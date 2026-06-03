@@ -48,11 +48,7 @@ export default function ProductsPage() {
     if (result.error) {
       toast({ variant: "destructive", title: "Error al crear", description: result.error });
     } else {
-      if (result.visualError) {
-        toast({ variant: "destructive", title: "Icono/fondo no guardado", description: result.visualError });
-      } else {
-        toast({ title: "Producto creado correctamente" });
-      }
+      toast({ title: "Producto creado correctamente" });
       setFormOpen(false);
       await loadProducts();
     }
@@ -66,11 +62,7 @@ export default function ProductsPage() {
     if (result.error) {
       toast({ variant: "destructive", title: "Error al actualizar", description: result.error });
     } else {
-      if (result.visualError) {
-        toast({ variant: "destructive", title: "Icono/fondo no guardado", description: result.visualError });
-      } else {
-        toast({ title: "Producto actualizado correctamente" });
-      }
+      toast({ title: "Producto actualizado correctamente" });
       setFormOpen(false);
       setEditingProduct(null);
       await loadProducts();

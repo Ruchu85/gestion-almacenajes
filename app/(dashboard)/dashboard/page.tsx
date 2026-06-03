@@ -47,7 +47,6 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { formatCurrency, formatNumber, formatQuantity, formatDate } from "@/utils/format";
-import { getProductVisuals } from "./actions";
 
 interface PuestaItem {
   id: string;
@@ -165,7 +164,7 @@ export default function DashboardPage() {
     type WRow = { id: string; name: string; posicion_cerrada: string | null; active: boolean; storage_daily_price: number };
     type PRow = { id: string; name: string; code: string; unit: string };
 
-    const [inboundRes, outboundRes, puestasRes, allPuestasRes, productVisuals] = await Promise.all([
+    const [inboundRes, outboundRes, puestasRes, allPuestasRes, productMetaRes] = await Promise.all([
       supabase
         .from("inbound_movements")
         .select(
@@ -184,8 +183,10 @@ export default function DashboardPage() {
       supabase
         .from("puestas_a_disposicion")
         .select("warehouse_id, product_id, cantidad_inicial, cant_traspasada"),
-      // Icono y fondo via conexión directa (bypasea PostgREST schema cache)
-      getProductVisuals(),
+      // Icono y fondo por producto — query separada y resiliente
+      supabase
+        .from("products")
+        .select("id, icon, bg_image_url"),
     ]);
 
     if (inboundRes.error) {
@@ -194,10 +195,12 @@ export default function DashboardPage() {
       return;
     }
 
-    // Mapa de metadatos visuales por product_id (vía SQL directo)
+    // Mapa de metadatos visuales por product_id (resiliente: si el cache aún no tiene las columnas, mapa vacío)
     const productMetaMap = new Map<string, { icon: string | null; bg: string | null }>();
-    for (const p of productVisuals) {
-      productMetaMap.set(p.id, { icon: p.icon ?? null, bg: p.bg_image_url ?? null });
+    if (!productMetaRes.error) {
+      for (const p of (productMetaRes.data ?? []) as { id: string; icon?: string | null; bg_image_url?: string | null }[]) {
+        productMetaMap.set(p.id, { icon: p.icon ?? null, bg: p.bg_image_url ?? null });
+      }
     }
 
     type StockEntry = ProductStock & { warehouse_id: string; warehouse_name: string; posicion_cerrada: string | null };

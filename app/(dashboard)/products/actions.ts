@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase/server";
 import { productSchema, type ProductFormValues } from "@/validations/product.schema";
 import type { Product } from "@/types";
 import { redirect } from "next/navigation";
-import { getDb } from "@/lib/db";
 
 async function requireAuth() {
   const supabase = await createClient();
@@ -13,59 +12,34 @@ async function requireAuth() {
   if (!user) redirect("/login");
 }
 
-export async function createProduct(values: ProductFormValues): Promise<{ data?: Product; error?: string; visualError?: string }> {
+export async function createProduct(values: ProductFormValues): Promise<{ data?: Product; error?: string }> {
   await requireAuth();
   const parsed = productSchema.safeParse(values);
   if (!parsed.success) return { error: parsed.error.errors[0].message };
 
-  const { icon, bg_image_url, ...coreData } = parsed.data;
   const supabase = await createServiceClient();
-
   const { data, error } = await supabase
     .from("products")
-    .insert(coreData)
+    .insert(parsed.data)
     .select()
     .single();
   if (error) return { error: error.message };
-
-  if (icon !== undefined || bg_image_url !== undefined) {
-    try {
-      const db = await getDb();
-      const pid = (data as Product).id;
-      await db`UPDATE products SET icon = ${icon ?? null}, bg_image_url = ${bg_image_url ?? null} WHERE id = ${pid}`;
-    } catch (e) {
-      return { data: data as Product, visualError: String(e) };
-    }
-  }
-
   return { data: data as Product };
 }
 
-export async function updateProduct(id: string, values: ProductFormValues): Promise<{ data?: Product; error?: string; visualError?: string }> {
+export async function updateProduct(id: string, values: ProductFormValues): Promise<{ data?: Product; error?: string }> {
   await requireAuth();
   const parsed = productSchema.safeParse(values);
   if (!parsed.success) return { error: parsed.error.errors[0].message };
 
-  const { icon, bg_image_url, ...coreData } = parsed.data;
   const supabase = await createServiceClient();
-
   const { data, error } = await supabase
     .from("products")
-    .update(coreData)
+    .update(parsed.data)
     .eq("id", id)
     .select()
     .single();
   if (error) return { error: error.message };
-
-  if (icon !== undefined || bg_image_url !== undefined) {
-    try {
-      const db = await getDb();
-      await db`UPDATE products SET icon = ${icon ?? null}, bg_image_url = ${bg_image_url ?? null} WHERE id = ${id}`;
-    } catch (e) {
-      return { data: data as Product, visualError: String(e) };
-    }
-  }
-
   return { data: data as Product };
 }
 
