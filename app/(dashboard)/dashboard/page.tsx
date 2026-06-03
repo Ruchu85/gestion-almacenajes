@@ -883,9 +883,9 @@ export default function DashboardPage() {
                                                     !productBg && "hover:bg-gradient-to-r hover:from-cyan-50/60 hover:to-transparent dark:hover:from-cyan-950/20 dark:hover:to-transparent"
                                                   )}
                                                   style={productBg ? {
-                                                    backgroundImage: `linear-gradient(to right, hsl(var(--card)) 0px, hsl(var(--card)) 215px, transparent 290px, transparent calc(100% - 620px), hsl(var(--card)) calc(100% - 535px), hsl(var(--card)) 100%), url(${productBg})`,
+                                                    backgroundImage: `linear-gradient(to right, hsl(var(--card)) 0px, hsl(var(--card)) 215px, transparent 290px, transparent calc(100% - 850px), hsl(var(--card)) calc(100% - 760px), hsl(var(--card)) 100%), url(${productBg})`,
                                                     backgroundSize: "100% 100%, cover",
-                                                    backgroundPosition: "0 0, calc(50% - 90px) center",
+                                                    backgroundPosition: "0 0, calc(50% - 200px) center",
                                                     backgroundRepeat: "no-repeat, no-repeat",
                                                   } : undefined}
                                                 >

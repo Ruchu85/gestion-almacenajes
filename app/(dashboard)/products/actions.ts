@@ -17,13 +17,24 @@ export async function createProduct(values: ProductFormValues): Promise<{ data?:
   const parsed = productSchema.safeParse(values);
   if (!parsed.success) return { error: parsed.error.errors[0].message };
 
+  const { icon, bg_image_url, ...coreData } = parsed.data;
   const supabase = await createServiceClient();
+
   const { data, error } = await supabase
     .from("products")
-    .insert(parsed.data)
+    .insert(coreData)
     .select()
     .single();
   if (error) return { error: error.message };
+
+  // Guardar campos visuales por separado — falla silencioso si las columnas aún no existen en el schema cache
+  if (icon !== undefined || bg_image_url !== undefined) {
+    await supabase
+      .from("products")
+      .update({ icon: icon ?? null, bg_image_url: bg_image_url ?? null } as never)
+      .eq("id", (data as Product).id);
+  }
+
   return { data: data as Product };
 }
 
@@ -32,14 +43,25 @@ export async function updateProduct(id: string, values: ProductFormValues): Prom
   const parsed = productSchema.safeParse(values);
   if (!parsed.success) return { error: parsed.error.errors[0].message };
 
+  const { icon, bg_image_url, ...coreData } = parsed.data;
   const supabase = await createServiceClient();
+
   const { data, error } = await supabase
     .from("products")
-    .update(parsed.data)
+    .update(coreData)
     .eq("id", id)
     .select()
     .single();
   if (error) return { error: error.message };
+
+  // Guardar campos visuales por separado — falla silencioso si las columnas aún no existen en el schema cache
+  if (icon !== undefined || bg_image_url !== undefined) {
+    await supabase
+      .from("products")
+      .update({ icon: icon ?? null, bg_image_url: bg_image_url ?? null } as never)
+      .eq("id", id);
+  }
+
   return { data: data as Product };
 }
 
