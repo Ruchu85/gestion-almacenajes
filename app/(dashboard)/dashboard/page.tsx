@@ -863,20 +863,12 @@ export default function DashboardPage() {
                                                     !productBg && "hover:bg-gradient-to-r hover:from-cyan-50/60 hover:to-transparent dark:hover:from-cyan-950/20 dark:hover:to-transparent"
                                                   )}
                                                   style={productBg ? {
-                                                    backgroundImage: `url(${productBg})`,
-                                                    backgroundSize: "cover",
-                                                    backgroundPosition: "center center",
+                                                    backgroundImage: `linear-gradient(to right, hsl(var(--card)) 0px, hsl(var(--card)) 195px, transparent 265px, transparent calc(100% - 490px), hsl(var(--card)) calc(100% - 440px), hsl(var(--card)) 100%), url(${productBg})`,
+                                                    backgroundSize: "100% 100%, cover",
+                                                    backgroundPosition: "0 0, center center",
+                                                    backgroundRepeat: "no-repeat, no-repeat",
                                                   } : undefined}
                                                 >
-                                                  {/* Gradiente ventana: tapa izquierda+derecha sólidas, imagen visible en el centro */}
-                                                  {productBg && (
-                                                    <div
-                                                      className="absolute inset-0 pointer-events-none"
-                                                      style={{
-                                                        background: "linear-gradient(to right, hsl(var(--card)) 0px, hsl(var(--card)) 195px, transparent 265px, transparent calc(100% - 490px), hsl(var(--card)) calc(100% - 440px), hsl(var(--card)) 100%)"
-                                                      }}
-                                                    />
-                                                  )}
                                                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30 border border-cyan-200 dark:border-cyan-800 group-hover:from-cyan-200 group-hover:to-blue-200 transition-all duration-150">
                                                     <Package className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
                                                   </div>
