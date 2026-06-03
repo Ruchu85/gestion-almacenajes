@@ -849,6 +849,7 @@ export default function DashboardPage() {
                                           const puestasKey = `${group.warehouse_id}||${product.product_id}`;
                                           const isPuestasExpanded = expandedPuestas.has(puestasKey);
                                           const hasPuestas = product.puestas.length > 0;
+                                          const productBg = getProductBg(product.product_name);
 
                                           return (
                                             <div key={product.product_id} className="relative">
@@ -857,16 +858,24 @@ export default function DashboardPage() {
 
                                                 {/* Fila del producto */}
                                                 <div
-                                                  className="relative flex items-center gap-3 px-4 py-3 hover:bg-gradient-to-r hover:from-cyan-50/60 hover:to-transparent dark:hover:from-cyan-950/20 dark:hover:to-transparent transition-all duration-150 group"
-                                                  style={getProductBg(product.product_name) ? {
-                                                    backgroundImage: `url(${getProductBg(product.product_name)})`,
+                                                  className={cn(
+                                                    "relative flex items-center gap-3 px-4 py-3 transition-all duration-150 group",
+                                                    !productBg && "hover:bg-gradient-to-r hover:from-cyan-50/60 hover:to-transparent dark:hover:from-cyan-950/20 dark:hover:to-transparent"
+                                                  )}
+                                                  style={productBg ? {
+                                                    backgroundImage: `url(${productBg})`,
                                                     backgroundSize: "cover",
-                                                    backgroundPosition: "right center",
+                                                    backgroundPosition: "center center",
                                                   } : undefined}
                                                 >
-                                                  {/* Gradiente que cubre el texto y deja asomar la imagen solo en el extremo derecho */}
-                                                  {getProductBg(product.product_name) && (
-                                                    <div className="absolute inset-0 pointer-events-none bg-gradient-to-r from-card from-55% via-card/90 to-card/20 dark:from-card dark:from-55% dark:via-card/90 dark:to-card/20" />
+                                                  {/* Gradiente ventana: tapa izquierda+derecha sólidas, imagen visible en el centro */}
+                                                  {productBg && (
+                                                    <div
+                                                      className="absolute inset-0 pointer-events-none"
+                                                      style={{
+                                                        background: "linear-gradient(to right, hsl(var(--card)) 0px, hsl(var(--card)) 195px, transparent 265px, transparent calc(100% - 490px), hsl(var(--card)) calc(100% - 440px), hsl(var(--card)) 100%)"
+                                                      }}
+                                                    />
                                                   )}
                                                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30 border border-cyan-200 dark:border-cyan-800 group-hover:from-cyan-200 group-hover:to-blue-200 transition-all duration-150">
                                                     <Package className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
