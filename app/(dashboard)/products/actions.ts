@@ -30,7 +30,7 @@ export async function createProduct(values: ProductFormValues): Promise<{ data?:
 
   if (icon !== undefined || bg_image_url !== undefined) {
     try {
-      const db = getDb();
+      const db = await getDb();
       const pid = (data as Product).id;
       await db`UPDATE products SET icon = ${icon ?? null}, bg_image_url = ${bg_image_url ?? null} WHERE id = ${pid}`;
     } catch (e) {
@@ -59,7 +59,7 @@ export async function updateProduct(id: string, values: ProductFormValues): Prom
 
   if (icon !== undefined || bg_image_url !== undefined) {
     try {
-      const db = getDb();
+      const db = await getDb();
       await db`UPDATE products SET icon = ${icon ?? null}, bg_image_url = ${bg_image_url ?? null} WHERE id = ${id}`;
     } catch (e) {
       return { data: data as Product, visualError: String(e) };

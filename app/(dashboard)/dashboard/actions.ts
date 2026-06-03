@@ -10,7 +10,7 @@ export type ProductVisual = {
 
 export async function getProductVisuals(): Promise<ProductVisual[]> {
   try {
-    const sql = getDb();
+    const sql = await getDb();
     const rows = await sql<ProductVisual[]>`
       SELECT id, icon, bg_image_url FROM products
     `;
