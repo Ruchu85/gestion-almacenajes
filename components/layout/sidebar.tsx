@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PdfImportDialog } from "@/modules/pdf-import/components/pdf-import-dialog";
 import { PdfPuestasDialog } from "@/modules/pdf-puestas/components/pdf-puestas-dialog";
 
@@ -123,6 +123,18 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [pdfPuestaOpen, setPdfPuestaOpen] = useState(false);
+  const [pdfPuestaAutoLoad, setPdfPuestaAutoLoad] = useState(false);
+
+  // El aviso del Dashboard dispara este evento para abrir el diálogo de
+  // puestas y arrancar directamente "Leer PDFs de Base de Datos".
+  useEffect(() => {
+    function handleOpenFromDashboard() {
+      setPdfPuestaAutoLoad(true);
+      setPdfPuestaOpen(true);
+    }
+    window.addEventListener("gestalmacen:open-pdf-puestas", handleOpenFromDashboard);
+    return () => window.removeEventListener("gestalmacen:open-pdf-puestas", handleOpenFromDashboard);
+  }, []);
 
   return (
     <aside
@@ -230,7 +242,7 @@ export function Sidebar() {
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  onClick={() => setPdfPuestaOpen(true)}
+                  onClick={() => { setPdfPuestaAutoLoad(false); setPdfPuestaOpen(true); }}
                   className="flex h-10 w-10 items-center justify-center rounded-md mx-auto transition-all duration-150 text-muted-foreground hover:bg-amber-500/8 hover:text-amber-600 dark:hover:text-amber-400"
                 >
                   <FilePlus2 className="h-5 w-5" />
@@ -252,7 +264,11 @@ export function Sidebar() {
       </ScrollArea>
 
       <PdfImportDialog open={pdfOpen} onOpenChange={setPdfOpen} />
-      <PdfPuestasDialog open={pdfPuestaOpen} onOpenChange={setPdfPuestaOpen} />
+      <PdfPuestasDialog
+        open={pdfPuestaOpen}
+        onOpenChange={(o) => { setPdfPuestaOpen(o); if (!o) setPdfPuestaAutoLoad(false); }}
+        autoLoad={pdfPuestaAutoLoad}
+      />
 
       <div className="border-t p-2">
         <Button

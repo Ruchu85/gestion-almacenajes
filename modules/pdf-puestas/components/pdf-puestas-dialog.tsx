@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import {
   FileUp, FileText, Loader2, ScanSearch, X, ArrowLeft, CheckCircle2,
   AlertTriangle, ChevronsUpDown, Check, Search, Info, Database, Trash2, Clock,
@@ -39,6 +39,8 @@ import type { PuestaProposalState } from "@/validations/pdf-puestas.schema";
 interface PdfPuestasDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Si es true, al abrirse arranca directamente "Leer PDFs de Base de Datos". */
+  autoLoad?: boolean;
 }
 
 const MAX_MB = 15;
@@ -63,9 +65,10 @@ interface EditableState {
   comentarios: string;
 }
 
-export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) {
+export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPuestasDialogProps) {
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
+  const autoLoadTriggered = useRef(false);
 
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -193,6 +196,20 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
       setLoadingQueue(false);
     }
   }
+
+  // Si se abre por el aviso del Dashboard (autoLoad), arrancar la lectura
+  // desde Storage una sola vez por apertura.
+  useEffect(() => {
+    if (!open) {
+      autoLoadTriggered.current = false;
+      return;
+    }
+    if (autoLoad && !autoLoadTriggered.current) {
+      autoLoadTriggered.current = true;
+      void handleLoadFromDb();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, autoLoad]);
 
   // ── Analizar un PDF concreto del bucket ──────────────────
   async function analyzeFromStorage(name: string) {

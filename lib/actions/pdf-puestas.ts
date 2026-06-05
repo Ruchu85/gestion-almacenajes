@@ -173,6 +173,28 @@ export async function listPuestaPdfsAction(): Promise<{ files?: string[]; error?
   return { files };
 }
 
+/**
+ * Cuenta solo los PDF NUEVOS (en la raíz del bucket, los que acaba de subir
+ * BC), sin incluir "pendientes/". Lo usa el aviso del Dashboard.
+ */
+export async function countNewPuestaPdfsAction(): Promise<{ count?: number; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no válida. Vuelve a iniciar sesión." };
+
+  const admin = await createServiceClient();
+  const { data, error } = await admin.storage.from(STORAGE_BUCKET).list("", {
+    limit: 1000,
+    sortBy: { column: "name", order: "asc" },
+  });
+  if (error) return { error: error.message };
+
+  const count = (data ?? []).filter((f) => f.name && f.name.toLowerCase().endsWith(".pdf")).length;
+  return { count };
+}
+
 /** Descarga un PDF del bucket por su nombre y lo analiza. */
 export async function analyzePuestaFromStorageAction(
   name: string

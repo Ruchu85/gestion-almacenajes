@@ -19,6 +19,7 @@ import {
   X,
   Truck,
   PackageMinus,
+  FileWarning,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { StorageCostsService } from "@/services/storage-costs.service";
@@ -47,6 +48,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { formatCurrency, formatNumber, formatQuantity, formatDate } from "@/utils/format";
+import { countNewPuestaPdfsAction } from "@/lib/actions/pdf-puestas";
 
 interface PuestaItem {
   id: string;
@@ -118,6 +120,32 @@ export default function DashboardPage() {
   const [isLoadingKpis, setIsLoadingKpis] = useState(true);
   const [isLoadingStock, setIsLoadingStock] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [pendingPdfCount, setPendingPdfCount] = useState(0);
+
+  // Comprobar en Supabase si hay PDFs de puestas sin procesar: al abrir,
+  // cada 5 min, y al volver a la pestaña. Muestra el aviso del Dashboard.
+  useEffect(() => {
+    let active = true;
+    async function checkPendingPdfs() {
+      try {
+        const res = await countNewPuestaPdfsAction();
+        if (active && typeof res.count === "number") setPendingPdfCount(res.count);
+      } catch {
+        /* silencioso: es un aviso, no debe romper el dashboard */
+      }
+    }
+    checkPendingPdfs();
+    const intervalId = setInterval(checkPendingPdfs, 5 * 60 * 1000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") checkPendingPdfs();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
 
   const supabase = useMemo(() => createClient(), []);
   const service = useMemo(() => new StorageCostsService(supabase), [supabase]);
@@ -658,6 +686,23 @@ export default function DashboardPage() {
                 </CardDescription>
               </div>
             </div>
+
+            {/* Aviso: PDFs de puestas sin procesar en Supabase */}
+            {pendingPdfCount > 0 && (
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent("gestalmacen:open-pdf-puestas"))}
+                className="group flex items-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-orange-500/30 ring-1 ring-orange-400/60 animate-pulse hover:animate-none hover:from-amber-600 hover:to-orange-700 transition-colors"
+                title="Pulsa para leer los PDFs desde la base de datos"
+              >
+                <FileWarning className="h-4 w-4 shrink-0" />
+                <span>
+                  Existen nuevas Ptas. a Disposición sin procesar
+                  <span className="ml-1.5 rounded-full bg-white/25 px-1.5 py-0.5 text-xs">{pendingPdfCount}</span>
+                </span>
+              </button>
+            )}
+
             {!isLoadingStock && totalWarehouses > 0 && (
               <Badge variant="outline" className="border-violet-300 text-violet-600 dark:border-violet-700 dark:text-violet-400">
                 {totalWarehouses}{" "}
