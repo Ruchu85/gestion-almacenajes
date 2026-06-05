@@ -1,0 +1,29 @@
+{
+  "id": "8f3c1d2e-7a4b-4c9e-9b1f-2d6e8a0c5f31",
+  "name": "GestAlmacen Connector",
+  "publisher": "Tu Empresa",
+  "version": "1.0.0.0",
+  "brief": "Conector con la app SaaS de Gestión de Almacenajes",
+  "description": "Envía maestros (productos, clientes, proveedores) y movimientos (entradas, salidas, puestas a disposición) desde Business Central a la API REST de Gestión de Almacenajes.",
+  "privacyStatement": "",
+  "EULA": "",
+  "help": "",
+  "url": "https://gestion-almacenajes.vercel.app",
+  "logo": "",
+  "dependencies": [],
+  "screenshots": [],
+  "platform": "24.0.0.0",
+  "application": "24.0.0.0",
+  "idRanges": [
+    {
+      "from": 50100,
+      "to": 50149
+    }
+  ],
+  "contextSensitiveHelpUrl": "https://gestion-almacenajes.vercel.app",
+  "showMyCode": true,
+  "runtime": "13.0",
+  "features": [
+    "NoImplicitWith"
+  ]
+}

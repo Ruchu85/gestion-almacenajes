@@ -75,10 +75,14 @@ export interface GeminiRawExtraction {
 }
 
 /**
- * Envía un PDF (en base64) a Gemini y devuelve el JSON crudo extraído.
- * Lanza Error con un mensaje legible si la llamada falla.
+ * Llama a Gemini con un PDF (base64), un prompt y un responseSchema, y
+ * devuelve el JSON crudo ya parseado. Centraliza el manejo de errores HTTP.
  */
-export async function extractSalidasFromPdf(pdfBase64: string): Promise<unknown> {
+async function callGemini(
+  pdfBase64: string,
+  prompt: string,
+  responseSchema: unknown
+): Promise<unknown> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error(
@@ -92,14 +96,14 @@ export async function extractSalidasFromPdf(pdfBase64: string): Promise<unknown>
         role: "user",
         parts: [
           { inline_data: { mime_type: "application/pdf", data: pdfBase64 } },
-          { text: EXTRACTION_PROMPT },
+          { text: prompt },
         ],
       },
     ],
     generationConfig: {
       temperature: 0,
       responseMimeType: "application/json",
-      responseSchema: RESPONSE_SCHEMA,
+      responseSchema,
     },
   };
 
@@ -141,4 +145,68 @@ export async function extractSalidasFromPdf(pdfBase64: string): Promise<unknown>
   } catch {
     throw new Error("La respuesta de Gemini no es un JSON válido.");
   }
+}
+
+/**
+ * Envía un PDF (en base64) a Gemini y devuelve el JSON crudo extraído.
+ * Lanza Error con un mensaje legible si la llamada falla.
+ */
+export async function extractSalidasFromPdf(pdfBase64: string): Promise<unknown> {
+  return callGemini(pdfBase64, EXTRACTION_PROMPT, RESPONSE_SCHEMA);
+}
+
+// ============================================================
+// EXTRACCIÓN DE PUESTAS A DISPOSICIÓN (documento "Aplicación")
+// ============================================================
+
+/** Esquema de respuesta para el PDF de aplicación / puesta a disposición. */
+const PUESTA_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    numero_aplicacion: { type: "string", description: "Campo 'Nº Aplicación', ej. D02600777_10-1" },
+    cliente: { type: "string", description: "Campo 'Cliente', ej. NUTRIMENTOS DEZA, S.A." },
+    transitario: { type: "string", description: "Campo 'Transitario', ej. NOGUEIRA" },
+    puerto: { type: "string", description: "Campo 'Puerto', ej. MARIN" },
+    producto: { type: "string", description: "Campo 'Producto', ej. TRIGO GRANEL" },
+    cantidad: { type: "number", description: "Campo 'Cantidad' como número, sin la unidad" },
+    fecha_aplicacion: { type: "string", description: "Campo 'Fecha aplic.' en formato YYYY-MM-DD" },
+    fecha_plancha: { type: "string", description: "Campo 'Plancha' (una fecha) en formato YYYY-MM-DD" },
+  },
+  required: [
+    "numero_aplicacion", "cliente", "transitario", "puerto", "producto",
+    "cantidad", "fecha_aplicacion", "fecha_plancha",
+  ],
+} as const;
+
+const PUESTA_EXTRACTION_PROMPT = `
+Eres un asistente experto en leer documentos logísticos de almacenaje en español.
+
+El documento adjunto es una "Aplicación" (puesta a disposición de mercancía). Contiene un único
+bloque de datos con etiquetas a la izquierda y valores a la derecha. Extrae estos campos:
+
+- "numero_aplicacion": el valor del campo "Nº Aplicación". Ejemplo: "D02600777_10-1".
+- "cliente": el valor del campo "Cliente". Ejemplo: "NUTRIMENTOS DEZA, S.A.".
+- "transitario": el valor del campo "Transitario". Ejemplo: "NOGUEIRA".
+- "puerto": el valor del campo "Puerto". Ejemplo: "MARIN".
+- "producto": el valor del campo "Producto". Ejemplo: "TRIGO GRANEL".
+- "cantidad": el valor numérico del campo "Cantidad", SIN la unidad. La coma es separador decimal
+  (ej. "150,00 TNS" → 150.00). Devuélvelo como número decimal con punto.
+- "fecha_aplicacion": el valor del campo "Fecha aplic.", convertido SIEMPRE a formato YYYY-MM-DD.
+  Las fechas del documento vienen en DD/MM/YYYY.
+- "fecha_plancha": el valor del campo "Plancha" (que es una FECHA, no un número de días),
+  convertido SIEMPRE a formato YYYY-MM-DD.
+
+REGLAS ESTRICTAS:
+- NO confundas el campo "Transitario" con el "Cliente".
+- NO inventes datos. Si un campo no aparece, devuélvelo como cadena vacía.
+- Ignora el texto legal, direcciones de la cabecera y correos electrónicos.
+
+Devuelve el resultado siguiendo el esquema JSON proporcionado.
+`.trim();
+
+/**
+ * Envía un PDF de "Aplicación" a Gemini y devuelve el JSON crudo de la puesta.
+ */
+export async function extractPuestaFromPdf(pdfBase64: string): Promise<unknown> {
+  return callGemini(pdfBase64, PUESTA_EXTRACTION_PROMPT, PUESTA_RESPONSE_SCHEMA);
 }

@@ -16,6 +16,7 @@ import {
   ClipboardList,
   Search,
   FileUp,
+  FilePlus2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState } from "react";
 import { PdfImportDialog } from "@/modules/pdf-import/components/pdf-import-dialog";
+import { PdfPuestasDialog } from "@/modules/pdf-puestas/components/pdf-puestas-dialog";
 
 interface NavItem {
   title: string;
@@ -120,6 +122,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
+  const [pdfPuestaOpen, setPdfPuestaOpen] = useState(false);
 
   return (
     <aside
@@ -196,7 +199,7 @@ export function Sidebar() {
             );
           })}
 
-          {/* Adjuntar PDF — abre un popup, no es una ruta */}
+          {/* Subir Salidas Puerto (PDF) — abre un popup, no es una ruta */}
           {collapsed ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -208,7 +211,7 @@ export function Sidebar() {
                   <FileUp className="h-5 w-5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="right">Adjuntar PDF</TooltipContent>
+              <TooltipContent side="right">Subir Salidas Puerto (PDF)</TooltipContent>
             </Tooltip>
           ) : (
             <button
@@ -217,13 +220,39 @@ export function Sidebar() {
               className="flex h-9 items-center gap-3 rounded-md px-3 text-sm font-medium transition-all duration-150 text-muted-foreground hover:bg-sky-500/8 hover:text-sky-600 dark:hover:text-sky-400"
             >
               <FileUp className="h-4 w-4 shrink-0" />
-              <span className="truncate">Adjuntar PDF</span>
+              <span className="truncate">Subir Salidas Puerto (PDF)</span>
+            </button>
+          )}
+
+          {/* Subir Pta a Disposición (PDF) — abre un popup, no es una ruta */}
+          {collapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setPdfPuestaOpen(true)}
+                  className="flex h-10 w-10 items-center justify-center rounded-md mx-auto transition-all duration-150 text-muted-foreground hover:bg-amber-500/8 hover:text-amber-600 dark:hover:text-amber-400"
+                >
+                  <FilePlus2 className="h-5 w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Subir Pta a Disposición (PDF)</TooltipContent>
+            </Tooltip>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setPdfPuestaOpen(true)}
+              className="flex h-9 items-center gap-3 rounded-md px-3 text-sm font-medium transition-all duration-150 text-muted-foreground hover:bg-amber-500/8 hover:text-amber-600 dark:hover:text-amber-400"
+            >
+              <FilePlus2 className="h-4 w-4 shrink-0" />
+              <span className="truncate">Subir Pta a Disposición (PDF)</span>
             </button>
           )}
         </nav>
       </ScrollArea>
 
       <PdfImportDialog open={pdfOpen} onOpenChange={setPdfOpen} />
+      <PdfPuestasDialog open={pdfPuestaOpen} onOpenChange={setPdfPuestaOpen} />
 
       <div className="border-t p-2">
         <Button

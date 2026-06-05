@@ -198,7 +198,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileUp className="h-5 w-5 text-sky-500" />
-            {showResults ? "Propuesta de salidas" : "Adjuntar PDF"}
+            {showResults ? "Propuesta de salidas" : "Subir Salidas Puerto (PDF)"}
           </DialogTitle>
           <DialogDescription>
             {showResults
