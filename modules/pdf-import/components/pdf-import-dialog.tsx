@@ -180,8 +180,13 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
         });
       }
 
-      router.refresh();
-      if (failCount === 0) handleOpenChange(false);
+      if (failCount === 0) {
+        // El dashboard carga datos en cliente; recargamos para reflejar
+        // las salidas grabadas sin tener que pulsar F5 manualmente.
+        window.location.reload();
+      } else {
+        router.refresh();
+      }
     } catch (err) {
       toast({ variant: "destructive", title: "Error inesperado", description: (err as Error).message });
     } finally {

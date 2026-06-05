@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback } from "react";
 import {
   FileUp, FileText, Loader2, ScanSearch, X, ArrowLeft, CheckCircle2,
-  AlertTriangle, ChevronsUpDown, Check, Search, Info,
+  AlertTriangle, ChevronsUpDown, Check, Search, Info, Database, Trash2, Clock,
 } from "lucide-react";
 import { addDays, parseISO } from "date-fns";
 import {
@@ -27,8 +27,12 @@ import { cn } from "@/lib/utils";
 import { formatDate } from "@/utils/format";
 import {
   analyzePuestaPdfAction,
+  analyzePuestaFromStorageAction,
+  listPuestaPdfsAction,
   confirmPuestaPdfAction,
+  movePuestaPdfAction,
   type AnalyzePuestaResult,
+  type PuestaPdfFolder,
 } from "@/lib/actions/pdf-puestas";
 import type { PuestaProposalState } from "@/validations/pdf-puestas.schema";
 
@@ -68,12 +72,21 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [moving, setMoving] = useState(false);
   const [result, setResult] = useState<AnalyzePuestaResult | null>(null);
   const [editable, setEditable] = useState<EditableState | null>(null);
+
+  // Cola de PDFs leídos desde Storage
+  const [queue, setQueue] = useState<string[]>([]);
+  const [queueIndex, setQueueIndex] = useState(0);
+  const [queueError, setQueueError] = useState<string | null>(null);
+  const [loadingQueue, setLoadingQueue] = useState(false);
 
   // Combobox de cliente
   const [customerPopoverOpen, setCustomerPopoverOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
+
+  const queueMode = queue.length > 0;
 
   // ── Reset ────────────────────────────────────────────────
   function reset() {
@@ -82,14 +95,35 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
     setUploadError(null);
     setAnalyzing(false);
     setConfirming(false);
+    setMoving(false);
     setResult(null);
     setEditable(null);
+    setQueue([]);
+    setQueueIndex(0);
+    setQueueError(null);
+    setLoadingQueue(false);
     setCustomerSearch("");
   }
 
   function handleOpenChange(next: boolean) {
     if (!next) reset();
     onOpenChange(next);
+  }
+
+  // ── Volcar una propuesta del servidor al estado editable ──
+  function applyResult(data: AnalyzePuestaResult) {
+    const p = data.proposal;
+    setResult(data);
+    setEditable({
+      numero_contrato: p.numero_contrato ?? "",
+      warehouse_id: p.warehouse.match?.id ?? "",
+      product_id: p.product.match?.id ?? "",
+      customer_id: p.customer.match?.id ?? "",
+      cantidad_inicial: p.cantidad_inicial,
+      fecha_puesta: p.fecha_puesta ?? new Date().toISOString().split("T")[0],
+      dias_plancha: p.dias_plancha,
+      comentarios: p.comentarios ?? "",
+    });
   }
 
   // ── Selección de archivo ─────────────────────────────────
@@ -115,7 +149,7 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
     validateAndSet(e.dataTransfer.files?.[0]);
   }
 
-  // ── Analizar ─────────────────────────────────────────────
+  // ── Analizar archivo subido ──────────────────────────────
   async function handleAnalyze() {
     if (!file) return;
     setAnalyzing(true);
@@ -128,18 +162,7 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
         setUploadError(res.error ?? "No se pudo analizar el documento.");
         return;
       }
-      const p = res.data.proposal;
-      setResult(res.data);
-      setEditable({
-        numero_contrato: p.numero_contrato ?? "",
-        warehouse_id: p.warehouse.match?.id ?? "",
-        product_id: p.product.match?.id ?? "",
-        customer_id: p.customer.match?.id ?? "",
-        cantidad_inicial: p.cantidad_inicial,
-        fecha_puesta: p.fecha_puesta ?? new Date().toISOString().split("T")[0],
-        dias_plancha: p.dias_plancha,
-        comentarios: p.comentarios ?? "",
-      });
+      applyResult(res.data);
     } catch (err) {
       setUploadError(`Error inesperado: ${(err as Error).message}`);
     } finally {
@@ -147,11 +170,93 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
     }
   }
 
+  // ── Leer PDFs desde la base de datos (Storage) ───────────
+  async function handleLoadFromDb() {
+    setLoadingQueue(true);
+    setUploadError(null);
+    try {
+      const res = await listPuestaPdfsAction();
+      if (res.error) {
+        setUploadError(res.error);
+        return;
+      }
+      if (!res.files || res.files.length === 0) {
+        setUploadError("No hay PDFs en la base de datos (bucket «ptas-disposicion»).");
+        return;
+      }
+      setQueue(res.files);
+      setQueueIndex(0);
+      void analyzeFromStorage(res.files[0]);
+    } catch (err) {
+      setUploadError(`Error inesperado: ${(err as Error).message}`);
+    } finally {
+      setLoadingQueue(false);
+    }
+  }
+
+  // ── Analizar un PDF concreto del bucket ──────────────────
+  async function analyzeFromStorage(name: string) {
+    setAnalyzing(true);
+    setQueueError(null);
+    setResult(null);
+    setEditable(null);
+    try {
+      const res = await analyzePuestaFromStorageAction(name);
+      if (res.error || !res.data) {
+        setQueueError(res.error ?? "No se pudo analizar el documento.");
+        return;
+      }
+      applyResult(res.data);
+    } catch (err) {
+      setQueueError(`Error inesperado: ${(err as Error).message}`);
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  // ── Avanzar en la cola (o terminar) ──────────────────────
+  function advanceQueue() {
+    if (queueIndex < queue.length - 1) {
+      const next = queueIndex + 1;
+      setQueueIndex(next);
+      void analyzeFromStorage(queue[next]);
+    } else {
+      // Fin de la cola: recargar para refrescar el dashboard.
+      window.location.reload();
+    }
+  }
+
+  // Mueve el PDF actual a una carpeta del bucket y avanza. Si el mover
+  // falla, avisa pero continúa (no bloquea la cola).
+  async function moveCurrentTo(folder: PuestaPdfFolder) {
+    if (currentName) {
+      const mv = await movePuestaPdfAction(currentName, folder);
+      if (mv.error) {
+        toast({
+          variant: "destructive",
+          title: "No se pudo mover el PDF",
+          description: mv.error,
+        });
+      }
+    }
+    advanceQueue();
+  }
+
+  // Botones "Descartar" / "Dejar Pte": mueven sin crear puesta.
+  async function handleMoveOnly(folder: PuestaPdfFolder) {
+    setMoving(true);
+    try {
+      await moveCurrentTo(folder);
+    } finally {
+      setMoving(false);
+    }
+  }
+
   function patch(p: Partial<EditableState>) {
     setEditable((prev) => (prev ? { ...prev, ...p } : prev));
   }
 
-  // ── Confirmar ────────────────────────────────────────────
+  // ── Validez y confirmación ───────────────────────────────
   const canConfirm =
     !!editable &&
     !!editable.warehouse_id &&
@@ -187,9 +292,13 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
         return;
       }
       toast({ title: "Puesta creada", description: "La puesta a disposición se ha registrado." });
-      // El dashboard carga datos en cliente, así que recargamos para reflejar
-      // la nueva puesta sin tener que pulsar F5 manualmente.
-      window.location.reload();
+      if (queueMode) {
+        // Solo tras crear la puesta movemos el PDF a "procesados", y avanzamos.
+        await moveCurrentTo("procesados");
+      } else {
+        // El dashboard carga datos en cliente; recargamos para reflejarlo.
+        window.location.reload();
+      }
     } catch (err) {
       toast({ variant: "destructive", title: "Error inesperado", description: (err as Error).message });
     } finally {
@@ -197,9 +306,11 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
     }
   }
 
-  const showResults = result !== null && editable !== null;
+  const showProposal = result !== null && editable !== null;
   const proposal = result?.proposal;
   const masters = result?.masters;
+  const isLastInQueue = queueIndex >= queue.length - 1;
+  const currentName = queueMode ? queue[queueIndex] : null;
 
   // Fin de plancha calculado para mostrar
   let finPlancha: string | null = null;
@@ -220,21 +331,21 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className={cn(showResults ? "sm:max-w-2xl" : "sm:max-w-[480px]", "max-h-[90vh] overflow-y-auto")}>
+      <DialogContent className={cn(showProposal ? "sm:max-w-2xl" : "sm:max-w-[480px]", "max-h-[90vh] overflow-y-auto")}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileUp className="h-5 w-5 text-amber-500" />
-            {showResults ? "Propuesta de puesta a disposición" : "Subir Pta a Disposición (PDF)"}
+            {showProposal ? "Propuesta de puesta a disposición" : "Subir Pta a Disposición (PDF)"}
           </DialogTitle>
           <DialogDescription>
-            {showResults
+            {showProposal
               ? "Revisa y ajusta los datos detectados. Nada se guarda hasta que confirmes."
-              : "Arrastra el PDF de la aplicación o búscalo en tu equipo, y pulsa Analizar."}
+              : "Arrastra el PDF de la aplicación, búscalo en tu equipo, o léelos desde la base de datos."}
           </DialogDescription>
         </DialogHeader>
 
-        {/* ── Vista de carga ── */}
-        {!showResults && (
+        {/* ── Vista de carga (subida manual) ── */}
+        {!showProposal && !queueMode && (
           <div className="space-y-4">
             <div
               role="button"
@@ -285,6 +396,23 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
               )}
             </div>
 
+            {/* Separador + botón leer desde la base de datos */}
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs text-muted-foreground">o</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={handleLoadFromDb}
+              disabled={loadingQueue}
+            >
+              {loadingQueue ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Database className="mr-2 h-4 w-4" />}
+              {loadingQueue ? "Buscando PDFs…" : "Leer PDFs de Base de Datos"}
+            </Button>
+
             {uploadError && (
               <p className="text-sm text-destructive flex items-center gap-1.5">
                 <X className="h-4 w-4" /> {uploadError}
@@ -293,9 +421,38 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
           </div>
         )}
 
+        {/* ── Cola: analizando o error de un PDF ── */}
+        {!showProposal && queueMode && (
+          <div className="py-8 text-center space-y-3">
+            <p className="text-xs text-muted-foreground">
+              PDF {queueIndex + 1} de {queue.length}
+              {currentName ? <> · <span className="font-mono">{currentName}</span></> : null}
+            </p>
+            {analyzing ? (
+              <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin text-amber-500" />
+                Analizando documento…
+              </div>
+            ) : queueError ? (
+              <div className="flex flex-col items-center gap-2 text-sm text-destructive">
+                <AlertTriangle className="h-6 w-6" />
+                <span>{queueError}</span>
+              </div>
+            ) : null}
+          </div>
+        )}
+
         {/* ── Vista de propuesta ── */}
-        {showResults && editable && proposal && masters && (
+        {showProposal && editable && proposal && masters && (
           <div className="space-y-4">
+            {/* Cabecera de cola */}
+            {queueMode && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+                PDF {queueIndex + 1} de {queue.length}
+                {currentName ? <> · <span className="font-mono">{currentName}</span></> : null}
+              </div>
+            )}
+
             {/* Estado + datos crudos del PDF */}
             <div className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2">
               <div className="text-xs text-muted-foreground">
@@ -493,17 +650,56 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
         )}
 
         <DialogFooter>
-          {!showResults ? (
+          {!showProposal && !queueMode ? (
+            // Subida manual
             <>
-              <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={analyzing}>
+              <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={analyzing || loadingQueue}>
                 Cancelar
               </Button>
-              <Button onClick={handleAnalyze} disabled={!file || analyzing}>
+              <Button onClick={handleAnalyze} disabled={!file || analyzing || loadingQueue}>
                 {analyzing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanSearch className="mr-2 h-4 w-4" />}
                 {analyzing ? "Analizando…" : "Analizar Documento"}
               </Button>
             </>
+          ) : !showProposal && queueMode ? (
+            // Cola: analizando o con error
+            queueError ? (
+              <div className="flex w-full items-center justify-between gap-2">
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => handleMoveOnly("descartadas")} disabled={moving}>
+                    <Trash2 className="mr-2 h-4 w-4" /> Descartar
+                  </Button>
+                  <Button variant="outline" onClick={() => handleMoveOnly("pendientes")} disabled={moving}>
+                    <Clock className="mr-2 h-4 w-4" /> Dejar Pte
+                  </Button>
+                </div>
+                <Button variant="ghost" onClick={reset} disabled={moving}>Cancelar</Button>
+              </div>
+            ) : (
+              <Button variant="outline" onClick={reset} disabled={analyzing}>
+                Cancelar
+              </Button>
+            )
+          ) : queueMode ? (
+            // Propuesta dentro de una cola: Descartar / Dejar Pte / Crear
+            <div className="flex w-full items-center justify-between gap-2">
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => handleMoveOnly("descartadas")} disabled={confirming || moving}>
+                  <Trash2 className="mr-2 h-4 w-4" /> Descartar
+                </Button>
+                <Button variant="outline" onClick={() => handleMoveOnly("pendientes")} disabled={confirming || moving}>
+                  <Clock className="mr-2 h-4 w-4" /> Dejar Pte
+                </Button>
+              </div>
+              <Button onClick={handleConfirm} disabled={confirming || moving || !canConfirm}>
+                {confirming || moving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                {confirming
+                  ? "Creando…"
+                  : isLastInQueue ? "Crear y finalizar" : "Crear y siguiente"}
+              </Button>
+            </div>
           ) : (
+            // Propuesta de subida manual
             <>
               <Button variant="outline" onClick={reset} disabled={confirming}>
                 <ArrowLeft className="mr-2 h-4 w-4" /> Volver
