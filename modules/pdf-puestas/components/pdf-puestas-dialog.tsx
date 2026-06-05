@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import {
   FileUp, FileText, Loader2, ScanSearch, X, ArrowLeft, CheckCircle2,
   AlertTriangle, ChevronsUpDown, Check, Search, Info,
@@ -61,7 +60,6 @@ interface EditableState {
 }
 
 export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) {
-  const router = useRouter();
   const { toast } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -189,8 +187,9 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
         return;
       }
       toast({ title: "Puesta creada", description: "La puesta a disposición se ha registrado." });
-      router.refresh();
-      handleOpenChange(false);
+      // El dashboard carga datos en cliente, así que recargamos para reflejar
+      // la nueva puesta sin tener que pulsar F5 manualmente.
+      window.location.reload();
     } catch (err) {
       toast({ variant: "destructive", title: "Error inesperado", description: (err as Error).message });
     } finally {
