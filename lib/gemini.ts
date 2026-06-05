@@ -107,23 +107,49 @@ async function callGemini(
     },
   };
 
-  let response: Response;
-  try {
-    response = await fetch(`${GEMINI_ENDPOINT(GEMINI_MODEL)}?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    });
-  } catch (err) {
-    throw new Error(`No se pudo contactar con Gemini: ${(err as Error).message}`);
-  }
+  // Reintentos con backoff ante errores transitorios (429 saturación de
+  // cuota, 503 modelo sobrecargado). El resto de errores no se reintentan.
+  const RETRYABLE = new Set([429, 503]);
+  const MAX_ATTEMPTS = 3;
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  if (!response.ok) {
+  let response: Response | null = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      response = await fetch(`${GEMINI_ENDPOINT(GEMINI_MODEL)}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+    } catch (err) {
+      // Error de red: reintentar si quedan intentos.
+      if (attempt < MAX_ATTEMPTS) {
+        await sleep(attempt * 1200);
+        continue;
+      }
+      throw new Error(`No se pudo contactar con Gemini: ${(err as Error).message}`);
+    }
+
+    if (response.ok) break;
+
+    // Respuesta de error: reintentar solo los transitorios.
+    if (RETRYABLE.has(response.status) && attempt < MAX_ATTEMPTS) {
+      await sleep(attempt * 1500); // 1.5s, luego 3s
+      continue;
+    }
+
     const detail = await response.text().catch(() => "");
     if (response.status === 429) {
-      throw new Error("Límite de peticiones de Gemini alcanzado. Espera unos segundos y reinténtalo.");
+      throw new Error("Gemini está saturado por límite de peticiones. Espera unos segundos y reinténtalo.");
+    }
+    if (response.status === 503) {
+      throw new Error("El modelo de Gemini está sobrecargado ahora mismo. Espera un momento y vuelve a intentarlo.");
     }
     throw new Error(`Gemini devolvió ${response.status}: ${detail.slice(0, 300)}`);
+  }
+
+  if (!response) {
+    throw new Error("No se pudo obtener respuesta de Gemini tras varios intentos.");
   }
 
   const json = (await response.json()) as {
