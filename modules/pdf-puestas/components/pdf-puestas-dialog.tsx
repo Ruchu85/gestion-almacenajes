@@ -311,6 +311,7 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
   const masters = result?.masters;
   const isLastInQueue = queueIndex >= queue.length - 1;
   const currentName = queueMode ? queue[queueIndex] : null;
+  const fromPendientes = !!currentName?.startsWith("pendientes/");
 
   // Fin de plancha calculado para mostrar
   let finPlancha: string | null = null;
@@ -427,6 +428,7 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
             <p className="text-xs text-muted-foreground">
               PDF {queueIndex + 1} de {queue.length}
               {currentName ? <> · <span className="font-mono">{currentName}</span></> : null}
+              {fromPendientes ? <span className="ml-1 text-amber-600">(de Pendientes)</span> : null}
             </p>
             {analyzing ? (
               <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
@@ -450,6 +452,7 @@ export function PdfPuestasDialog({ open, onOpenChange }: PdfPuestasDialogProps) 
               <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400">
                 PDF {queueIndex + 1} de {queue.length}
                 {currentName ? <> · <span className="font-mono">{currentName}</span></> : null}
+                {fromPendientes ? <span className="ml-1 font-semibold">(de Pendientes)</span> : null}
               </div>
             )}
 

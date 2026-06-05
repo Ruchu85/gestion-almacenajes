@@ -137,7 +137,12 @@ export async function analyzePuestaPdfAction(
 // LEER PDFs DESDE SUPABASE STORAGE
 // ============================================================
 
-/** Lista los PDF disponibles en el bucket (los que sube BC). */
+/**
+ * Lista los PDF a procesar: los de la raíz del bucket (los que sube BC)
+ * y también los que quedaron en "pendientes/". Devuelve rutas completas
+ * (p.ej. "foo.pdf" o "pendientes/foo.pdf") para poder descargarlos y
+ * moverlos correctamente.
+ */
 export async function listPuestaPdfsAction(): Promise<{ files?: string[]; error?: string }> {
   const supabase = await createClient();
   const {
@@ -147,15 +152,23 @@ export async function listPuestaPdfsAction(): Promise<{ files?: string[]; error?
 
   // Storage con service client (el bucket es privado).
   const admin = await createServiceClient();
-  const { data, error } = await admin.storage.from(STORAGE_BUCKET).list("", {
-    limit: 1000,
-    sortBy: { column: "name", order: "asc" },
-  });
-  if (error) return { error: error.message };
+  const listOpts = { limit: 1000, sortBy: { column: "name", order: "asc" as const } };
 
-  const files = (data ?? [])
-    .filter((f) => f.name && f.name.toLowerCase().endsWith(".pdf"))
-    .map((f) => f.name);
+  const [rootRes, pendRes] = await Promise.all([
+    admin.storage.from(STORAGE_BUCKET).list("", listOpts),
+    admin.storage.from(STORAGE_BUCKET).list("pendientes", listOpts),
+  ]);
+
+  if (rootRes.error) return { error: rootRes.error.message };
+  // Si "pendientes/" no existe aún, Storage devuelve lista vacía (sin error).
+  if (pendRes.error) return { error: pendRes.error.message };
+
+  const isPdf = (n?: string) => !!n && n.toLowerCase().endsWith(".pdf");
+
+  const files = [
+    ...(rootRes.data ?? []).filter((f) => isPdf(f.name)).map((f) => f.name),
+    ...(pendRes.data ?? []).filter((f) => isPdf(f.name)).map((f) => `pendientes/${f.name}`),
+  ];
 
   return { files };
 }
@@ -192,10 +205,12 @@ export type PuestaPdfFolder = "procesados" | "descartadas" | "pendientes";
 
 /**
  * Mueve un PDF del bucket a una subcarpeta (procesados / descartadas /
- * pendientes). Así no se vuelve a listar en la cola la próxima vez.
+ * pendientes). `path` puede ser una ruta completa (p.ej. "pendientes/foo.pdf");
+ * el destino conserva solo el nombre base, así un pendiente registrado va a
+ * "procesados/foo.pdf" (no "procesados/pendientes/foo.pdf").
  */
 export async function movePuestaPdfAction(
-  name: string,
+  path: string,
   folder: PuestaPdfFolder
 ): Promise<{ error?: string }> {
   const supabase = await createClient();
@@ -204,12 +219,19 @@ export async function movePuestaPdfAction(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Sesión no válida. Vuelve a iniciar sesión." };
 
-  if (!name) return { error: "Nombre de archivo no válido." };
+  if (!path) return { error: "Nombre de archivo no válido." };
   const allowed: PuestaPdfFolder[] = ["procesados", "descartadas", "pendientes"];
   if (!allowed.includes(folder)) return { error: "Carpeta destino no válida." };
 
+  const base = path.includes("/") ? path.slice(path.lastIndexOf("/") + 1) : path;
+  const dest = `${folder}/${base}`;
+
+  // Si ya está en la carpeta destino (p.ej. "Dejar Pte" sobre un pendiente),
+  // no hacemos nada para evitar un error de "ya existe".
+  if (dest === path) return {};
+
   const admin = await createServiceClient();
-  const { error } = await admin.storage.from(STORAGE_BUCKET).move(name, `${folder}/${name}`);
+  const { error } = await admin.storage.from(STORAGE_BUCKET).move(path, dest);
   if (error) return { error: error.message };
   return {};
 }
