@@ -48,7 +48,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { formatCurrency, formatNumber, formatQuantity, formatDate } from "@/utils/format";
-import { countNewPuestaPdfsAction } from "@/lib/actions/pdf-puestas";
+import { countPendingPuestaPdfsAction } from "@/lib/actions/pdf-puestas";
 
 interface PuestaItem {
   id: string;
@@ -128,7 +128,7 @@ export default function DashboardPage() {
     let active = true;
     async function checkPendingPdfs() {
       try {
-        const res = await countNewPuestaPdfsAction();
+        const res = await countPendingPuestaPdfsAction();
         if (active && typeof res.count === "number") setPendingPdfCount(res.count);
       } catch {
         /* silencioso: es un aviso, no debe romper el dashboard */

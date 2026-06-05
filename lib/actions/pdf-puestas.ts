@@ -174,10 +174,11 @@ export async function listPuestaPdfsAction(): Promise<{ files?: string[]; error?
 }
 
 /**
- * Cuenta solo los PDF NUEVOS (en la raíz del bucket, los que acaba de subir
- * BC), sin incluir "pendientes/". Lo usa el aviso del Dashboard.
+ * Cuenta los PDF sin procesar a efectos del aviso del Dashboard: los nuevos
+ * de la raíz (los que sube BC) MÁS los que quedaron en "pendientes/".
+ * Coincide con lo que procesará "Leer PDFs de Base de Datos".
  */
-export async function countNewPuestaPdfsAction(): Promise<{ count?: number; error?: string }> {
+export async function countPendingPuestaPdfsAction(): Promise<{ count?: number; error?: string }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -185,13 +186,21 @@ export async function countNewPuestaPdfsAction(): Promise<{ count?: number; erro
   if (!user) return { error: "Sesión no válida. Vuelve a iniciar sesión." };
 
   const admin = await createServiceClient();
-  const { data, error } = await admin.storage.from(STORAGE_BUCKET).list("", {
-    limit: 1000,
-    sortBy: { column: "name", order: "asc" },
-  });
-  if (error) return { error: error.message };
+  const listOpts = { limit: 1000, sortBy: { column: "name", order: "asc" as const } };
 
-  const count = (data ?? []).filter((f) => f.name && f.name.toLowerCase().endsWith(".pdf")).length;
+  const [rootRes, pendRes] = await Promise.all([
+    admin.storage.from(STORAGE_BUCKET).list("", listOpts),
+    admin.storage.from(STORAGE_BUCKET).list("pendientes", listOpts),
+  ]);
+
+  if (rootRes.error) return { error: rootRes.error.message };
+  if (pendRes.error) return { error: pendRes.error.message };
+
+  const isPdf = (n?: string) => !!n && n.toLowerCase().endsWith(".pdf");
+  const count =
+    (rootRes.data ?? []).filter((f) => isPdf(f.name)).length +
+    (pendRes.data ?? []).filter((f) => isPdf(f.name)).length;
+
   return { count };
 }
 
