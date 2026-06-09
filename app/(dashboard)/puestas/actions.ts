@@ -122,7 +122,7 @@ export async function createSalidaParcial(
   // Fetch puesta to determine plancha period and warehouse/product context
   const { data: puesta, error: puestaError } = await supabase
     .from("puestas_a_disposicion")
-    .select("fecha_puesta, dias_plancha, warehouse_id, product_id, customer_id, numero_contrato, cantidad_inicial, salidas_parciales(cantidad, tipo), customer:customers(name, codigo)")
+    .select("fecha_puesta, dias_plancha, warehouse_id, product_id, customer_id, numero_contrato, cantidad_inicial, salidas_parciales(cantidad, tipo, fecha_salida), customer:customers(name, codigo)")
     .eq("id", parsed.data.puesta_id)
     .single();
 
@@ -220,8 +220,44 @@ export async function createSalidaParcial(
       }
     }
   } else {
-    // Outside plancha: the plancha auto-exit already generated an outbound for the
-    // full pending quantity. Only create an additional outbound for any excess (rebase).
+    // Outside plancha.
+    //
+    // Puede ocurrir que la auto-salida de fin de plancha no exista todavía
+    // (el trigger lazy se dispara al visitar la página, no al registrar la salida).
+    // En ese caso la creamos aquí mismo, contando solo las salidas reales ≤ fecha_fin_plancha.
+    type SalidaRow = { cantidad: number; tipo: string; fecha_salida: string };
+    const existingPlancha = (puesta.salidas_parciales as SalidaRow[]).some(
+      (s) => s.tipo === "plancha"
+    );
+    if (!existingPlancha) {
+      const totalRealAtPlancha = (puesta.salidas_parciales as SalidaRow[])
+        .filter((s) => s.tipo === "real" && s.fecha_salida <= fechaFinStr)
+        .reduce((sum, s) => sum + Number(s.cantidad), 0);
+      const pendingAtPlancha = Math.max(0, Number(puesta.cantidad_inicial) - totalRealAtPlancha);
+      if (pendingAtPlancha > 0) {
+        await supabase.from("salidas_parciales").insert({
+          puesta_id: parsed.data.puesta_id,
+          fecha_salida: fechaFinStr,
+          cantidad: pendingAtPlancha,
+          tipo: "plancha",
+          comentarios: "Salida automática fin de plancha",
+          created_by: user.id,
+        });
+        await supabase.from("outbound_movements").insert({
+          warehouse_id: puesta.warehouse_id,
+          product_id: puesta.product_id,
+          quantity: pendingAtPlancha,
+          movement_date: fechaFinStr,
+          free_days: 0,
+          customer_id: puesta.customer_id ?? null,
+          comments: `Auto-salida fin de plancha${puesta.numero_contrato ? ` (${puesta.numero_contrato})` : ""}`,
+          from_puesta: true,
+          created_by: user.id,
+        });
+      }
+    }
+
+    // Solo crear outbound adicional si la salida supera la cantidad pendiente (rebase).
     const rebaseQty = Math.max(0, parsed.data.cantidad - Math.max(0, cantidadPendiente));
     if (rebaseQty > 0) {
       const customerData = puesta.customer as { name: string; codigo: string | null } | null;
@@ -262,11 +298,22 @@ export async function createSalidaParcial(
 export async function triggerPlanchaAutoExit(puestaId: string): Promise<{ error?: string }> {
   const user = await requireAuth();
   const supabase = await createServiceClient();
+  return _runPlanchaAutoExit(supabase, puestaId, user.id);
+}
 
-  // Fetch puesta with all salidas_parciales
+/**
+ * Lógica central de la auto-salida fin de plancha. Separada de la autenticación
+ * para poder llamarla también desde el cron (sin contexto de usuario).
+ */
+async function _runPlanchaAutoExit(
+  supabase: Awaited<ReturnType<typeof createServiceClient>>,
+  puestaId: string,
+  userId: string | null
+): Promise<{ error?: string }> {
+  // Fetch puesta con fecha_salida en las salidas para poder filtrar por fecha
   const { data: puesta, error: puestaError } = await supabase
     .from("puestas_a_disposicion")
-    .select("*, salidas_parciales(cantidad, tipo)")
+    .select("*, salidas_parciales(cantidad, tipo, fecha_salida)")
     .eq("id", puestaId)
     .single();
 
@@ -274,23 +321,24 @@ export async function triggerPlanchaAutoExit(puestaId: string): Promise<{ error?
     return { error: puestaError?.message ?? "Puesta no encontrada" };
   }
 
-  const salidaParciales = puesta.salidas_parciales as { cantidad: number; tipo: string }[];
+  const salidaParciales = puesta.salidas_parciales as { cantidad: number; tipo: string; fecha_salida: string }[];
 
-  // Idempotency: if auto-exit already done, skip
+  // Idempotency: si ya existe auto-salida plancha, nada que hacer
   if (salidaParciales.some((s) => s.tipo === "plancha")) return {};
 
-  // Calculate remaining pending (only real salidas reduce pending at this point)
-  const totalReal = salidaParciales
-    .filter((s) => s.tipo === "real")
-    .reduce((sum, s) => sum + Number(s.cantidad), 0);
-  const pending = Number(puesta.cantidad_inicial) - totalReal;
-  if (pending <= 0) return {};
-
-  // Determine fecha_fin_plancha
+  // Calcular fecha_fin_plancha PRIMERO — se necesita para filtrar salidas
   const fechaPuesta = new Date(puesta.fecha_puesta + "T00:00:00");
   const fechaFinPlancha = new Date(fechaPuesta);
   fechaFinPlancha.setDate(fechaFinPlancha.getDate() + (Number(puesta.dias_plancha) ?? 0));
   const fechaFinStr = fechaFinPlancha.toISOString().split("T")[0];
+
+  // Cantidad pendiente a fecha fin plancha: solo salidas REALES anteriores o iguales al fin plancha.
+  // No contar salidas posteriores (pueden existir si se registraron antes de que se disparara este trigger).
+  const totalReal = salidaParciales
+    .filter((s) => s.tipo === "real" && s.fecha_salida <= fechaFinStr)
+    .reduce((sum, s) => sum + Number(s.cantidad), 0);
+  const pending = Number(puesta.cantidad_inicial) - totalReal;
+  if (pending <= 0) return {};
 
   // Create the plancha auto-exit salida_parcial
   const { error: salidaError } = await supabase.from("salidas_parciales").insert({
@@ -299,7 +347,7 @@ export async function triggerPlanchaAutoExit(puestaId: string): Promise<{ error?
     cantidad: pending,
     tipo: "plancha",
     comentarios: "Salida automática fin de plancha",
-    created_by: user.id,
+    created_by: userId,
   });
   if (salidaError) return { error: salidaError.message };
 
@@ -313,7 +361,7 @@ export async function triggerPlanchaAutoExit(puestaId: string): Promise<{ error?
     customer_id: puesta.customer_id ?? null,
     comments: `Auto-salida fin de plancha${puesta.numero_contrato ? ` (${puesta.numero_contrato})` : ""}`,
     from_puesta: true,
-    created_by: user.id,
+    created_by: userId,
   });
   if (outboundError) return { error: outboundError.message };
 
