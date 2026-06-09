@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  FileUp, FileText, Loader2, ScanSearch, X, ArrowLeft, CheckCircle2,
+  FileUp, FileText, Loader2, ScanSearch, X, ArrowLeft, CheckCircle2, TriangleAlert,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -223,7 +223,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className={cn(showResults ? "sm:max-w-5xl" : "sm:max-w-[480px]")}>
+      <DialogContent className={cn(showResults ? "sm:max-w-[92vw]" : "sm:max-w-[480px]")}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileUp className="h-5 w-5 text-sky-500" />
@@ -297,16 +297,40 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
         )}
 
         {/* ── Vista de propuestas ── */}
-        {showResults && proposals && (
-          <div className="max-h-[60vh] overflow-auto">
-            <ProposalTable
-              items={proposals}
-              onToggle={handleToggle}
-              onEdit={handleEdit}
-              onChoosePuesta={handleChoosePuesta}
-            />
-          </div>
-        )}
+        {showResults && proposals && (() => {
+          const unmatchedItems = proposals.filter((p) => {
+            if (p.tipo === "normal") return !(p.resolvedWarehouseId && p.resolvedProductId);
+            return p.confidence === "nula";
+          });
+          return (
+            <div className="space-y-3">
+              {unmatchedItems.length > 0 && (
+                <div className="flex gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-3">
+                  <TriangleAlert className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
+                  <div className="text-sm text-destructive">
+                    <p className="font-semibold">
+                      {unmatchedItems.length} línea{unmatchedItems.length > 1 ? "s" : ""} del PDF no se pueden procesar
+                    </p>
+                    <p className="mt-0.5 text-xs opacity-90">
+                      {unmatchedItems.map((p) => p.line.matricula || "sin matrícula").join(", ")}
+                      {" "}— no se han encontrado en el sistema. Estas salidas{" "}
+                      <strong>no se grabarán</strong>. Comprueba que la puesta está abierta o que el
+                      almacén/producto coincide con los de la aplicación.
+                    </p>
+                  </div>
+                </div>
+              )}
+              <div className="max-h-[60vh] overflow-auto">
+                <ProposalTable
+                  items={proposals}
+                  onToggle={handleToggle}
+                  onEdit={handleEdit}
+                  onChoosePuesta={handleChoosePuesta}
+                />
+              </div>
+            </div>
+          );
+        })()}
 
         <DialogFooter>
           {!showResults ? (

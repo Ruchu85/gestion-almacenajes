@@ -52,7 +52,7 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
             <TableHead>Datos del PDF</TableHead>
             <TableHead>Puesta / Destino</TableHead>
             <TableHead className="w-[140px]">Fecha</TableHead>
-            <TableHead className="w-[130px]">Matrícula</TableHead>
+            <TableHead className="w-[160px]">Matrícula</TableHead>
             <TableHead className="w-[130px]">Cantidad</TableHead>
             <TableHead className="w-[120px]">Tipo</TableHead>
           </TableRow>
@@ -71,8 +71,20 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
             const activeRef =
               item.candidates.find((c) => c.puesta_id === item.chosenPuestaId) ?? item.match;
 
+            const isDuplicate = item.warnings.some((w) =>
+              w.includes("Ya existe una salida idéntica")
+            );
+            const isClean = isSelectable && item.warnings.length === 0;
+
             return (
-              <TableRow key={item.id} className={cn(!isSelectable && "opacity-60")}>
+              <TableRow
+                key={item.id}
+                className={cn(
+                  !isSelectable && "opacity-50",
+                  isDuplicate && "bg-red-500/10",
+                  !isDuplicate && isClean && "bg-green-500/10",
+                )}
+              >
                 {/* Selección */}
                 <TableCell>
                   <Checkbox
