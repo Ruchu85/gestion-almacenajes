@@ -11,8 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { analyzePdfAction, confirmSalidasAction } from "@/lib/actions/pdf-import";
-import type { PdfConfirmItem, PuestaMatchRef } from "@/validations/pdf-import.schema";
+import { analyzePdfAction, confirmSalidasAction, confirmSalidasNormalesAction } from "@/lib/actions/pdf-import";
+import type { PdfConfirmItem, PdfConfirmNormalItem, PuestaMatchRef } from "@/validations/pdf-import.schema";
 import { ProposalTable, type EditableProposal } from "./proposal-table";
 
 interface PdfImportDialogProps {
@@ -134,45 +134,71 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
     return all.find((r) => r.puesta_id === item.chosenPuestaId) ?? item.match;
   }
 
+  function isSelectedAndValid(p: EditableProposal): boolean {
+    if (!p.selected) return false;
+    if (p.tipo === "normal") return !!(p.resolvedWarehouseId && p.resolvedProductId);
+    return !!resolveRef(p);
+  }
+
   async function handleConfirm() {
     if (!proposals) return;
-    const selected = proposals.filter((p) => p.selected && resolveRef(p));
+    const selected = proposals.filter(isSelectedAndValid);
     if (selected.length === 0) {
-      toast({ variant: "destructive", title: "Nada que grabar", description: "Selecciona al menos una fila con puesta." });
+      toast({ variant: "destructive", title: "Nada que grabar", description: "Selecciona al menos una fila válida." });
       return;
     }
 
-    const items: PdfConfirmItem[] = selected.map((p) => {
-      const ref = resolveRef(p)!;
-      return {
-        puesta_id: ref.puesta_id,
+    const puestaItems: PdfConfirmItem[] = selected
+      .filter((p) => p.tipo === "puesta")
+      .map((p) => {
+        const ref = resolveRef(p)!;
+        return {
+          puesta_id: ref.puesta_id,
+          fecha_salida: p.edited.fecha,
+          matricula: p.edited.matricula,
+          cantidad: p.edited.cantidad,
+          cantidad_pendiente: ref.cantidad_pendiente,
+          n_camion: null,
+          comentarios: `Importada desde PDF (puesta ${ref.numero_contrato})`,
+        };
+      });
+
+    const normalItems: PdfConfirmNormalItem[] = selected
+      .filter((p) => p.tipo === "normal")
+      .map((p) => ({
+        warehouse_id: p.resolvedWarehouseId!,
+        product_id: p.resolvedProductId!,
         fecha_salida: p.edited.fecha,
         matricula: p.edited.matricula,
         cantidad: p.edited.cantidad,
-        cantidad_pendiente: ref.cantidad_pendiente,
-        n_camion: null,
-        comentarios: `Importada desde PDF (puesta ${ref.numero_contrato})`,
-      };
-    });
+        comentarios: null,
+      }));
 
     setConfirming(true);
     try {
-      const res = await confirmSalidasAction(items);
-      if (res.error || !res.data) {
-        toast({ variant: "destructive", title: "Error al grabar", description: res.error ?? "Inténtalo de nuevo." });
+      const [puestaRes, normalRes] = await Promise.all([
+        puestaItems.length > 0 ? confirmSalidasAction(puestaItems) : Promise.resolve({ data: [], error: undefined }),
+        normalItems.length > 0 ? confirmSalidasNormalesAction(normalItems) : Promise.resolve({ data: [], error: undefined }),
+      ]);
+
+      if ((puestaRes.error && puestaItems.length > 0) || (normalRes.error && normalItems.length > 0)) {
+        const errMsg = puestaRes.error ?? normalRes.error;
+        toast({ variant: "destructive", title: "Error al grabar", description: errMsg ?? "Inténtalo de nuevo." });
         return;
       }
-      const okCount = res.data.filter((r) => r.ok).length;
-      const failCount = res.data.length - okCount;
+
+      const allResults = [...(puestaRes.data ?? []), ...(normalRes.data ?? [])];
+      const okCount = allResults.filter((r) => r.ok).length;
+      const failCount = allResults.length - okCount;
 
       if (okCount > 0) {
         toast({
           title: `${okCount} salida(s) grabada(s)`,
-          description: failCount > 0 ? `${failCount} fila(s) fallaron.` : "Las puestas se han actualizado.",
+          description: failCount > 0 ? `${failCount} fila(s) fallaron.` : "Las salidas se han registrado correctamente.",
         });
       }
       if (failCount > 0) {
-        const firstErr = res.data.find((r) => !r.ok)?.error;
+        const firstErr = allResults.find((r) => !r.ok)?.error;
         toast({
           variant: "destructive",
           title: `${failCount} fila(s) no se grabaron`,
@@ -181,8 +207,6 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
       }
 
       if (failCount === 0) {
-        // El dashboard carga datos en cliente; recargamos para reflejar
-        // las salidas grabadas sin tener que pulsar F5 manualmente.
         window.location.reload();
       } else {
         router.refresh();
@@ -194,7 +218,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
     }
   }
 
-  const selectedCount = proposals?.filter((p) => p.selected && resolveRef(p)).length ?? 0;
+  const selectedCount = proposals?.filter(isSelectedAndValid).length ?? 0;
   const showResults = proposals !== null;
 
   return (

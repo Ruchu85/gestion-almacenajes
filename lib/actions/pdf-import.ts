@@ -1,15 +1,18 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { extractSalidasFromPdf } from "@/lib/gemini";
 import { buildProposals } from "@/services/pdf-import.service";
 import { PuestasService } from "@/services/puestas.service";
 import { createSalidaParcial } from "@/app/(dashboard)/puestas/actions";
+import { upsertMatricula } from "@/lib/actions/matriculas";
 import {
   pdfExtractionSchema,
   pdfConfirmSchema,
+  pdfConfirmNormalesSchema,
   type PdfProposalItem,
   type PdfConfirmItem,
+  type PdfConfirmNormalItem,
 } from "@/validations/pdf-import.schema";
 
 const MAX_PDF_BYTES = 15 * 1024 * 1024; // 15 MB
@@ -62,7 +65,53 @@ export async function analyzePdfAction(
 
   const proposals = buildProposals(parsed.data.lineas, abiertas);
 
-  // 5. Detección de duplicados (requiere DB): misma puesta + fecha + matrícula + cantidad
+  // 5. Resolver almacén y producto para filas de tipo 'normal'
+  const normalProposals = proposals.filter((p) => p.tipo === "normal");
+  if (normalProposals.length > 0) {
+    const [{ data: warehouses }, { data: products }] = await Promise.all([
+      supabase.from("warehouses").select("id, name").eq("active", true),
+      supabase.from("products").select("id, name").eq("active", true),
+    ]);
+
+    const norm = (s: string) =>
+      s.toUpperCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").trim();
+
+    for (const proposal of normalProposals) {
+      const almacenRaw = proposal.line.almacen ?? "";
+      const productoRaw = proposal.line.producto ?? "";
+      const almacenNorm = norm(almacenRaw);
+      const productoNorm = norm(productoRaw);
+
+      if (almacenNorm && warehouses) {
+        const wh = warehouses.find((w) => {
+          const wn = norm(w.name);
+          return wn === almacenNorm || wn.includes(almacenNorm) || almacenNorm.includes(wn);
+        });
+        proposal.resolvedWarehouseId = wh?.id ?? null;
+        proposal.resolvedWarehouseName = wh?.name ?? null;
+      }
+
+      if (productoNorm && products) {
+        const pr = products.find((p) => {
+          const pn = norm(p.name);
+          return pn === productoNorm || pn.includes(productoNorm) || productoNorm.includes(pn);
+        });
+        proposal.resolvedProductId = pr?.id ?? null;
+        proposal.resolvedProductName = pr?.name ?? null;
+      }
+
+      if (!proposal.resolvedWarehouseId || !proposal.resolvedProductId) {
+        const missingParts: string[] = [];
+        if (!proposal.resolvedWarehouseId) missingParts.push(`almacén "${almacenRaw || "desconocido"}"`);
+        if (!proposal.resolvedProductId) missingParts.push(`producto "${productoRaw || "desconocido"}"`);
+        proposal.warnings.push(
+          `No se pudo identificar el ${missingParts.join(" ni el ")} en el sistema. Revisa el nombre.`
+        );
+      }
+    }
+  }
+
+  // 6. Detección de duplicados (requiere DB): misma puesta + fecha + matrícula + cantidad
   const puestaIds = [
     ...new Set(proposals.filter((p) => p.match).map((p) => p.match!.puesta_id)),
   ];
@@ -97,7 +146,7 @@ export async function analyzePdfAction(
 // ============================================================
 
 export interface ConfirmResult {
-  puesta_id: string;
+  id: string;
   matricula: string;
   cantidad: number;
   ok: boolean;
@@ -135,11 +184,62 @@ export async function confirmSalidasAction(
     );
 
     results.push({
-      puesta_id: item.puesta_id,
+      id: item.puesta_id,
       matricula: item.matricula,
       cantidad: item.cantidad,
       ok: !res.error,
       error: res.error,
+    });
+  }
+
+  return { data: results };
+}
+
+// ============================================================
+// CONFIRMAR SALIDAS NORMALES — outbound_movements directos
+// (sin puesta a disposición: salidas propias desde puerto)
+// ============================================================
+
+export async function confirmSalidasNormalesAction(
+  items: PdfConfirmNormalItem[]
+): Promise<{ data?: ConfirmResult[]; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Sesión no válida. Vuelve a iniciar sesión." };
+
+  const parsed = pdfConfirmNormalesSchema.safeParse({ items });
+  if (!parsed.success) {
+    return { error: parsed.error.errors[0]?.message ?? "Datos de confirmación inválidos." };
+  }
+
+  const serviceClient = await createServiceClient();
+  const results: ConfirmResult[] = [];
+
+  for (const item of parsed.data.items) {
+    const { error } = await serviceClient.from("outbound_movements").insert({
+      warehouse_id: item.warehouse_id,
+      product_id: item.product_id,
+      quantity: item.cantidad,
+      movement_date: item.fecha_salida,
+      free_days: 0,
+      customer_id: null,
+      comments: `Salida propia${item.matricula ? ` — matrícula: ${item.matricula}` : ""}${item.comentarios ? ` — ${item.comentarios}` : ""} · Importada desde PDF`,
+      from_puesta: false,
+      created_by: user.id,
+    });
+
+    if (!error && item.matricula) {
+      await upsertMatricula(item.matricula);
+    }
+
+    results.push({
+      id: `normal-${item.warehouse_id}-${item.fecha_salida}`,
+      matricula: item.matricula,
+      cantidad: item.cantidad,
+      ok: !error,
+      error: error?.message,
     });
   }
 

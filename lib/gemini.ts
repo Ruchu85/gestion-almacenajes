@@ -21,8 +21,9 @@ const RESPONSE_SCHEMA = {
       items: {
         type: "object",
         properties: {
-          cliente: { type: "string" },
-          numero_puesta: { type: "string" },
+          cliente: { type: "string", description: "Nombre en columna Nombre. Vacío si no hay cliente externo." },
+          numero_puesta: { type: "string", description: "Valor de columna Contrato. Vacío si no hay contrato." },
+          almacen: { type: "string", description: "Puerto/almacén de la cabecera del informe. Ejemplo: CORUÑA." },
           producto: { type: "string" },
           fecha: { type: "string", description: "Formato YYYY-MM-DD" },
           matricula: { type: "string" },
@@ -45,7 +46,13 @@ SALIDAS / RETIRADAS de mercancía (la columna "Salidas" tiene un valor mayor que
 Para cada fila de salida, extrae:
 - "cliente": el nombre que aparece en la columna "Nombre" de ESA fila (NO el "Propietario" de la
   cabecera). Ejemplo: "DE HEUS NUTRICION ANIMAL".
+  IMPORTANTE: Si la columna "Nombre" contiene el nombre de la propia empresa propietaria
+  (el "Propietario" o "Propietario Origen" de la cabecera), o si la columna "Nombre" está vacía,
+  devuelve cliente = "" (cadena vacía).
 - "numero_puesta": el valor de la columna "Contrato" de esa fila. Ejemplo: "D02600632_20-1".
+  IMPORTANTE: Si la columna "Contrato" está vacía o no existe, devuelve numero_puesta = "" (cadena vacía).
+- "almacen": el puerto o almacén indicado en la cabecera del bloque (campo "Puerto"). Ejemplo: "CORUÑA".
+  Si no aparece el campo "Puerto", devuelve almacen = "".
 - "producto": la mercancía del informe (suele estar en la cabecera, campo "Mercancía"). Ejemplo: "MAIZ".
 - "fecha": la fecha de la salida (columna "Fecha", o "Fecha Pase" si no hay "Fecha"), convertida
   SIEMPRE al formato YYYY-MM-DD. Las fechas del documento están en formato DD/MM/YYYY.
@@ -54,10 +61,12 @@ Para cada fila de salida, extrae:
   decimal (ej. "30,08" → 30.08). Devuélvelo como número decimal con punto.
 
 REGLAS ESTRICTAS:
+- Incluye TODAS las filas con "Salidas" > 0, incluso si "Nombre" o "Contrato" están vacíos o son
+  el nombre de la propia empresa. En esos casos devuelve cadena vacía para esos campos.
 - Ignora filas de totales, subtotales y existencias.
 - Ignora cualquier fila cuya "Salidas" sea 0 o vacía (esas son entradas, no salidas).
-- Si una matrícula o cliente aparece sin salida, no la incluyas.
-- No inventes datos. Si un campo no existe en una fila, no incluyas esa fila.
+- Si una matrícula aparece sin salida, no la incluyas.
+- No inventes datos. Si un campo no tiene valor, devuelve cadena vacía para ese campo.
 - Procesa TODAS las páginas del documento.
 
 Devuelve el resultado siguiendo el esquema JSON proporcionado.
@@ -67,6 +76,7 @@ export interface GeminiRawExtraction {
   lineas: Array<{
     cliente: string;
     numero_puesta: string;
+    almacen?: string;
     producto?: string;
     fecha: string;
     matricula: string;

@@ -117,7 +117,7 @@ export function buildProposals(
     const extraWarnings: string[] = [];
 
     if (porContrato.length > 0) {
-      const conCliente = porContrato.filter((p) => clienteMatches(p.customer_name, line.cliente));
+      const conCliente = porContrato.filter((p) => clienteMatches(p.customer_name, line.cliente ?? ""));
 
       if (conCliente.length === 1) {
         match = toRef(conCliente[0]);
@@ -148,32 +148,45 @@ export function buildProposals(
         extraWarnings.push("Varias puestas con ese nº; el cliente no desempata. Revisa la seleccionada.");
       }
     } else {
-      // 2. Sin contrato: intentar solo por cliente
-      const porCliente = puestasAbiertas.filter((p) => clienteMatches(p.customer_name, line.cliente));
-      if (porCliente.length === 1) {
-        match = toRef(porCliente[0]);
-        confidence = "media";
-        extraWarnings.push("No se encontró el nº de puesta exacto; emparejado solo por cliente.");
-      } else if (porCliente.length > 1) {
-        const conProducto = porCliente.filter((p) => productoMatches(p.product_name, line.producto));
-        const base = conProducto.length > 0 ? conProducto : porCliente;
-        match = toRef(base[0]);
-        candidates = base.map(toRef);
-        confidence = "media";
-        extraWarnings.push("Sin nº de puesta exacto; varias puestas de ese cliente. Elige la correcta.");
+      // 2. Sin contrato: intentar solo por cliente (si hay cliente)
+      const hasCliente = !!(line.cliente && line.cliente.trim());
+      if (hasCliente) {
+        const porCliente = puestasAbiertas.filter((p) => clienteMatches(p.customer_name, line.cliente ?? ""));
+        if (porCliente.length === 1) {
+          match = toRef(porCliente[0]);
+          confidence = "media";
+          extraWarnings.push("No se encontró el nº de puesta exacto; emparejado solo por cliente.");
+        } else if (porCliente.length > 1) {
+          const conProducto = porCliente.filter((p) => productoMatches(p.product_name, line.producto));
+          const base = conProducto.length > 0 ? conProducto : porCliente;
+          match = toRef(base[0]);
+          candidates = base.map(toRef);
+          confidence = "media";
+          extraWarnings.push("Sin nº de puesta exacto; varias puestas de ese cliente. Elige la correcta.");
+        } else {
+          confidence = "nula";
+          extraWarnings.push("No se encontró ninguna puesta abierta para este cliente / contrato.");
+        }
       } else {
+        // Sin contrato y sin cliente externo → salida directa (outbound_movement)
         confidence = "nula";
-        extraWarnings.push("No se encontró ninguna puesta abierta para este cliente / contrato.");
       }
     }
 
+    // Determinar tipo: si no hay contrato, ni cliente externo, ni match → salida normal
+    const esNormal =
+      !lineContrato &&
+      !(line.cliente && line.cliente.trim()) &&
+      !match;
+
     return {
       id,
+      tipo: esNormal ? "normal" : "puesta",
       line,
       match,
       candidates,
       confidence,
-      warnings: [...extraWarnings, ...buildWarnings(line, match)],
+      warnings: esNormal ? [] : [...extraWarnings, ...buildWarnings(line, match)],
     };
   });
 }

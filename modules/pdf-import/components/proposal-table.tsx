@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, HelpCircle, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, CheckCircle2, HelpCircle, XCircle } from "lucide-react";
 import type { PdfProposalItem, MatchConfidence } from "@/validations/pdf-import.schema";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,7 +12,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { formatDate, formatNumber } from "@/utils/format";
+import { formatNumber } from "@/utils/format";
 import { cn } from "@/lib/utils";
 
 /** Modelo editable de una propuesta (estado vivo en el diálogo). */
@@ -49,30 +49,35 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
         <TableHeader>
           <TableRow>
             <TableHead className="w-10"></TableHead>
-            <TableHead>Cliente / Nº puesta (PDF)</TableHead>
-            <TableHead>Puesta encontrada</TableHead>
+            <TableHead>Datos del PDF</TableHead>
+            <TableHead>Puesta / Destino</TableHead>
             <TableHead className="w-[140px]">Fecha</TableHead>
             <TableHead className="w-[130px]">Matrícula</TableHead>
             <TableHead className="w-[130px]">Cantidad</TableHead>
-            <TableHead className="w-[110px]">Confianza</TableHead>
+            <TableHead className="w-[120px]">Tipo</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {items.map((item, index) => {
-            const meta = CONFIDENCE_META[item.confidence];
-            const Icon = meta.icon;
+            const isNormal = item.tipo === "normal";
             const hasMatch = !!item.match;
+            const normalResolved = isNormal && !!(item.resolvedWarehouseId && item.resolvedProductId);
+            const isSelectable = isNormal ? normalResolved : hasMatch;
+            const isEditable = isSelectable;
+
+            const meta = CONFIDENCE_META[item.confidence];
+            const ConfidenceIcon = meta.icon;
             const candidateList = item.candidates.length > 1 ? item.candidates : [];
             const activeRef =
               item.candidates.find((c) => c.puesta_id === item.chosenPuestaId) ?? item.match;
 
             return (
-              <TableRow key={item.id} className={cn(!hasMatch && "opacity-60")}>
+              <TableRow key={item.id} className={cn(!isSelectable && "opacity-60")}>
                 {/* Selección */}
                 <TableCell>
                   <Checkbox
                     checked={item.selected}
-                    disabled={!hasMatch}
+                    disabled={!isSelectable}
                     onCheckedChange={(c) => onToggle(index, c === true)}
                     aria-label="Seleccionar fila"
                   />
@@ -80,16 +85,45 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
 
                 {/* Datos crudos del PDF */}
                 <TableCell>
-                  <div className="font-medium leading-tight">{item.line.cliente}</div>
-                  <div className="text-xs text-muted-foreground">
-                    Nº {item.line.numero_puesta}
-                    {item.line.producto ? ` · ${item.line.producto}` : ""}
-                  </div>
+                  {isNormal ? (
+                    <>
+                      <div className="font-medium leading-tight text-muted-foreground italic text-xs">
+                        Sin cliente / sin contrato
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {item.line.almacen ? `${item.line.almacen} · ` : ""}
+                        {item.line.producto ?? ""}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="font-medium leading-tight">{item.line.cliente}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {item.line.numero_puesta ? `Nº ${item.line.numero_puesta}` : "Sin contrato"}
+                        {item.line.producto ? ` · ${item.line.producto}` : ""}
+                      </div>
+                    </>
+                  )}
                 </TableCell>
 
-                {/* Puesta encontrada / selector de candidatas */}
+                {/* Puesta encontrada / destino para salida normal */}
                 <TableCell>
-                  {hasMatch ? (
+                  {isNormal ? (
+                    normalResolved ? (
+                      <div>
+                        <div className="font-medium leading-tight text-sky-700 dark:text-sky-400">
+                          {item.resolvedWarehouseName}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {item.resolvedProductName} · Salida directa
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-destructive italic">
+                        Almacén o producto no identificado
+                      </span>
+                    )
+                  ) : hasMatch ? (
                     candidateList.length > 0 ? (
                       <Select
                         value={item.chosenPuestaId ?? item.match!.puesta_id}
@@ -126,7 +160,7 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                     type="date"
                     className="h-8"
                     value={item.edited.fecha}
-                    disabled={!hasMatch}
+                    disabled={!isEditable}
                     onChange={(e) => onEdit(index, "fecha", e.target.value)}
                   />
                 </TableCell>
@@ -136,7 +170,7 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                   <Input
                     className="h-8 uppercase"
                     value={item.edited.matricula}
-                    disabled={!hasMatch}
+                    disabled={!isEditable}
                     onChange={(e) => onEdit(index, "matricula", e.target.value.toUpperCase())}
                   />
                 </TableCell>
@@ -146,17 +180,27 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                   <DecimalInput
                     className="h-8"
                     value={item.edited.cantidad}
-                    disabled={!hasMatch}
+                    disabled={!isEditable}
                     onChange={(n) => onEdit(index, "cantidad", n ?? 0)}
                   />
                 </TableCell>
 
-                {/* Confianza */}
+                {/* Tipo / Confianza */}
                 <TableCell>
-                  <Badge variant={meta.variant} className="gap-1">
-                    <Icon className="h-3 w-3" />
-                    {meta.label}
-                  </Badge>
+                  {isNormal ? (
+                    <Badge
+                      variant={normalResolved ? "outline" : "destructive"}
+                      className={cn("gap-1", normalResolved && "border-sky-500 text-sky-700 dark:text-sky-400")}
+                    >
+                      <ArrowRightLeft className="h-3 w-3" />
+                      Directa
+                    </Badge>
+                  ) : (
+                    <Badge variant={meta.variant} className="gap-1">
+                      <ConfidenceIcon className="h-3 w-3" />
+                      {meta.label}
+                    </Badge>
+                  )}
                 </TableCell>
               </TableRow>
             );
