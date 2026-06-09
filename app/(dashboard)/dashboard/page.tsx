@@ -54,6 +54,7 @@ interface PuestaItem {
   id: string;
   numero_contrato: string | null;
   fecha_puesta: string;
+  fecha_fin_plancha: string | null;
   customer_name: string | null;
   cantidad_inicial: number;
   cantidad_pendiente: number;
@@ -204,7 +205,7 @@ export default function DashboardPage() {
       supabase
         .from("puestas_a_disposicion")
         .select(
-          "id, numero_contrato, fecha_puesta, warehouse_id, product_id, cantidad_inicial, salidas_parciales(cantidad, tipo), customer:customers(name), warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
+          "id, numero_contrato, fecha_puesta, fecha_fin_plancha, warehouse_id, product_id, cantidad_inicial, salidas_parciales(cantidad, tipo), customer:customers(name), warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
         )
         .eq("estado", "abierta"),
       // Todas las puestas (cualquier estado) para calcular Cant. Invendida
@@ -314,6 +315,7 @@ export default function DashboardPage() {
         id: puesta.id,
         numero_contrato: puesta.numero_contrato ?? null,
         fecha_puesta: puesta.fecha_puesta,
+        fecha_fin_plancha: (puesta as { fecha_fin_plancha?: string | null }).fecha_fin_plancha ?? null,
         customer_name: customer?.name ?? null,
         cantidad_inicial: Number(puesta.cantidad_inicial),
         cantidad_pendiente: puestaPending,
@@ -923,16 +925,7 @@ export default function DashboardPage() {
 
                                                 {/* Fila del producto */}
                                                 <div
-                                                  className={cn(
-                                                    "relative flex items-center gap-3 px-4 py-3 transition-all duration-150 group",
-                                                    !productBg && "hover:bg-gradient-to-r hover:from-cyan-50/60 hover:to-transparent dark:hover:from-cyan-950/20 dark:hover:to-transparent"
-                                                  )}
-                                                  style={productBg ? {
-                                                    backgroundImage: `linear-gradient(to right, hsl(var(--card)) 0px, hsl(var(--card)) 215px, transparent 290px, transparent calc(100% - 850px), hsl(var(--card)) calc(100% - 760px), hsl(var(--card)) 100%), url(${productBg})`,
-                                                    backgroundSize: "100% 100%, cover",
-                                                    backgroundPosition: "0 0, calc(50% - 200px) center",
-                                                    backgroundRepeat: "no-repeat, no-repeat",
-                                                  } : undefined}
+                                                  className="relative flex items-center gap-3 px-4 py-3 transition-all duration-150 group hover:bg-gradient-to-r hover:from-cyan-50/60 hover:to-transparent dark:hover:from-cyan-950/20 dark:hover:to-transparent"
                                                 >
                                                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30 border border-cyan-200 dark:border-cyan-800 group-hover:from-cyan-200 group-hover:to-blue-200 transition-all duration-150 text-base select-none">
                                                     {product.product_icon
@@ -1083,9 +1076,9 @@ export default function DashboardPage() {
                                                       <div className="px-3 pb-3">
                                                         <div className="rounded-md border border-amber-200/60 dark:border-amber-800/40 overflow-hidden">
                                                           {/* Cabecera — mismo grid que las filas */}
-                                                          <div className="grid grid-cols-[160px_80px_1fr_78px_92px_100px_82px] items-center gap-x-2 px-3 py-1.5 bg-amber-50/70 dark:bg-amber-950/20 border-b border-amber-200/60 dark:border-amber-800/40">
+                                                          <div className="grid grid-cols-[150px_110px_1fr_96px_92px_100px_82px] items-center gap-x-2 px-3 py-1.5 bg-amber-50/70 dark:bg-amber-950/20 border-b border-amber-200/60 dark:border-amber-800/40">
                                                             <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Nº Puesta</span>
-                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide hidden sm:block">Fecha</span>
+                                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide hidden sm:block">Fecha / Fin plancha</span>
                                                             <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide hidden md:block">Cliente</span>
                                                             <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide text-right hidden sm:block">Cant. Inicial</span>
                                                             <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide text-right">Cant. Pte.</span>
@@ -1098,7 +1091,7 @@ export default function DashboardPage() {
                                                             <div
                                                               key={puesta.id}
                                                               className={cn(
-                                                                "grid grid-cols-[160px_80px_1fr_78px_92px_100px_82px] items-center gap-x-2 px-3 py-2",
+                                                                "grid grid-cols-[150px_110px_1fr_96px_92px_100px_82px] items-center gap-x-2 px-3 py-2",
                                                                 idx % 2 === 0
                                                                   ? "bg-white dark:bg-transparent"
                                                                   : "bg-amber-50/30 dark:bg-amber-950/10",
@@ -1110,10 +1103,17 @@ export default function DashboardPage() {
                                                                 {puesta.numero_contrato ?? `#${puesta.id.slice(0, 8).toUpperCase()}`}
                                                               </span>
 
-                                                              {/* Fecha */}
-                                                              <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap hidden sm:block">
-                                                                {formatDate(puesta.fecha_puesta)}
-                                                              </span>
+                                                              {/* Fecha puesta + fecha fin plancha */}
+                                                              <div className="hidden sm:block">
+                                                                <span className="text-xs tabular-nums text-muted-foreground whitespace-nowrap">
+                                                                  {formatDate(puesta.fecha_puesta)}
+                                                                </span>
+                                                                {puesta.fecha_fin_plancha && (
+                                                                  <div className="text-[10px] tabular-nums text-sky-600 dark:text-sky-400 whitespace-nowrap">
+                                                                    ↳ {formatDate(puesta.fecha_fin_plancha)}
+                                                                  </div>
+                                                                )}
+                                                              </div>
 
                                                               {/* Cliente */}
                                                               <span className="text-xs text-muted-foreground truncate hidden md:block">
