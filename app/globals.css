@@ -40,43 +40,43 @@
   }
 
   .dark {
-    /* Jerarquía de elevación: fondo profundo -> tarjeta -> popover, con
-       tinte azul-pizarra (estilo Linear/Vercel) para mejorar el contraste
-       entre zonas y separar tarjetas/diálogos del fondo. */
-    --background: 224 16% 7%;
-    --foreground: 210 20% 96%;
-    --card: 223 14% 11%;
-    --card-foreground: 210 20% 96%;
-    --popover: 223 14% 12%;
-    --popover-foreground: 210 20% 96%;
-    --primary: 210 20% 96%;
-    --primary-foreground: 224 16% 8%;
-    --secondary: 222 13% 16%;
-    --secondary-foreground: 210 20% 96%;
-    --muted: 222 13% 16%;
-    --muted-foreground: 217 14% 67%;
-    --accent: 217 33% 22%;
-    --accent-foreground: 210 40% 98%;
+    /* Jerarquía de elevación de alto contraste: fondo casi negro -> tarjeta
+       -> popover, con saltos amplios entre niveles y bordes bien marcados
+       para separar claramente las zonas (estilo Linear/Vercel). */
+    --background: 224 30% 3%;
+    --foreground: 0 0% 100%;
+    --card: 223 17% 15%;
+    --card-foreground: 0 0% 100%;
+    --popover: 223 17% 18%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 224 30% 5%;
+    --secondary: 222 15% 21%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 222 15% 21%;
+    --muted-foreground: 214 24% 80%;
+    --accent: 217 48% 34%;
+    --accent-foreground: 0 0% 100%;
     /* Rojo equilibrado: legible como TEXTO sobre fondo oscuro (~4.7:1) y
        válido como FONDO de botón/badge con texto blanco encima (~4:1).
        Resuelve los avisos/errores que antes quedaban en rojo apagado. */
     --destructive: 0 74% 57%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 12% 23%;
-    --input: 220 12% 23%;
+    --border: 218 17% 38%;
+    --input: 218 17% 38%;
     --ring: 213 90% 60%;
     --chart-1: 213 90% 60%;
     --chart-2: 152 60% 48%;
     --chart-3: 38 95% 56%;
     --chart-4: 280 65% 65%;
     --chart-5: 340 75% 60%;
-    --sidebar-background: 225 16% 9%;
-    --sidebar-foreground: 215 16% 80%;
+    --sidebar-background: 226 32% 5%;
+    --sidebar-foreground: 213 26% 90%;
     --sidebar-primary: 213 90% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217 33% 22%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 220 12% 20%;
+    --sidebar-accent: 217 48% 34%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 218 17% 32%;
     --sidebar-ring: 213 90% 60%;
   }
 }
