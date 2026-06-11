@@ -35,87 +35,26 @@ interface NavItem {
   hoverBg: string;
 }
 
+// Acento de marca unificado (violeta) para todas las secciones, en línea con
+// el logo GestiPuertos. Se centraliza para mantener la coherencia visual.
+const ACCENT = {
+  color: "text-violet-500",
+  activeBg:
+    "bg-gradient-to-r from-violet-500/15 to-violet-500/5 border-l-2 border-violet-500",
+  hoverBg: "hover:bg-violet-500/8 hover:text-violet-600 dark:hover:text-violet-400",
+} as const;
+
 const navItems: NavItem[] = [
-  {
-    title: "Dashboard",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-    color: "text-violet-500",
-    activeBg: "bg-gradient-to-r from-violet-500/15 to-violet-500/5 border-l-2 border-violet-500",
-    hoverBg: "hover:bg-violet-500/8 hover:text-violet-600 dark:hover:text-violet-400",
-  },
-  {
-    title: "Almacenes",
-    href: "/warehouses",
-    icon: Warehouse,
-    color: "text-blue-500",
-    activeBg: "bg-gradient-to-r from-blue-500/15 to-blue-500/5 border-l-2 border-blue-500",
-    hoverBg: "hover:bg-blue-500/8 hover:text-blue-600 dark:hover:text-blue-400",
-  },
-  {
-    title: "Productos",
-    href: "/products",
-    icon: Package,
-    color: "text-cyan-500",
-    activeBg: "bg-gradient-to-r from-cyan-500/15 to-cyan-500/5 border-l-2 border-cyan-500",
-    hoverBg: "hover:bg-cyan-500/8 hover:text-cyan-600 dark:hover:text-cyan-400",
-  },
-  {
-    title: "Proveedores",
-    href: "/suppliers",
-    icon: Truck,
-    color: "text-indigo-500",
-    activeBg: "bg-gradient-to-r from-indigo-500/15 to-indigo-500/5 border-l-2 border-indigo-500",
-    hoverBg: "hover:bg-indigo-500/8 hover:text-indigo-600 dark:hover:text-indigo-400",
-  },
-  {
-    title: "Clientes",
-    href: "/customers",
-    icon: Users,
-    color: "text-teal-500",
-    activeBg: "bg-gradient-to-r from-teal-500/15 to-teal-500/5 border-l-2 border-teal-500",
-    hoverBg: "hover:bg-teal-500/8 hover:text-teal-600 dark:hover:text-teal-400",
-  },
-  {
-    title: "Puestas",
-    href: "/puestas",
-    icon: ClipboardList,
-    color: "text-amber-500",
-    activeBg: "bg-gradient-to-r from-amber-500/15 to-amber-500/5 border-l-2 border-amber-500",
-    hoverBg: "hover:bg-amber-500/8 hover:text-amber-600 dark:hover:text-amber-400",
-  },
-  {
-    title: "Entradas",
-    href: "/movements/inbound",
-    icon: ArrowDownToLine,
-    color: "text-emerald-500",
-    activeBg: "bg-gradient-to-r from-emerald-500/15 to-emerald-500/5 border-l-2 border-emerald-500",
-    hoverBg: "hover:bg-emerald-500/8 hover:text-emerald-600 dark:hover:text-emerald-400",
-  },
-  {
-    title: "Salidas",
-    href: "/movements/outbound",
-    icon: ArrowUpFromLine,
-    color: "text-rose-500",
-    activeBg: "bg-gradient-to-r from-rose-500/15 to-rose-500/5 border-l-2 border-rose-500",
-    hoverBg: "hover:bg-rose-500/8 hover:text-rose-600 dark:hover:text-rose-400",
-  },
-  {
-    title: "Costes",
-    href: "/storage-costs",
-    icon: Calculator,
-    color: "text-orange-500",
-    activeBg: "bg-gradient-to-r from-orange-500/15 to-orange-500/5 border-l-2 border-orange-500",
-    hoverBg: "hover:bg-orange-500/8 hover:text-orange-600 dark:hover:text-orange-400",
-  },
-  {
-    title: "Buscador",
-    href: "/buscador",
-    icon: Search,
-    color: "text-purple-500",
-    activeBg: "bg-gradient-to-r from-purple-500/15 to-purple-500/5 border-l-2 border-purple-500",
-    hoverBg: "hover:bg-purple-500/8 hover:text-purple-600 dark:hover:text-purple-400",
-  },
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, ...ACCENT },
+  { title: "Almacenes", href: "/warehouses", icon: Warehouse, ...ACCENT },
+  { title: "Productos", href: "/products", icon: Package, ...ACCENT },
+  { title: "Proveedores", href: "/suppliers", icon: Truck, ...ACCENT },
+  { title: "Clientes", href: "/customers", icon: Users, ...ACCENT },
+  { title: "Puestas", href: "/puestas", icon: ClipboardList, ...ACCENT },
+  { title: "Entradas", href: "/movements/inbound", icon: ArrowDownToLine, ...ACCENT },
+  { title: "Salidas", href: "/movements/outbound", icon: ArrowUpFromLine, ...ACCENT },
+  { title: "Costes", href: "/storage-costs", icon: Calculator, ...ACCENT },
+  { title: "Buscador", href: "/buscador", icon: Search, ...ACCENT },
 ];
 
 export function Sidebar() {
@@ -218,7 +157,7 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => setPdfOpen(true)}
-                  className="flex h-10 w-10 items-center justify-center rounded-md mx-auto transition-all duration-150 text-muted-foreground hover:bg-sky-500/8 hover:text-sky-600 dark:hover:text-sky-400"
+                  className="flex h-10 w-10 items-center justify-center rounded-md mx-auto transition-all duration-150 text-muted-foreground hover:bg-violet-500/8 hover:text-violet-600 dark:hover:text-violet-400"
                 >
                   <FileUp className="h-5 w-5" />
                 </button>
@@ -229,7 +168,7 @@ export function Sidebar() {
             <button
               type="button"
               onClick={() => setPdfOpen(true)}
-              className="flex h-9 items-center gap-3 rounded-md px-3 text-sm font-medium transition-all duration-150 text-muted-foreground hover:bg-sky-500/8 hover:text-sky-600 dark:hover:text-sky-400"
+              className="flex h-9 items-center gap-3 rounded-md px-3 text-sm font-medium transition-all duration-150 text-muted-foreground hover:bg-violet-500/8 hover:text-violet-600 dark:hover:text-violet-400"
             >
               <FileUp className="h-4 w-4 shrink-0" />
               <span className="truncate">Subir Salidas Puerto (PDF)</span>
@@ -243,7 +182,7 @@ export function Sidebar() {
                 <button
                   type="button"
                   onClick={() => { setPdfPuestaAutoLoad(false); setPdfPuestaOpen(true); }}
-                  className="flex h-10 w-10 items-center justify-center rounded-md mx-auto transition-all duration-150 text-muted-foreground hover:bg-amber-500/8 hover:text-amber-600 dark:hover:text-amber-400"
+                  className="flex h-10 w-10 items-center justify-center rounded-md mx-auto transition-all duration-150 text-muted-foreground hover:bg-violet-500/8 hover:text-violet-600 dark:hover:text-violet-400"
                 >
                   <FilePlus2 className="h-5 w-5" />
                 </button>
@@ -254,7 +193,7 @@ export function Sidebar() {
             <button
               type="button"
               onClick={() => setPdfPuestaOpen(true)}
-              className="flex h-9 items-center gap-3 rounded-md px-3 text-sm font-medium transition-all duration-150 text-muted-foreground hover:bg-amber-500/8 hover:text-amber-600 dark:hover:text-amber-400"
+              className="flex h-9 items-center gap-3 rounded-md px-3 text-sm font-medium transition-all duration-150 text-muted-foreground hover:bg-violet-500/8 hover:text-violet-600 dark:hover:text-violet-400"
             >
               <FilePlus2 className="h-4 w-4 shrink-0" />
               <span className="truncate">Subir Pta a Disposición (PDF)</span>

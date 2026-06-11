@@ -18,10 +18,10 @@ interface StatsCardProps {
 
 const variantStyles = {
   default: {
-    border: "border-l-4 border-l-blue-500 dark:border-l-blue-400",
-    iconBg: "bg-gradient-to-br from-blue-500 to-indigo-600 dark:from-blue-400 dark:to-indigo-500",
-    value: "text-blue-700 dark:text-blue-300",
-    glow: "hover:shadow-blue-100 dark:hover:shadow-blue-900/20",
+    border: "border-l-4 border-l-violet-500 dark:border-l-violet-400",
+    iconBg: "bg-gradient-to-br from-violet-500 to-indigo-600 dark:from-violet-400 dark:to-indigo-500",
+    value: "text-violet-700 dark:text-violet-300",
+    glow: "hover:shadow-violet-100 dark:hover:shadow-violet-900/20",
   },
   success: {
     border: "border-l-4 border-l-emerald-500 dark:border-l-emerald-400",
