@@ -81,8 +81,8 @@ export function DataTable<TData, TValue>({
 
   if (isLoading) {
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-10 w-full" />
+      <div className="rounded-xl border bg-card shadow-sm p-4 space-y-3">
+        <Skeleton className="h-10 w-full max-w-sm" />
         {Array.from({ length: 5 }).map((_, i) => (
           <Skeleton key={i} className="h-14 w-full" />
         ))}
@@ -91,24 +91,26 @@ export function DataTable<TData, TValue>({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        {searchKey && (
-          <Input
-            placeholder={searchPlaceholder}
-            value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
-            onChange={(e) =>
-              table.getColumn(searchKey)?.setFilterValue(e.target.value)
-            }
-            className="max-w-sm"
-          />
-        )}
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
-      </div>
+    <div className="rounded-xl border bg-card shadow-sm p-4 space-y-4">
+      {(searchKey || actions) && (
+        <div className="flex items-center justify-between gap-4">
+          {searchKey && (
+            <Input
+              placeholder={searchPlaceholder}
+              value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
+              onChange={(e) =>
+                table.getColumn(searchKey)?.setFilterValue(e.target.value)
+              }
+              className="max-w-sm"
+            />
+          )}
+          {actions && <div className="flex items-center gap-2">{actions}</div>}
+        </div>
+      )}
 
-      <div className="rounded-md border">
+      <div className="rounded-lg border overflow-hidden">
         <Table>
-          <TableHeader>
+          <TableHeader className="bg-muted/50">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
