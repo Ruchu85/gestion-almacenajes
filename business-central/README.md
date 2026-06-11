@@ -1,4 +1,4 @@
-# GestAlmacén Connector — Extensión de Business Central
+# GestiPuertos Connector — Extensión de Business Central
 
 Extensión AL de ejemplo que conecta Microsoft Dynamics 365 Business Central con la API REST de la app **Gestión de Almacenajes** (`/api/v1/*`).
 
@@ -32,7 +32,7 @@ Envía maestros (productos, clientes, proveedores) y movimientos (entradas, sali
 
 ## Configuración (una sola vez)
 
-1. En BC, busca la página **"Configuración GestAlmacén"**.
+1. En BC, busca la página **"Configuración GestiPuertos"**.
 2. Rellena:
    - **URL base de la API**: `https://gestion-almacenajes.vercel.app` (sin barra final).
    - **Clave de API (BC_API_KEY)**: pega la clave. Se guarda **cifrada** en Isolated Storage y no vuelve a mostrarse.

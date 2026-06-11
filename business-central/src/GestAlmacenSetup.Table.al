@@ -11,7 +11,7 @@
 // ============================================================
 table 50100 "GALM API Setup"
 {
-    Caption = 'Configuración GestAlmacén';
+    Caption = 'Configuración GestiPuertos';
     DataClassification = CustomerContent;
 
     fields

@@ -83,7 +83,7 @@ export default function LoginPage() {
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary mb-3">
             <Warehouse className="h-6 w-6 text-primary-foreground" />
           </div>
-          <h1 className="text-2xl font-bold">GestAlmacén</h1>
+          <h1 className="text-2xl font-bold">GestiPuertos</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Gestión profesional de almacenajes
           </p>

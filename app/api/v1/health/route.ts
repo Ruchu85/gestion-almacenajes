@@ -18,7 +18,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      service: "GestAlmacén API v1",
+      service: "GestiPuertos API v1",
       timestamp: new Date().toISOString(),
       database: "connected",
     });

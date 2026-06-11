@@ -7,8 +7,8 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: {
-    default: "GestAlmacén - Gestión de Costes de Almacenaje",
-    template: "%s | GestAlmacén",
+    default: "GestiPuertos - Gestión de Costes de Almacenaje",
+    template: "%s | GestiPuertos",
   },
   description:
     "Plataforma SaaS para gestión profesional de entradas, salidas y costes de almacenaje de mercancías.",

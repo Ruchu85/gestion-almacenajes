@@ -4,11 +4,11 @@
 // Pantalla donde el usuario introduce la URL y la clave de API,
 // y desde donde puede lanzar un "Probar conexión" (healthcheck).
 //
-// Búscala en BC por su nombre: "Configuración GestAlmacén".
+// Búscala en BC por su nombre: "Configuración GestiPuertos".
 // ============================================================
 page 50100 "GALM API Setup"
 {
-    Caption = 'Configuración GestAlmacén';
+    Caption = 'Configuración GestiPuertos';
     PageType = Card;
     ApplicationArea = All;
     UsageCategory = Administration;

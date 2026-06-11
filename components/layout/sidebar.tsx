@@ -151,7 +151,7 @@ export function Sidebar() {
               <Warehouse className="h-4 w-4 text-white" />
             </div>
             <span className="font-bold text-sm bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">
-              GestAlmacén
+              GestiPuertos
             </span>
           </Link>
         )}
