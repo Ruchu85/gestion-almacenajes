@@ -445,7 +445,7 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
             <p className="text-xs text-muted-foreground">
               PDF {queueIndex + 1} de {queue.length}
               {currentName ? <> · <span className="font-mono">{currentName}</span></> : null}
-              {fromPendientes ? <span className="ml-1 text-amber-600">(de Pendientes)</span> : null}
+              {fromPendientes ? <span className="ml-1 text-amber-600 dark:text-amber-400">(de Pendientes)</span> : null}
             </p>
             {analyzing ? (
               <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">

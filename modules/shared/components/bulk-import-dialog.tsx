@@ -146,7 +146,7 @@ export function BulkImportDialog({ open, onOpenChange, type, onImport }: BulkImp
       <DialogContent className="sm:max-w-[700px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileSpreadsheet className="h-5 w-5 text-green-600" />
+            <FileSpreadsheet className="h-5 w-5 text-green-600 dark:text-green-400" />
             Importar {type} desde Excel
           </DialogTitle>
           <DialogDescription>

@@ -80,9 +80,9 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
               <TableRow
                 key={item.id}
                 className={cn(
-                  !isSelectable && "opacity-50",
-                  isDuplicate && "bg-red-500/10",
-                  !isDuplicate && isClean && "bg-green-500/10",
+                  !isSelectable && "bg-muted/60 opacity-70",
+                  isDuplicate && "bg-red-500/10 dark:bg-red-500/15",
+                  !isDuplicate && isClean && "bg-green-500/10 dark:bg-green-500/15",
                 )}
               >
                 {/* Selección */}
@@ -131,7 +131,7 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                         </div>
                       </div>
                     ) : (
-                      <span className="text-xs text-destructive italic">
+                      <span className="text-xs text-red-600 dark:text-red-400 italic">
                         Almacén o producto no identificado
                       </span>
                     )

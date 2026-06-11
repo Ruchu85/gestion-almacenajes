@@ -33,7 +33,7 @@ export function getSalidaColumns(
       cell: ({ row }) => {
         const isPlancha = row.original.tipo === "plancha";
         return isPlancha ? (
-          <Badge variant="outline" className="text-amber-600 border-amber-400 bg-amber-50 dark:bg-amber-950/30 gap-1">
+          <Badge variant="outline" className="text-amber-600 dark:text-amber-400 border-amber-400 dark:border-amber-500 bg-amber-50 dark:bg-amber-950/30 gap-1">
             <ArrowRightLeft className="h-3 w-3" />Traspaso
           </Badge>
         ) : (
@@ -58,7 +58,7 @@ export function getSalidaColumns(
       cell: ({ row }) => (
         <span className={cn(
           "font-medium tabular-nums",
-          row.original.tipo === "plancha" && "text-amber-600"
+          row.original.tipo === "plancha" && "text-amber-600 dark:text-amber-400"
         )}>
           {formatNumber(row.original.cantidad)} {unit}
         </span>

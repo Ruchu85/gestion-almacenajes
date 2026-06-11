@@ -209,8 +209,8 @@ function InvoiceLineItem({
           variant="outline"
           className={cn(
             "text-xs tabular-nums",
-            Math.abs(diff) < 0.01 ? "border-green-400 text-green-600" :
-            diff > 0 ? "border-amber-400 text-amber-600" : "border-red-400 text-red-600"
+            Math.abs(diff) < 0.01 ? "border-green-400 text-green-600 dark:border-green-500 dark:text-green-400" :
+            diff > 0 ? "border-amber-400 text-amber-600 dark:border-amber-500 dark:text-amber-400" : "border-red-400 text-red-600 dark:border-red-500 dark:text-red-400"
           )}
         >
           {diff >= 0 ? "+" : ""}{formatCurrency(diff)} vs calculado
@@ -310,7 +310,7 @@ function InvoiceSection({
                   variant="outline"
                   className={cn(
                     "text-xs tabular-nums",
-                    totalInvoiced > calculatedCost ? "border-amber-400 text-amber-600" : "border-red-400 text-red-600"
+                    totalInvoiced > calculatedCost ? "border-amber-400 text-amber-600 dark:border-amber-500 dark:text-amber-400" : "border-red-400 text-red-600 dark:border-red-500 dark:text-red-400"
                   )}
                 >
                   {totalInvoiced > calculatedCost ? "+" : ""}{formatCurrency(totalInvoiced - calculatedCost)} vs calculado

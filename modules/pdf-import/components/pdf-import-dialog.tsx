@@ -289,7 +289,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
             </div>
 
             {uploadError && (
-              <p className="text-sm text-destructive flex items-center gap-1.5">
+              <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-1.5">
                 <X className="h-4 w-4" /> {uploadError}
               </p>
             )}
@@ -305,13 +305,13 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
           return (
             <div className="space-y-3">
               {unmatchedItems.length > 0 && (
-                <div className="flex gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-3">
-                  <TriangleAlert className="h-5 w-5 shrink-0 text-destructive mt-0.5" />
-                  <div className="text-sm text-destructive">
-                    <p className="font-semibold">
+                <div className="flex gap-3 rounded-lg border border-red-500/40 bg-red-50 dark:border-red-500/40 dark:bg-red-950/40 p-3">
+                  <TriangleAlert className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400 mt-0.5" />
+                  <div className="text-sm text-red-700 dark:text-red-300">
+                    <p className="font-semibold text-red-800 dark:text-red-200">
                       {unmatchedItems.length} línea{unmatchedItems.length > 1 ? "s" : ""} del PDF no se pueden procesar
                     </p>
-                    <p className="mt-0.5 text-xs opacity-90">
+                    <p className="mt-0.5 text-xs text-red-700/90 dark:text-red-300/90">
                       {unmatchedItems.map((p) => p.line.matricula || "sin matrícula").join(", ")}
                       {" "}— no se han encontrado en el sistema. Estas salidas{" "}
                       <strong>no se grabarán</strong>. Comprueba que la puesta está abierta o que el

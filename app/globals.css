@@ -57,8 +57,11 @@
     --muted-foreground: 217 14% 67%;
     --accent: 217 33% 22%;
     --accent-foreground: 210 40% 98%;
-    --destructive: 0 63% 45%;
-    --destructive-foreground: 0 0% 98%;
+    /* Rojo equilibrado: legible como TEXTO sobre fondo oscuro (~4.7:1) y
+       válido como FONDO de botón/badge con texto blanco encima (~4:1).
+       Resuelve los avisos/errores que antes quedaban en rojo apagado. */
+    --destructive: 0 74% 57%;
+    --destructive-foreground: 0 0% 100%;
     --border: 220 12% 23%;
     --input: 220 12% 23%;
     --ring: 213 90% 60%;
