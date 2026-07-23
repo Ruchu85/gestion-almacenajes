@@ -10,20 +10,35 @@ import { z } from "zod";
  * cliente y numero_puesta pueden estar vacíos para salidas propias (sin cliente externo ni contrato).
  */
 export const pdfExtractedLineSchema = z.object({
-  /** Nombre del cliente que retira (columna "Nombre"). Vacío si es salida propia. */
+  /** Nombre del cliente/destinatario que retira. Vacío si es salida propia. */
   cliente: z.string().nullable().optional(),
-  /** Nº de puesta a disposición / contrato (columna "Contrato"). Vacío si no hay contrato. */
+  /** Nº de puesta a disposición / contrato de la fila. Vacío si no hay contrato. */
   numero_puesta: z.string().nullable().optional(),
-  /** Puerto/almacén (cabecera del informe, campo "Puerto"). */
+  /** Puerto/almacén (cabecera del informe). */
   almacen: z.string().nullable().optional(),
   /** Mercancía/producto (cabecera del informe). Desempate. */
   producto: z.string().nullable().optional(),
   /** Fecha de la salida en formato YYYY-MM-DD. */
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
-  /** Matrícula del camión. */
+  /** Matrícula del camión (cabeza tractora). */
   matricula: z.string().min(1, "Matrícula vacía"),
-  /** Cantidad de la salida (siempre > 0). */
+  /** Matrícula del remolque, si el documento la trae (formato "listado de pesadas"). */
+  remolque: z.string().nullable().optional(),
+  /** Nº de ticket/pesada, si el documento lo trae (formato "listado de pesadas"). */
+  ticket: z.string().nullable().optional(),
+  /** Cantidad de la salida (siempre > 0), ya normalizada a la unidad del sistema. */
   cantidad: z.number().positive("La cantidad debe ser mayor que 0"),
+  /** Unidad en la que el documento expresa la cantidad ("kg", "tns", …). */
+  unidad: z.string().nullable().optional(),
+  /**
+   * Cantidad tal cual venía en el PDF, antes de convertir de unidad.
+   * Solo se rellena (por la app, no por la IA) cuando ha habido conversión.
+   */
+  cantidad_origen: z.number().nullable().optional(),
+  /** Unidad original del PDF cuando ha habido conversión. */
+  unidad_origen: z.string().nullable().optional(),
+  /** Unidad del sistema a la que se ha convertido la cantidad. */
+  unidad_destino: z.string().nullable().optional(),
 });
 
 export const pdfExtractionSchema = z.object({

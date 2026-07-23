@@ -2,7 +2,7 @@
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { extractSalidasFromPdf } from "@/lib/gemini";
-import { buildProposals } from "@/services/pdf-import.service";
+import { buildProposals, filterByText, normalizeLineUnits } from "@/services/pdf-import.service";
 import { PuestasService } from "@/services/puestas.service";
 import { createSalidaParcial } from "@/app/(dashboard)/puestas/actions";
 import { upsertMatricula } from "@/lib/actions/matriculas";
@@ -55,63 +55,67 @@ export async function analyzePdfAction(
     return { error: "No se detectaron salidas/retiradas en el documento." };
   }
 
-  // 4. Cargar puestas abiertas y construir propuestas
-  const puestasService = new PuestasService(supabase);
-  const summaryRes = await puestasService.getAllSummary();
+  // 4. Cargar maestros y puestas abiertas
+  const [summaryRes, warehousesRes, productsRes] = await Promise.all([
+    new PuestasService(supabase).getAllSummary(),
+    supabase.from("warehouses").select("id, name").eq("active", true),
+    supabase.from("products").select("id, name, unit").eq("active", true),
+  ]);
+
   if (summaryRes.error || !summaryRes.data) {
     return { error: summaryRes.error ?? "No se pudieron cargar las puestas a disposición." };
   }
   const abiertas = summaryRes.data.filter((p) => p.estado === "abierta");
+  const warehouses = warehousesRes.data ?? [];
+  const products = productsRes.data ?? [];
 
-  const proposals = buildProposals(parsed.data.lineas, abiertas);
+  // 5. Normalizar unidades (p. ej. el listado de pesadas viene en kg y el
+  //    sistema gestiona el producto en TNS) y construir propuestas.
+  const lineas = normalizeLineUnits(parsed.data.lineas, products);
+  const proposals = buildProposals(lineas, abiertas);
 
-  // 5. Resolver almacén y producto para filas de tipo 'normal'
-  const normalProposals = proposals.filter((p) => p.tipo === "normal");
-  if (normalProposals.length > 0) {
-    const [{ data: warehouses }, { data: products }] = await Promise.all([
-      supabase.from("warehouses").select("id, name").eq("active", true),
-      supabase.from("products").select("id, name").eq("active", true),
-    ]);
+  // 6. Resolver almacén y producto para filas de tipo 'normal' (salidas directas)
+  for (const proposal of proposals.filter((p) => p.tipo === "normal")) {
+    const almacenRaw = proposal.line.almacen ?? "";
+    const productoRaw = proposal.line.producto ?? "";
 
-    const norm = (s: string) =>
-      s.toUpperCase().normalize("NFD").replace(/\p{Diacritic}/gu, "").trim();
-
-    for (const proposal of normalProposals) {
-      const almacenRaw = proposal.line.almacen ?? "";
-      const productoRaw = proposal.line.producto ?? "";
-      const almacenNorm = norm(almacenRaw);
-      const productoNorm = norm(productoRaw);
-
-      if (almacenNorm && warehouses) {
-        const wh = warehouses.find((w) => {
-          const wn = norm(w.name);
-          return wn === almacenNorm || wn.includes(almacenNorm) || almacenNorm.includes(wn);
-        });
-        proposal.resolvedWarehouseId = wh?.id ?? null;
-        proposal.resolvedWarehouseName = wh?.name ?? null;
-      }
-
-      if (productoNorm && products) {
-        const pr = products.find((p) => {
-          const pn = norm(p.name);
-          return pn === productoNorm || pn.includes(productoNorm) || productoNorm.includes(pn);
-        });
-        proposal.resolvedProductId = pr?.id ?? null;
-        proposal.resolvedProductName = pr?.name ?? null;
-      }
-
-      if (!proposal.resolvedWarehouseId || !proposal.resolvedProductId) {
-        const missingParts: string[] = [];
-        if (!proposal.resolvedWarehouseId) missingParts.push(`almacén "${almacenRaw || "desconocido"}"`);
-        if (!proposal.resolvedProductId) missingParts.push(`producto "${productoRaw || "desconocido"}"`);
+    const whMatches = filterByText(warehouses, almacenRaw, (w) => w.name);
+    if (whMatches.length > 0) {
+      proposal.resolvedWarehouseId = whMatches[0].id;
+      proposal.resolvedWarehouseName = whMatches[0].name;
+      if (whMatches.length > 1) {
         proposal.warnings.push(
-          `No se pudo identificar el ${missingParts.join(" ni el ")} en el sistema. Revisa el nombre.`
+          `El almacén "${almacenRaw}" encaja con ${whMatches.length} almacenes (${whMatches
+            .map((w) => w.name)
+            .join(", ")}). Se propone el primero; revísalo.`
         );
       }
     }
+
+    const prMatches = filterByText(products, productoRaw, (p) => p.name);
+    if (prMatches.length > 0) {
+      proposal.resolvedProductId = prMatches[0].id;
+      proposal.resolvedProductName = prMatches[0].name;
+      if (prMatches.length > 1) {
+        proposal.warnings.push(
+          `El producto "${productoRaw}" encaja con ${prMatches.length} productos (${prMatches
+            .map((p) => p.name)
+            .join(", ")}). Se propone el primero; revísalo.`
+        );
+      }
+    }
+
+    if (!proposal.resolvedWarehouseId || !proposal.resolvedProductId) {
+      const missingParts: string[] = [];
+      if (!proposal.resolvedWarehouseId) missingParts.push(`almacén "${almacenRaw || "desconocido"}"`);
+      if (!proposal.resolvedProductId) missingParts.push(`producto "${productoRaw || "desconocido"}"`);
+      proposal.warnings.push(
+        `No se pudo identificar el ${missingParts.join(" ni el ")} en el sistema. Revisa el nombre.`
+      );
+    }
   }
 
-  // 6. Detección de duplicados (requiere DB): misma puesta + fecha + matrícula + cantidad
+  // 7. Detección de duplicados (requiere DB): misma puesta + fecha + matrícula + cantidad
   const puestaIds = [
     ...new Set(proposals.filter((p) => p.match).map((p) => p.match!.puesta_id)),
   ];

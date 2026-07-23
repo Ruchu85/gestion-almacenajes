@@ -100,11 +100,12 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                   {isNormal ? (
                     <>
                       <div className="font-medium leading-tight text-muted-foreground italic text-xs">
-                        Sin cliente / sin contrato
+                        Sin destinatario en el PDF
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {item.line.almacen ? `${item.line.almacen} · ` : ""}
                         {item.line.producto ?? ""}
+                        {item.line.numero_puesta ? ` · Ref. ${item.line.numero_puesta}` : ""}
                       </div>
                     </>
                   ) : (
@@ -115,6 +116,13 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                         {item.line.producto ? ` · ${item.line.producto}` : ""}
                       </div>
                     </>
+                  )}
+                  {(item.line.ticket || item.line.remolque) && (
+                    <div className="text-[11px] text-muted-foreground/80">
+                      {item.line.ticket ? `Ticket ${item.line.ticket}` : ""}
+                      {item.line.ticket && item.line.remolque ? " · " : ""}
+                      {item.line.remolque ? `Remolque ${item.line.remolque}` : ""}
+                    </div>
                   )}
                 </TableCell>
 
@@ -195,6 +203,12 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                     disabled={!isEditable}
                     onChange={(n) => onEdit(index, "cantidad", n ?? 0)}
                   />
+                  {item.line.cantidad_origen != null && (
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      {formatNumber(item.line.cantidad_origen)} {item.line.unidad_origen ?? ""} →{" "}
+                      {item.line.unidad_destino ?? ""}
+                    </div>
+                  )}
                 </TableCell>
 
                 {/* Tipo / Confianza */}

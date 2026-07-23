@@ -21,15 +21,21 @@ const RESPONSE_SCHEMA = {
       items: {
         type: "object",
         properties: {
-          cliente: { type: "string", description: "Nombre en columna Nombre. Vacío si no hay cliente externo." },
-          numero_puesta: { type: "string", description: "Valor de columna Contrato. Vacío si no hay contrato." },
-          almacen: { type: "string", description: "Puerto/almacén de la cabecera del informe. Ejemplo: CORUÑA." },
+          cliente: { type: "string", description: "Cliente/destinatario de la retirada. Vacío si no hay cliente externo." },
+          numero_puesta: { type: "string", description: "Nº de contrato de la fila, sin prefijos. Vacío si no hay contrato." },
+          almacen: { type: "string", description: "Almacén/puerto de la cabecera del informe. Ejemplo: CORUÑA." },
           producto: { type: "string" },
           fecha: { type: "string", description: "Formato YYYY-MM-DD" },
-          matricula: { type: "string" },
+          matricula: { type: "string", description: "Matrícula del camión (cabeza tractora)." },
+          remolque: { type: "string", description: "Matrícula del remolque, si el documento la trae. Vacío si no." },
+          ticket: { type: "string", description: "Nº de ticket/pesada, si el documento lo trae. Vacío si no." },
           cantidad: { type: "number" },
+          unidad: {
+            type: "string",
+            description: 'Unidad en la que está expresada "cantidad" en el documento: "kg" o "tns".',
+          },
         },
-        required: ["cliente", "numero_puesta", "fecha", "matricula", "cantidad"],
+        required: ["cliente", "numero_puesta", "fecha", "matricula", "cantidad", "unidad"],
       },
     },
   },
@@ -39,35 +45,99 @@ const RESPONSE_SCHEMA = {
 const EXTRACTION_PROMPT = `
 Eres un asistente experto en leer informes logísticos de almacenaje de mercancías en español.
 
-El documento adjunto es un "Informe de Salidas a Vendedor" (o similar). Contiene una o varias
-páginas con una tabla de movimientos. Tu tarea es extraer ÚNICAMENTE las filas que representan
-SALIDAS / RETIRADAS de mercancía (la columna "Salidas" tiene un valor mayor que 0).
+El PDF adjunto es un informe de SALIDAS / RETIRADAS de mercancía de un almacén portuario.
+Puede venir en DOS FORMATOS distintos. Identifica primero de cuál se trata y aplica SOLO las
+reglas de ese formato.
 
-Para cada fila de salida, extrae:
+════════════════════════════════════════════════════════════════════════════════
+FORMATO A — "Informe de Salidas a Vendedor"
+Se reconoce porque tiene una tabla de movimientos con una columna "Salidas" y columnas
+"Nombre" y "Contrato".
+════════════════════════════════════════════════════════════════════════════════
+Extrae ÚNICAMENTE las filas cuya columna "Salidas" tenga un valor mayor que 0.
+
 - "cliente": el nombre que aparece en la columna "Nombre" de ESA fila (NO el "Propietario" de la
   cabecera). Ejemplo: "DE HEUS NUTRICION ANIMAL".
   IMPORTANTE: Si la columna "Nombre" contiene el nombre de la propia empresa propietaria
-  (el "Propietario" o "Propietario Origen" de la cabecera), o si la columna "Nombre" está vacía,
-  devuelve cliente = "" (cadena vacía).
+  (el "Propietario" o "Propietario Origen" de la cabecera), o si está vacía, devuelve cliente = "".
 - "numero_puesta": el valor de la columna "Contrato" de esa fila. Ejemplo: "D02600632_20-1".
-  IMPORTANTE: Si la columna "Contrato" está vacía o no existe, devuelve numero_puesta = "" (cadena vacía).
+  Si está vacía o no existe, devuelve "".
 - "almacen": el puerto o almacén indicado en la cabecera del bloque (campo "Puerto"). Ejemplo: "CORUÑA".
-  Si no aparece el campo "Puerto", devuelve almacen = "".
-- "producto": la mercancía del informe (suele estar en la cabecera, campo "Mercancía"). Ejemplo: "MAIZ".
+  Si no aparece el campo "Puerto", devuelve "".
+- "producto": la mercancía del informe (cabecera, campo "Mercancía"). Ejemplo: "MAIZ".
 - "fecha": la fecha de la salida (columna "Fecha", o "Fecha Pase" si no hay "Fecha"), convertida
-  SIEMPRE al formato YYYY-MM-DD. Las fechas del documento están en formato DD/MM/YYYY.
+  SIEMPRE al formato YYYY-MM-DD. Las fechas de este formato vienen en DD/MM/YYYY.
 - "matricula": la matrícula del camión de esa fila. Ejemplo: "3946NBP".
-- "cantidad": el valor numérico de la columna "Salidas". Los números usan la coma como separador
-  decimal (ej. "30,08" → 30.08). Devuélvelo como número decimal con punto.
+- "remolque": "" (este formato no trae remolque).
+- "ticket": "" (este formato no trae nº de ticket).
+- "cantidad": el valor numérico de la columna "Salidas". Aquí la COMA es el separador DECIMAL
+  (ej. "30,08" → 30.08). Devuélvelo como número decimal con punto.
+- "unidad": "tns" (las cantidades de este formato están en toneladas).
 
-REGLAS ESTRICTAS:
+Reglas del FORMATO A:
 - Incluye TODAS las filas con "Salidas" > 0, incluso si "Nombre" o "Contrato" están vacíos o son
   el nombre de la propia empresa. En esos casos devuelve cadena vacía para esos campos.
 - Ignora filas de totales, subtotales y existencias.
 - Ignora cualquier fila cuya "Salidas" sea 0 o vacía (esas son entradas, no salidas).
-- Si una matrícula aparece sin salida, no la incluyas.
-- No inventes datos. Si un campo no tiene valor, devuelve cadena vacía para ese campo.
+
+════════════════════════════════════════════════════════════════════════════════
+FORMATO B — "Informe de sus movimientos" con "LISTADO DE PESADAS"
+Se reconoce porque contiene bloques "CODIGO CUPO" y una sección "LISTADO DE PESADAS" con
+columnas "TICK.", "MATR./REM.", "POR CTA/DESTINAT.", "SIT", "NETO" y "CONTRATO REF.".
+Lo emite el almacén portuario (por ejemplo "PEREZ TORRES MARITIMA, S.L.").
+════════════════════════════════════════════════════════════════════════════════
+MUY IMPORTANTE — de dónde SÍ y de dónde NO extraer:
+- Los bloques "CODIGO CUPO" (columnas PLANCHA / POR CUENTA / KG ASIGNADOS / KG RETIRADOS / SALDO)
+  y sus subtablas "REAS. / CLIENTE" son SOLO SALDOS INFORMATIVOS.
+  NO generes NINGUNA línea a partir de ellos, aunque tengan KG RETIRADOS mayores que 0.
+- Extrae UNA LÍNEA POR CADA FILA de la tabla "LISTADO DE PESADAS". Esas son las retiradas reales
+  del día. Procesa TODAS sus filas, en todas las páginas.
+
+Cada fila del "LISTADO DE PESADAS" ocupa DOS renglones:
+- "MATR./REM.": renglón 1 = matrícula del CAMIÓN (ej. "3058MGT");
+                renglón 2 = matrícula del REMOLQUE (ej. "R9038BD").
+- "POR CTA/DESTINAT.": renglón 1 = por cuenta de (ej. "LESA # LEONESA ASTUR");
+                renglón 2, que empieza por un guion, = DESTINATARIO (ej. "-DE HEUS NUTRICION A").
+
+Campos del FORMATO B:
+- "cliente": el DESTINATARIO, es decir el renglón 2 de "POR CTA/DESTINAT.", sin el guion inicial.
+  Ejemplo: "-DE HEUS NUTRICION A" → "DE HEUS NUTRICION A". Si el nombre lleva un prefijo de código
+  con almohadilla (ej. "LESA # ..."), quítalo.
+  MUY IMPORTANTE: si la fila NO tiene destinatario, o el destinatario es la MISMA empresa que
+  figura como titular del informe (la que aparece tras "SRES." o tras "CLIENTE : (nn)", por
+  ejemplo "LESA # LEONESA ASTUR DE PIENSOS, S.A."), devuelve cliente = "". Eso significa que la
+  retirada es una salida directa del titular y no una entrega a un cliente.
+- "numero_puesta": el valor de "CONTRATO REF." QUITANDO el prefijo:
+  "CONT.CLI.-D02600804" → "D02600804"; "CONT.PROV.-D02600804" → "D02600804".
+  Si la columna está vacía, devuelve "".
+- "almacen": la empresa que emite el informe junto con su ciudad, tal como aparecen en la primera
+  línea de la cabecera. Ejemplo: de "PEREZ TORRES MARITIMA, S.L. - MUELLE SAN DIEGO s/n - 15006 -
+  A CORUÑA." devuelve "PEREZ TORRES MARITIMA, S.L. - A CORUÑA" (nombre de la empresa + ciudad,
+  SIN la calle ni el código postal).
+- "producto": la mercancía del bloque de pesadas. Ejemplo: "MAIZ GMO".
+- "fecha": la fecha del informe en YYYY-MM-DD. Tómala de "LISTADO DE PESADAS: DD-MM-AAAA a ..."
+  (usa la PRIMERA fecha) y, si no aparece, de "INFORME DE SUS MOVIMIENTOS DE FECHA DD-MM-AAAA".
+  En este formato las fechas vienen en DD-MM-AAAA.
+- "matricula": renglón 1 de "MATR./REM.".
+- "remolque": renglón 2 de "MATR./REM.". Si no hay, "".
+- "ticket": el valor de la columna "TICK.". Ejemplo: "58995".
+- "cantidad": el valor de la columna "NETO". En este formato el PUNTO es separador de MILES y NO
+  hay decimales: "29.300" → 29300, "295.660" → 295660. Devuélvelo como número entero.
+- "unidad": "kg" (las cantidades del LISTADO DE PESADAS están en kilogramos).
+
+Reglas del FORMATO B:
+- NO sumes ni agrupes filas: una línea de salida por cada pesada (por cada nº de ticket).
+- Ignora los totales ("RET. DIA:", "SALIDAS DIA:", "SALDO:"), las líneas de subtotales de las
+  subtablas y los pies de página ("SIT = A (RETIRADO ALMACEN)", "SALUDOS", etc.).
+- Incluye las filas tanto si "SIT" es A como si es B.
+
+════════════════════════════════════════════════════════════════════════════════
+REGLAS GENERALES (aplican a los dos formatos)
+════════════════════════════════════════════════════════════════════════════════
+- No inventes datos. Si un campo no tiene valor en el documento, devuelve cadena vacía.
+- Todas las fechas SIEMPRE en formato YYYY-MM-DD.
 - Procesa TODAS las páginas del documento.
+- Devuelve las cantidades como números, nunca como texto.
 
 Devuelve el resultado siguiendo el esquema JSON proporcionado.
 `.trim();
@@ -80,7 +150,10 @@ export interface GeminiRawExtraction {
     producto?: string;
     fecha: string;
     matricula: string;
+    remolque?: string;
+    ticket?: string;
     cantidad: number;
+    unidad?: string;
   }>;
 }
 

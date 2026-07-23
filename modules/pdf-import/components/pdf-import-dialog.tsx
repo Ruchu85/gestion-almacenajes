@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { formatNumber } from "@/utils/format";
 import { analyzePdfAction, confirmSalidasAction, confirmSalidasNormalesAction } from "@/lib/actions/pdf-import";
 import type { PdfConfirmItem, PdfConfirmNormalItem, PuestaMatchRef } from "@/validations/pdf-import.schema";
 import { ProposalTable, type EditableProposal } from "./proposal-table";
@@ -87,7 +88,12 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
       }
       const editable: EditableProposal[] = res.data.map((p) => ({
         ...p,
-        selected: p.confidence === "alta",
+        // Se preseleccionan las filas resueltas sin dudas: puestas con match de
+        // confianza alta y salidas directas con almacén y producto identificados.
+        selected:
+          p.tipo === "normal"
+            ? !!(p.resolvedWarehouseId && p.resolvedProductId) && p.warnings.length === 0
+            : p.confidence === "alta",
         chosenPuestaId: p.match?.puesta_id ?? null,
         edited: {
           fecha: p.line.fecha,
@@ -134,6 +140,19 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
     return all.find((r) => r.puesta_id === item.chosenPuestaId) ?? item.match;
   }
 
+  /** Traza del origen de la fila en el PDF (ticket, remolque, cantidad original). */
+  function traceComment(p: EditableProposal): string[] {
+    const parts: string[] = [];
+    if (p.line.ticket) parts.push(`Ticket ${p.line.ticket}`);
+    if (p.line.remolque) parts.push(`Remolque ${p.line.remolque}`);
+    if (p.line.cantidad_origen != null) {
+      parts.push(
+        `${formatNumber(p.line.cantidad_origen)} ${p.line.unidad_origen ?? ""} en el PDF`.trim()
+      );
+    }
+    return parts;
+  }
+
   function isSelectedAndValid(p: EditableProposal): boolean {
     if (!p.selected) return false;
     if (p.tipo === "normal") return !!(p.resolvedWarehouseId && p.resolvedProductId);
@@ -159,20 +178,26 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
           cantidad: p.edited.cantidad,
           cantidad_pendiente: ref.cantidad_pendiente,
           n_camion: null,
-          comentarios: `Importada desde PDF (puesta ${ref.numero_contrato})`,
+          comentarios: [`Importada desde PDF (puesta ${ref.numero_contrato})`, ...traceComment(p)].join(
+            " · "
+          ),
         };
       });
 
     const normalItems: PdfConfirmNormalItem[] = selected
       .filter((p) => p.tipo === "normal")
-      .map((p) => ({
-        warehouse_id: p.resolvedWarehouseId!,
-        product_id: p.resolvedProductId!,
-        fecha_salida: p.edited.fecha,
-        matricula: p.edited.matricula,
-        cantidad: p.edited.cantidad,
-        comentarios: null,
-      }));
+      .map((p) => {
+        const parts = [...traceComment(p)];
+        if (p.line.numero_puesta) parts.push(`Contrato ref. ${p.line.numero_puesta}`);
+        return {
+          warehouse_id: p.resolvedWarehouseId!,
+          product_id: p.resolvedProductId!,
+          fecha_salida: p.edited.fecha,
+          matricula: p.edited.matricula,
+          cantidad: p.edited.cantidad,
+          comentarios: parts.length > 0 ? parts.join(" · ") : null,
+        };
+      });
 
     setConfirming(true);
     try {
