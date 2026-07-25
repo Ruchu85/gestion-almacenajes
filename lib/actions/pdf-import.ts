@@ -2,7 +2,12 @@
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { extractSalidasFromPdf } from "@/lib/gemini";
-import { buildProposals, filterByText, normalizeLineUnits } from "@/services/pdf-import.service";
+import {
+  buildProposals,
+  buildResumenAlerts,
+  filterByText,
+  normalizeLineUnits,
+} from "@/services/pdf-import.service";
 import { PuestasService } from "@/services/puestas.service";
 import { createSalidaParcial } from "@/app/(dashboard)/puestas/actions";
 import { upsertMatricula } from "@/lib/actions/matriculas";
@@ -10,7 +15,7 @@ import {
   pdfExtractionSchema,
   pdfConfirmSchema,
   pdfConfirmNormalesSchema,
-  type PdfProposalItem,
+  type PdfAnalysisResult,
   type PdfConfirmItem,
   type PdfConfirmNormalItem,
 } from "@/validations/pdf-import.schema";
@@ -23,7 +28,7 @@ const MAX_PDF_BYTES = 15 * 1024 * 1024; // 15 MB
 
 export async function analyzePdfAction(
   formData: FormData
-): Promise<{ data?: PdfProposalItem[]; error?: string }> {
+): Promise<{ data?: PdfAnalysisResult; error?: string }> {
   // 1. Auth
   const supabase = await createClient();
   const {
@@ -73,6 +78,11 @@ export async function analyzePdfAction(
   //    sistema gestiona el producto en TNS) y construir propuestas.
   const lineas = normalizeLineUnits(parsed.data.lineas, products);
   const proposals = buildProposals(lineas, abiertas);
+
+  // 5.b Contrastar con el resumen de saldos del informe (KG RETIRADOS por
+  //     cliente de la primera página): todo cliente que retira debe tener una
+  //     puesta abierta a su nombre, y los kilos deben cuadrar con las pesadas.
+  const alerts = buildResumenAlerts(parsed.data.resumen_clientes, proposals, abiertas, products);
 
   // 6. Resolver almacén y producto para filas de tipo 'normal' (salidas directas)
   for (const proposal of proposals.filter((p) => p.tipo === "normal")) {
@@ -140,7 +150,7 @@ export async function analyzePdfAction(
     }
   }
 
-  return { data: proposals };
+  return { data: { proposals, alerts } };
 }
 
 // ============================================================

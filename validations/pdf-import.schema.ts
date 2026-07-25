@@ -41,11 +41,30 @@ export const pdfExtractedLineSchema = z.object({
   unidad_destino: z.string().nullable().optional(),
 });
 
+/**
+ * Fila del resumen de saldos por cliente (bloques "CODIGO CUPO" de la primera
+ * página del informe de pesadas). Es la cifra que el almacén declara como
+ * retirada del día para cada cliente: sirve de control cruzado contra las
+ * pesadas y para detectar clientes sin puesta a disposición abierta.
+ */
+export const pdfResumenClienteSchema = z.object({
+  /** Nombre del cliente tal cual figura en la subtabla de saldos. */
+  cliente: z.string(),
+  /** Código de cupo del bloque al que pertenece la fila. */
+  codigo_cupo: z.string().nullable().optional(),
+  /** Mercancía del bloque. */
+  producto: z.string().nullable().optional(),
+  /** Kilos retirados declarados para ese cliente en ese cupo. */
+  kg_retirados: z.number(),
+});
+
 export const pdfExtractionSchema = z.object({
   lineas: z.array(pdfExtractedLineSchema),
+  resumen_clientes: z.array(pdfResumenClienteSchema).optional().default([]),
 });
 
 export type PdfExtractedLine = z.infer<typeof pdfExtractedLineSchema>;
+export type PdfResumenCliente = z.infer<typeof pdfResumenClienteSchema>;
 export type PdfExtraction = z.infer<typeof pdfExtractionSchema>;
 
 // ============================================================
@@ -89,6 +108,27 @@ export interface PdfProposalItem {
   /** Producto resuelto desde BD para tipo='normal'. */
   resolvedProductId?: string | null;
   resolvedProductName?: string | null;
+}
+
+/**
+ * Aviso derivado del contraste entre el resumen de saldos del PDF y lo que hay
+ * en el sistema. No bloquea nada: se muestra sobre la tabla de propuestas.
+ *  - 'error'   → el cliente retiró mercancía pero no hay puesta abierta suya.
+ *  - 'warning' → hay descuadre entre los kilos declarados y las pesadas.
+ *  - 'info'    → el nombre del PDF y el del sistema no son idénticos pero se
+ *                han identificado como el mismo cliente.
+ */
+export interface PdfResumenAlert {
+  level: "error" | "warning" | "info";
+  /** Nombre del cliente tal cual viene en el PDF. */
+  cliente: string;
+  message: string;
+}
+
+/** Resultado completo del análisis de un PDF de salidas. */
+export interface PdfAnalysisResult {
+  proposals: PdfProposalItem[];
+  alerts: PdfResumenAlert[];
 }
 
 // ============================================================

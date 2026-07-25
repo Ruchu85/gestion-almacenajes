@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  FileUp, FileText, Loader2, ScanSearch, X, ArrowLeft, CheckCircle2, TriangleAlert,
+  FileUp, FileText, Loader2, ScanSearch, X, ArrowLeft, CheckCircle2, TriangleAlert, Info,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -13,7 +13,12 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/utils/format";
 import { analyzePdfAction, confirmSalidasAction, confirmSalidasNormalesAction } from "@/lib/actions/pdf-import";
-import type { PdfConfirmItem, PdfConfirmNormalItem, PuestaMatchRef } from "@/validations/pdf-import.schema";
+import type {
+  PdfConfirmItem,
+  PdfConfirmNormalItem,
+  PdfResumenAlert,
+  PuestaMatchRef,
+} from "@/validations/pdf-import.schema";
 import { ProposalTable, type EditableProposal } from "./proposal-table";
 
 interface PdfImportDialogProps {
@@ -22,6 +27,60 @@ interface PdfImportDialogProps {
 }
 
 const MAX_MB = 15;
+
+/** Estilos y copy del panel de control cruzado contra el resumen del informe. */
+const ALERT_STYLES: Record<
+  PdfResumenAlert["level"],
+  { box: string; icon: typeof TriangleAlert; iconClass: string; text: string }
+> = {
+  error: {
+    box: "border-red-500/40 bg-red-50 dark:border-red-500/40 dark:bg-red-950/40",
+    icon: TriangleAlert,
+    iconClass: "text-red-600 dark:text-red-400",
+    text: "text-red-700 dark:text-red-300",
+  },
+  warning: {
+    box: "border-amber-500/40 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-950/40",
+    icon: TriangleAlert,
+    iconClass: "text-amber-600 dark:text-amber-400",
+    text: "text-amber-800 dark:text-amber-300",
+  },
+  info: {
+    box: "border-violet-500/40 bg-violet-50 dark:border-violet-500/40 dark:bg-violet-950/40",
+    icon: Info,
+    iconClass: "text-violet-600 dark:text-violet-400",
+    text: "text-violet-800 dark:text-violet-300",
+  },
+};
+
+/**
+ * Contraste entre el resumen de retiradas por cliente que declara el informe
+ * (página de saldos) y lo que hay en la aplicación.
+ */
+function ResumenAlerts({ alerts }: { alerts: PdfResumenAlert[] }) {
+  const order: PdfResumenAlert["level"][] = ["error", "warning", "info"];
+  const sorted = [...alerts].sort(
+    (a, b) => order.indexOf(a.level) - order.indexOf(b.level)
+  );
+
+  return (
+    <div className="space-y-2">
+      {sorted.map((alert, i) => {
+        const style = ALERT_STYLES[alert.level];
+        const AlertIcon = style.icon;
+        return (
+          <div
+            key={`${alert.level}-${alert.cliente}-${i}`}
+            className={cn("flex gap-3 rounded-lg border p-3", style.box)}
+          >
+            <AlertIcon className={cn("h-5 w-5 shrink-0 mt-0.5", style.iconClass)} />
+            <p className={cn("text-sm", style.text)}>{alert.message}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
   const router = useRouter();
@@ -34,6 +93,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
   const [analyzing, setAnalyzing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [proposals, setProposals] = useState<EditableProposal[] | null>(null);
+  const [alerts, setAlerts] = useState<PdfResumenAlert[]>([]);
 
   // ── Reset al cerrar ──────────────────────────────────────
   function reset() {
@@ -43,6 +103,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
     setAnalyzing(false);
     setConfirming(false);
     setProposals(null);
+    setAlerts([]);
   }
 
   function handleOpenChange(next: boolean) {
@@ -86,7 +147,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
         setUploadError(res.error ?? "No se pudo analizar el documento.");
         return;
       }
-      const editable: EditableProposal[] = res.data.map((p) => ({
+      const editable: EditableProposal[] = res.data.proposals.map((p) => ({
         ...p,
         // Se preseleccionan las filas resueltas sin dudas: puestas con match de
         // confianza alta y salidas directas con almacén y producto identificados.
@@ -102,6 +163,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
         },
       }));
       setProposals(editable);
+      setAlerts(res.data.alerts);
     } catch (err) {
       setUploadError(`Error inesperado: ${(err as Error).message}`);
     } finally {
@@ -329,6 +391,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
           });
           return (
             <div className="space-y-3">
+              {alerts.length > 0 && <ResumenAlerts alerts={alerts} />}
               {unmatchedItems.length > 0 && (
                 <div className="flex gap-3 rounded-lg border border-red-500/40 bg-red-50 dark:border-red-500/40 dark:bg-red-950/40 p-3">
                   <TriangleAlert className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400 mt-0.5" />
@@ -370,7 +433,11 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
             </>
           ) : (
             <>
-              <Button variant="outline" onClick={() => setProposals(null)} disabled={confirming}>
+              <Button
+                variant="outline"
+                onClick={() => { setProposals(null); setAlerts([]); }}
+                disabled={confirming}
+              >
                 <ArrowLeft className="mr-2 h-4 w-4" /> Volver
               </Button>
               <Button onClick={handleConfirm} disabled={confirming || selectedCount === 0}>

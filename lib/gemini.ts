@@ -38,8 +38,23 @@ const RESPONSE_SCHEMA = {
         required: ["cliente", "numero_puesta", "fecha", "matricula", "cantidad", "unidad"],
       },
     },
+    resumen_clientes: {
+      type: "array",
+      description:
+        "Resumen de KG RETIRADOS por cliente de los bloques de saldos (FORMATO B). Vacío en el FORMATO A.",
+      items: {
+        type: "object",
+        properties: {
+          cliente: { type: "string", description: "Nombre del cliente tal cual figura en la subtabla de saldos." },
+          codigo_cupo: { type: "string", description: "Código del cupo al que pertenece la fila. Vacío si no consta." },
+          producto: { type: "string", description: "Mercancía del bloque. Ejemplo: MAIZ GMO." },
+          kg_retirados: { type: "number", description: "Valor de la columna KG RETIRADOS de esa fila." },
+        },
+        required: ["cliente", "kg_retirados"],
+      },
+    },
   },
-  required: ["lineas"],
+  required: ["lineas", "resumen_clientes"],
 } as const;
 
 const EXTRACTION_PROMPT = `
@@ -79,6 +94,7 @@ Reglas del FORMATO A:
   el nombre de la propia empresa. En esos casos devuelve cadena vacía para esos campos.
 - Ignora filas de totales, subtotales y existencias.
 - Ignora cualquier fila cuya "Salidas" sea 0 o vacía (esas son entradas, no salidas).
+- "resumen_clientes": devuelve una lista VACÍA (este formato no trae bloques de saldos).
 
 ════════════════════════════════════════════════════════════════════════════════
 FORMATO B — "Informe de sus movimientos" con "LISTADO DE PESADAS"
@@ -89,7 +105,8 @@ Lo emite el almacén portuario (por ejemplo "PEREZ TORRES MARITIMA, S.L.").
 MUY IMPORTANTE — de dónde SÍ y de dónde NO extraer:
 - Los bloques "CODIGO CUPO" (columnas PLANCHA / POR CUENTA / KG ASIGNADOS / KG RETIRADOS / SALDO)
   y sus subtablas "REAS. / CLIENTE" son SOLO SALDOS INFORMATIVOS.
-  NO generes NINGUNA línea a partir de ellos, aunque tengan KG RETIRADOS mayores que 0.
+  NO generes NINGUNA línea de "lineas" a partir de ellos, aunque tengan KG RETIRADOS mayores que 0.
+  Esos bloques se vuelcan APARTE, en "resumen_clientes" (ver más abajo).
 - Extrae UNA LÍNEA POR CADA FILA de la tabla "LISTADO DE PESADAS". Esas son las retiradas reales
   del día. Procesa TODAS sus filas, en todas las páginas.
 
@@ -131,6 +148,25 @@ Reglas del FORMATO B:
   subtablas y los pies de página ("SIT = A (RETIRADO ALMACEN)", "SALUDOS", etc.).
 - Incluye las filas tanto si "SIT" es A como si es B.
 
+RESUMEN DE RETIRADAS POR CLIENTE del FORMATO B ("resumen_clientes"):
+Además de "lineas", rellena SIEMPRE "resumen_clientes" con las retiradas por cliente que declaran
+los bloques de saldos de la PRIMERA PARTE del informe (normalmente la página 1). Cada bloque
+"CODIGO CUPO" va seguido de una subtabla con columnas "REAS.", "CLIENTE", "KG ASIGNADOS",
+"KG RETIRADOS" y "SALDO", con una fila por cliente.
+- Añade UNA ENTRADA por cada fila de esas subtablas cuyo "KG RETIRADOS" sea MAYOR QUE 0.
+  Omite las filas con KG RETIRADOS igual a 0 o vacío.
+- Recorre TODOS los bloques "CODIGO CUPO" del documento. Si el mismo cliente aparece en varios
+  bloques, añade una entrada por cada bloque (NO las sumes).
+- "cliente": el nombre de la columna "CLIENTE", tal cual, quitando el número de "REAS." inicial.
+  Ejemplo: la fila "2 PIENSOS DEL SIL S.A" → cliente = "PIENSOS DEL SIL S.A".
+- "codigo_cupo": el valor "CODIGO CUPO" del bloque al que pertenece la fila. Ejemplo:
+  "1165465JL-00". Si no consta, "".
+- "producto": la mercancía del bloque, de la cabecera con "RET. DIA:". Ejemplo: "MAIZ GMO".
+- "kg_retirados": el valor de "KG RETIRADOS" como número. El PUNTO es separador de MILES y NO hay
+  decimales: "226.820" → 226820, "59.420" → 59420, "100" → 100.
+- Ignora las líneas de subtotal de la subtabla (las que solo traen una cifra de saldo suelta) y
+  los totales de la cabecera del bloque ("RET. DIA:", "SALDO:").
+
 ════════════════════════════════════════════════════════════════════════════════
 REGLAS GENERALES (aplican a los dos formatos)
 ════════════════════════════════════════════════════════════════════════════════
@@ -154,6 +190,12 @@ export interface GeminiRawExtraction {
     ticket?: string;
     cantidad: number;
     unidad?: string;
+  }>;
+  resumen_clientes?: Array<{
+    cliente: string;
+    codigo_cupo?: string;
+    producto?: string;
+    kg_retirados: number;
   }>;
 }
 

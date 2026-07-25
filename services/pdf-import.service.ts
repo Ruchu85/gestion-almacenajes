@@ -2,6 +2,8 @@ import type { PuestaSummary } from "@/types";
 import type {
   PdfExtractedLine,
   PdfProposalItem,
+  PdfResumenAlert,
+  PdfResumenCliente,
   PuestaMatchRef,
   MatchConfidence,
 } from "@/validations/pdf-import.schema";
@@ -84,15 +86,83 @@ function normCliente(value: string | null | undefined): string {
   return tokens.join(" ");
 }
 
-/** Coincidencia laxa de cliente: igualdad o uno contiene al otro. */
+/**
+ * Tokens significativos de un nombre de empresa: sin forma jurídica, sin
+ * artículos ni preposiciones. Es lo que permite ver que "PIENSOS DEL SIL, S.A."
+ * (PDF) y "PIENSOS SIL, S.L." (sistema) son el mismo cliente.
+ */
+function clienteTokens(value: string | null | undefined): string[] {
+  return tokensOf(normCliente(value)).filter((t) => !NOISE_TOKENS.has(t));
+}
+
+/** Longitud mínima de un token para admitirlo como prefijo de otro. */
+const MIN_PREFIX_LEN = 3;
+
+/**
+ * Fuerza de la coincidencia entre el nombre de cliente del PDF y el del
+ * sistema. Los informes de almacén recortan los nombres (a 20 caracteres en el
+ * listado de pesadas) y añaden u omiten preposiciones y formas jurídicas, así
+ * que la comparación literal no basta.
+ *
+ *  - 4 → nombres idénticos una vez normalizados.
+ *  - 3 → mismos tokens significativos: "PIENSOS DEL SIL S.A" ⇄ "PIENSOS SIL, S.L.".
+ *  - 2 → los tokens de uno son un subconjunto de los del otro (≥2 tokens):
+ *        "DE HEUS NUTRICION A" ⊂ "DE HEUS NUTRICION ANIMAL, S.A.U".
+ *  - 1 → coincidencia débil: contención literal, o tokens truncados que son
+ *        prefijo de los del otro nombre.
+ *  - 0 → sin relación.
+ */
+export function clienteMatchScore(
+  pdfName: string | null | undefined,
+  dbName: string | null | undefined
+): 0 | 1 | 2 | 3 | 4 {
+  const na = normCliente(pdfName);
+  const nb = normCliente(dbName);
+  if (!na || !nb) return 0;
+  if (na === nb) return 4;
+
+  const ta = new Set(clienteTokens(pdfName));
+  const tb = new Set(clienteTokens(dbName));
+
+  if (ta.size > 0 && tb.size > 0) {
+    if (ta.size === tb.size && [...ta].every((t) => tb.has(t))) return 3;
+
+    const [small, big] = ta.size <= tb.size ? [ta, tb] : [tb, ta];
+    if (small.size >= 2 && [...small].every((t) => big.has(t))) return 2;
+
+    // Nombre recortado por el informe: cada token del corto es el principio de
+    // alguno del largo ("DE HEUS NUTRICION AN" ⊂ "DE HEUS NUTRICION ANIMAL").
+    const prefixOk = [...small].every((t) =>
+      [...big].some((o) => o === t || (t.length >= MIN_PREFIX_LEN && o.startsWith(t)))
+    );
+    if (small.size >= 2 && prefixOk) return 1;
+  }
+
+  if (na.length >= 4 && nb.includes(na)) return 1;
+  if (nb.length >= 4 && na.includes(nb)) return 1;
+  return 0;
+}
+
+/** Coincidencia laxa de cliente (cualquier nivel de la escala anterior). */
 function clienteMatches(a: string | null | undefined, b: string | null | undefined): boolean {
-  const na = normCliente(a);
-  const nb = normCliente(b);
-  if (!na || !nb) return false;
-  if (na === nb) return true;
-  if (na.length >= 4 && nb.includes(na)) return true;
-  if (nb.length >= 4 && na.includes(nb)) return true;
-  return false;
+  return clienteMatchScore(a, b) > 0;
+}
+
+/**
+ * Puestas cuyo cliente casa MEJOR con el nombre del PDF. Se queda solo con las
+ * del nivel de coincidencia más alto, para que una coincidencia exacta gane a
+ * una débil (p. ej. "PIENSOS SIL" frente al resto de "PIENSOS …").
+ */
+export function bestByCliente(
+  puestas: PuestaSummary[],
+  cliente: string | null | undefined
+): { matches: PuestaSummary[]; score: 0 | 1 | 2 | 3 | 4 } {
+  const scored = puestas
+    .map((p) => ({ p, score: clienteMatchScore(cliente, p.customer_name) }))
+    .filter((s) => s.score > 0);
+  if (scored.length === 0) return { matches: [], score: 0 };
+  const best = Math.max(...scored.map((s) => s.score)) as 1 | 2 | 3 | 4;
+  return { matches: scored.filter((s) => s.score === best).map((s) => s.p), score: best };
 }
 
 function productoMatches(a: string | null | undefined, b: string | null | undefined): boolean {
@@ -346,7 +416,7 @@ export function buildProposals(
     }
 
     // ── 2. Afinar candidatas ───────────────────────────────────
-    const porCliente = puestasAbiertas.filter((p) => clienteMatches(p.customer_name, line.cliente));
+    const { matches: porCliente, score: clienteScore } = bestByCliente(puestasAbiertas, line.cliente);
 
     let pool: PuestaSummary[];
     let clienteOk: boolean;
@@ -384,7 +454,11 @@ export function buildProposals(
       pool = porCliente;
 
       if (clienteOk) {
-        warnings.push("No se encontró el nº de contrato exacto; emparejado solo por cliente.");
+        warnings.push(
+          clienteScore >= 3
+            ? "No se encontró el nº de contrato exacto; emparejado solo por cliente."
+            : `No se encontró el nº de contrato exacto; emparejado solo por el nombre del cliente ("${line.cliente}" ≈ "${porCliente[0].customer_name}").`
+        );
       }
     }
 
@@ -409,6 +483,14 @@ export function buildProposals(
     const ordered = sortFifo(pool, line.cantidad);
     match = toRef(ordered[0]);
 
+    // Coincidencia de nombre floja: el usuario debe validarla antes de grabar.
+    const matchScore = clienteMatchScore(line.cliente, match.customer_name);
+    if (matchScore === 1) {
+      warnings.push(
+        `El cliente del PDF ("${line.cliente}") se ha identificado como "${match.customer_name}" solo por parecido de nombre. Verifícalo.`
+      );
+    }
+
     if (ordered.length > 1) {
       warnings.push(
         matchedByBase
@@ -424,7 +506,8 @@ export function buildProposals(
     ];
     if (seleccionables.length > 1) candidates = seleccionables.map(toRef);
 
-    confidence = clienteOk && !conflicto && ordered.length === 1 ? "alta" : "media";
+    confidence =
+      clienteOk && !conflicto && ordered.length === 1 && matchScore >= 2 ? "alta" : "media";
 
     return {
       id,
@@ -436,4 +519,133 @@ export function buildProposals(
       warnings: [...warnings, ...buildWarnings(line, match)],
     };
   });
+}
+
+// ============================================================
+// CONTROL CRUZADO CON EL RESUMEN DE SALDOS (página 1 del informe)
+// ============================================================
+
+/** Tolerancia al comparar cantidades declaradas contra pesadas sumadas. */
+const CANTIDAD_TOLERANCIA = 0.01;
+
+interface ResumenAgregado {
+  /** Nombre tal cual viene en el PDF (el primero encontrado). */
+  cliente: string;
+  /** Kilos retirados sumados de todos los cupos del cliente. */
+  kg: number;
+  /** Mercancía asociada, para resolver la unidad del sistema. */
+  producto: string | null;
+}
+
+/** Agrupa las filas del resumen por cliente, descartando las que no retiran. */
+function agruparResumen(resumen: PdfResumenCliente[]): ResumenAgregado[] {
+  const porCliente = new Map<string, ResumenAgregado>();
+
+  for (const fila of resumen) {
+    if (!(fila.kg_retirados > 0)) continue;
+    const key = normCliente(fila.cliente);
+    if (!key) continue;
+
+    const previo = porCliente.get(key);
+    if (previo) {
+      previo.kg += fila.kg_retirados;
+      previo.producto = previo.producto ?? fila.producto ?? null;
+    } else {
+      porCliente.set(key, {
+        cliente: fila.cliente.trim(),
+        kg: fila.kg_retirados,
+        producto: fila.producto ?? null,
+      });
+    }
+  }
+
+  return [...porCliente.values()];
+}
+
+/**
+ * Contrasta el resumen de saldos del informe (bloques "CODIGO CUPO" de la
+ * primera página) con lo que hay en el sistema y con las pesadas extraídas.
+ *
+ * Reglas:
+ *  - Todo cliente con KG RETIRADOS > 0 tiene que tener una puesta a disposición
+ *    ABIERTA con un nombre igual o parecido. Si no la hay, es un error: esa
+ *    mercancía no se podrá imputar.
+ *  - Los kilos declarados deben cuadrar con la suma de las pesadas de ese
+ *    cliente; si no, la extracción se ha dejado (o duplicado) alguna línea.
+ *  - Cuando el nombre del PDF y el del sistema no son idénticos se deja
+ *    constancia de la equivalencia aplicada.
+ */
+export function buildResumenAlerts(
+  resumen: PdfResumenCliente[],
+  proposals: PdfProposalItem[],
+  puestasAbiertas: PuestaSummary[],
+  products: ProductUnitRef[]
+): PdfResumenAlert[] {
+  const alerts: PdfResumenAlert[] = [];
+
+  for (const item of agruparResumen(resumen)) {
+    // El resumen viene en kg; las propuestas ya están en la unidad del sistema.
+    const targetUnit = resolveTargetUnit(item.producto, products);
+    const unidad = targetUnit ?? "kg";
+    const declarado = round3(item.kg * conversionFactor("kg", targetUnit));
+
+    const { matches, score } = bestByCliente(puestasAbiertas, item.cliente);
+
+    if (matches.length === 0) {
+      alerts.push({
+        level: "error",
+        cliente: item.cliente,
+        message:
+          `El informe declara ${formatNumber(declarado)} ${unidad} retirados por "${item.cliente}", ` +
+          `pero no hay ninguna puesta a disposición abierta en la aplicación con ese nombre ni uno parecido. ` +
+          `Revisa cómo está dado de alta el cliente o abre la puesta antes de grabar.`,
+      });
+      continue;
+    }
+
+    // Equivalencia de nombres aplicada (el informe recorta y varía las razones sociales).
+    const nombresSistema = [...new Set(matches.map((m) => m.customer_name))];
+    if (score < 4) {
+      alerts.push({
+        level: score === 1 ? "warning" : "info",
+        cliente: item.cliente,
+        message:
+          `"${item.cliente}" (PDF) se ha asociado a ${nombresSistema
+            .map((n) => `"${n}"`)
+            .join(" / ")} (aplicación)` +
+          (score === 1 ? ". La coincidencia es solo aproximada; verifícala." : "."),
+      });
+    }
+
+    // Descuadre entre lo declarado y las pesadas extraídas de ese cliente.
+    const lineasCliente = proposals.filter(
+      (p) => clienteMatchScore(item.cliente, p.line.cliente) > 0
+    );
+    const sumado = round3(lineasCliente.reduce((acc, p) => acc + p.line.cantidad, 0));
+
+    if (Math.abs(sumado - declarado) > CANTIDAD_TOLERANCIA) {
+      alerts.push({
+        level: "warning",
+        cliente: item.cliente,
+        message:
+          `El informe declara ${formatNumber(declarado)} ${unidad} retirados por "${item.cliente}", ` +
+          `pero las pesadas detectadas suman ${formatNumber(sumado)} ${unidad}. ` +
+          `Comprueba que no falte ni sobre ninguna línea.`,
+      });
+    }
+
+    // Líneas del cliente que no han encontrado puesta pese a existir una abierta.
+    const sinAsociar = lineasCliente.filter((p) => p.tipo === "puesta" && !p.match);
+    if (sinAsociar.length > 0) {
+      alerts.push({
+        level: "error",
+        cliente: item.cliente,
+        message:
+          `${sinAsociar.length} pesada(s) de "${item.cliente}" no se han podido asociar a ninguna ` +
+          `puesta abierta (matrículas: ${sinAsociar.map((p) => p.line.matricula).join(", ")}).`,
+      });
+    }
+  }
+
+  return alerts;
 }
