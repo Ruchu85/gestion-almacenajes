@@ -6,6 +6,9 @@ import { salidaParcialSchema, type SalidaParcialFormValues } from "@/validations
 import type { PuestaADisposicion, SalidaParcial } from "@/types";
 import { redirect } from "next/navigation";
 import { upsertMatricula } from "@/lib/actions/matriculas";
+import { sincronizarPuestaStock } from "@/lib/puesta-stock-sync";
+import { recalcStorageCostsFrom } from "@/lib/storage-costs";
+import { calcFechaFinPlancha, minDate } from "@/services/puestas-plancha.service";
 
 async function requireAuth() {
   const supabase = await createClient();
@@ -45,15 +48,38 @@ export async function createPuesta(
   return { data: data as PuestaADisposicion };
 }
 
+/**
+ * Actualiza una puesta y deja el stock coherente con los datos nuevos.
+ *
+ * Cambiar la fecha de puesta, los días de plancha o la cantidad inicial mueve
+ * la frontera del período de plancha, y con ella la auto-salida de fin de
+ * plancha y los movimientos de stock de las retiradas que cruzan esa frontera.
+ * Todo eso se reconcilia aquí y se recalculan los costes afectados, de forma
+ * que el calendario de stock del almacén y el desglose diario de la puesta
+ * reflejen la plancha nueva sin intervención manual.
+ */
 export async function updatePuesta(
   id: string,
   values: PuestaFormValues
-): Promise<{ data?: PuestaADisposicion; error?: string }> {
-  await requireAuth();
+): Promise<{ data?: PuestaADisposicion; error?: string; aviso?: string }> {
+  const user = await requireAuth();
   const parsed = puestaSchema.safeParse(values);
   if (!parsed.success) return { error: parsed.error.errors[0].message };
 
   const supabase = await createServiceClient();
+
+  // Estado anterior: hace falta el fin de plancha previo para saber desde qué
+  // fecha hay que recalcular los costes.
+  const { data: anterior } = await supabase
+    .from("puestas_a_disposicion")
+    .select("fecha_puesta, dias_plancha, warehouse_id, product_id")
+    .eq("id", id)
+    .single();
+
+  const finPlanchaAnterior = anterior
+    ? calcFechaFinPlancha(anterior.fecha_puesta, Number(anterior.dias_plancha) || 0)
+    : null;
+
   const { data, error } = await supabase
     .from("puestas_a_disposicion")
     .update({
@@ -72,17 +98,49 @@ export async function updatePuesta(
     .single();
 
   if (error) return { error: error.message };
-  return { data: data as PuestaADisposicion };
+
+  const sync = await sincronizarPuestaStock(supabase, id, user.id, finPlanchaAnterior);
+
+  // Si la puesta ha cambiado de almacén o de producto, la combinación de
+  // origen también deja de tener esos movimientos: hay que recalcularla.
+  const cambioUbicacion =
+    !!anterior &&
+    (anterior.warehouse_id !== parsed.data.warehouse_id ||
+      anterior.product_id !== parsed.data.product_id);
+  if (cambioUbicacion) {
+    await recalcStorageCostsFrom(
+      supabase,
+      minDate(finPlanchaAnterior, anterior.fecha_puesta, parsed.data.fecha_puesta)
+    );
+  }
+
+  // Un fallo al reconciliar no invalida la edición, que ya está guardada: se
+  // devuelve como aviso para que el usuario pueda reintentarlo.
+  return {
+    data: data as PuestaADisposicion,
+    aviso: sync.error,
+  };
 }
 
 export async function deletePuesta(id: string): Promise<{ error?: string }> {
   await requireAuth();
   const supabase = await createServiceClient();
+
+  // Los movimientos de stock que generó la puesta desaparecen con sus salidas
+  // parciales, así que hay que recalcular los costes desde su inicio.
+  const { data: puesta } = await supabase
+    .from("puestas_a_disposicion")
+    .select("fecha_puesta")
+    .eq("id", id)
+    .single();
+
   const { error } = await supabase
     .from("puestas_a_disposicion")
     .delete()
     .eq("id", id);
   if (error) return { error: error.message };
+
+  if (puesta) await recalcStorageCostsFrom(supabase, puesta.fecha_puesta);
   return {};
 }
 
@@ -150,114 +208,17 @@ export async function createSalidaParcial(
 
   if (parsed.data.matricula) await upsertMatricula(parsed.data.matricula);
 
-  // Determine plancha boundary
-  const fechaPuesta = new Date(puesta.fecha_puesta + "T00:00:00");
-  const fechaFinPlancha = new Date(fechaPuesta);
-  fechaFinPlancha.setDate(fechaFinPlancha.getDate() + (Number(puesta.dias_plancha) ?? 0));
-  const fechaFinStr = fechaFinPlancha.toISOString().split("T")[0];
+  const fechaFinStr = calcFechaFinPlancha(
+    puesta.fecha_puesta,
+    Number(puesta.dias_plancha) || 0
+  );
 
-  if (parsed.data.fecha_salida <= fechaFinStr) {
-    // Within plancha: create outbound for the real salida
-    await supabase.from("outbound_movements").insert({
-      warehouse_id: puesta.warehouse_id,
-      product_id: puesta.product_id,
-      quantity: parsed.data.cantidad,
-      movement_date: parsed.data.fecha_salida,
-      free_days: 0,
-      customer_id: puesta.customer_id ?? null,
-      comments: `Retirada puesta a disposición${parsed.data.n_camion ? ` (camión: ${parsed.data.n_camion})` : ""}`,
-      from_puesta: true,
-      created_by: user.id,
-    });
-
-    // ── Recalcular la salida automática de fin de plancha si ya existía ──
-    // La salida_parcial nueva ya está en BD, así que la suma incluye la nueva cantidad.
-    const { data: planchaExit } = await supabase
-      .from("salidas_parciales")
-      .select("id, cantidad")
-      .eq("puesta_id", parsed.data.puesta_id)
-      .eq("tipo", "plancha")
-      .maybeSingle();
-
-    if (planchaExit) {
-      const { data: realUpToPlancha } = await supabase
-        .from("salidas_parciales")
-        .select("cantidad")
-        .eq("puesta_id", parsed.data.puesta_id)
-        .eq("tipo", "real")
-        .lte("fecha_salida", fechaFinStr);
-
-      const totalRealUpToPlancha = (realUpToPlancha ?? [])
-        .reduce((sum, s) => sum + Number(s.cantidad), 0);
-      const newPendingAtPlancha = Math.max(
-        0,
-        Number(puesta.cantidad_inicial) - totalRealUpToPlancha
-      );
-
-      if (newPendingAtPlancha <= 0) {
-        // Toda la mercancía ya fue retirada antes del fin de plancha → eliminar auto-salida
-        await supabase.from("salidas_parciales").delete().eq("id", planchaExit.id);
-        await supabase
-          .from("outbound_movements")
-          .delete()
-          .eq("warehouse_id", puesta.warehouse_id)
-          .eq("product_id", puesta.product_id)
-          .eq("movement_date", fechaFinStr)
-          .eq("from_puesta", true);
-      } else if (newPendingAtPlancha !== Number(planchaExit.cantidad)) {
-        // Quedan unidades pero menos de las originales → actualizar cantidad
-        await supabase
-          .from("salidas_parciales")
-          .update({ cantidad: newPendingAtPlancha })
-          .eq("id", planchaExit.id);
-        await supabase
-          .from("outbound_movements")
-          .update({ quantity: newPendingAtPlancha })
-          .eq("warehouse_id", puesta.warehouse_id)
-          .eq("product_id", puesta.product_id)
-          .eq("movement_date", fechaFinStr)
-          .eq("from_puesta", true);
-      }
-    }
-  } else {
-    // Outside plancha.
-    //
-    // Puede ocurrir que la auto-salida de fin de plancha no exista todavía
-    // (el trigger lazy se dispara al visitar la página, no al registrar la salida).
-    // En ese caso la creamos aquí mismo, contando solo las salidas reales ≤ fecha_fin_plancha.
-    type SalidaRow = { cantidad: number; tipo: string; fecha_salida: string };
-    const existingPlancha = (puesta.salidas_parciales as SalidaRow[]).some(
-      (s) => s.tipo === "plancha"
-    );
-    if (!existingPlancha) {
-      const totalRealAtPlancha = (puesta.salidas_parciales as SalidaRow[])
-        .filter((s) => s.tipo === "real" && s.fecha_salida <= fechaFinStr)
-        .reduce((sum, s) => sum + Number(s.cantidad), 0);
-      const pendingAtPlancha = Math.max(0, Number(puesta.cantidad_inicial) - totalRealAtPlancha);
-      if (pendingAtPlancha > 0) {
-        await supabase.from("salidas_parciales").insert({
-          puesta_id: parsed.data.puesta_id,
-          fecha_salida: fechaFinStr,
-          cantidad: pendingAtPlancha,
-          tipo: "plancha",
-          comentarios: "Salida automática fin de plancha",
-          created_by: user.id,
-        });
-        await supabase.from("outbound_movements").insert({
-          warehouse_id: puesta.warehouse_id,
-          product_id: puesta.product_id,
-          quantity: pendingAtPlancha,
-          movement_date: fechaFinStr,
-          free_days: 0,
-          customer_id: puesta.customer_id ?? null,
-          comments: `Auto-salida fin de plancha${puesta.numero_contrato ? ` (${puesta.numero_contrato})` : ""}`,
-          from_puesta: true,
-          created_by: user.id,
-        });
-      }
-    }
-
-    // Solo crear outbound adicional si la salida supera la cantidad pendiente (rebase).
+  // Rebase: mercancía retirada por encima de lo que quedaba pendiente. No es
+  // el reflejo de ninguna salida parcial (esa ya salió del stock con la
+  // auto-salida de plancha), así que va sin salida_parcial_id y queda fuera de
+  // la reconciliación.
+  let huboRebase = false;
+  if (parsed.data.fecha_salida > fechaFinStr) {
     const rebaseQty = Math.max(0, parsed.data.cantidad - Math.max(0, cantidadPendiente));
     if (rebaseQty > 0) {
       const customerData = puesta.customer as { name: string; codigo: string | null } | null;
@@ -275,9 +236,19 @@ export async function createSalidaParcial(
         customer_id: puesta.customer_id ?? null,
         comments: `Rebase${customerRef ? ` cliente ${customerRef}` : ""} pta a disposicion ${puestaRef}`,
         from_puesta: true,
+        puesta_id: parsed.data.puesta_id,
         created_by: user.id,
       });
+      huboRebase = true;
     }
+  }
+
+  // Reconcilia el movimiento de stock de esta retirada (solo si cae dentro de
+  // plancha) y ajusta la auto-salida de fin de plancha, que ahora tiene menos
+  // pendiente que absorber. Recalcula también los costes afectados.
+  const sync = await sincronizarPuestaStock(supabase, parsed.data.puesta_id, user.id);
+  if (huboRebase && !sync.recalculadoDesde) {
+    await recalcStorageCostsFrom(supabase, parsed.data.fecha_salida);
   }
 
   // Auto-finalizar cuando las salidas reales cubren o superan toda la cantidad inicial
@@ -304,138 +275,57 @@ export async function triggerPlanchaAutoExit(puestaId: string): Promise<{ error?
 /**
  * Lógica central de la auto-salida fin de plancha. Separada de la autenticación
  * para poder llamarla también desde el cron (sin contexto de usuario).
+ *
+ * Delega en la reconciliación completa: es idempotente, así que sirve tanto
+ * para generar la auto-salida por primera vez como para corregirla si los
+ * datos de la puesta han cambiado desde entonces.
  */
 async function _runPlanchaAutoExit(
   supabase: Awaited<ReturnType<typeof createServiceClient>>,
   puestaId: string,
   userId: string | null
 ): Promise<{ error?: string }> {
-  // Fetch puesta con fecha_salida en las salidas para poder filtrar por fecha
-  const { data: puesta, error: puestaError } = await supabase
-    .from("puestas_a_disposicion")
-    .select("*, salidas_parciales(cantidad, tipo, fecha_salida)")
-    .eq("id", puestaId)
-    .single();
-
-  if (puestaError || !puesta) {
-    return { error: puestaError?.message ?? "Puesta no encontrada" };
-  }
-
-  const salidaParciales = puesta.salidas_parciales as { cantidad: number; tipo: string; fecha_salida: string }[];
-
-  // Idempotency: si ya existe auto-salida plancha, nada que hacer
-  if (salidaParciales.some((s) => s.tipo === "plancha")) return {};
-
-  // Calcular fecha_fin_plancha PRIMERO — se necesita para filtrar salidas
-  const fechaPuesta = new Date(puesta.fecha_puesta + "T00:00:00");
-  const fechaFinPlancha = new Date(fechaPuesta);
-  fechaFinPlancha.setDate(fechaFinPlancha.getDate() + (Number(puesta.dias_plancha) ?? 0));
-  const fechaFinStr = fechaFinPlancha.toISOString().split("T")[0];
-
-  // Cantidad pendiente a fecha fin plancha: solo salidas REALES anteriores o iguales al fin plancha.
-  // No contar salidas posteriores (pueden existir si se registraron antes de que se disparara este trigger).
-  const totalReal = salidaParciales
-    .filter((s) => s.tipo === "real" && s.fecha_salida <= fechaFinStr)
-    .reduce((sum, s) => sum + Number(s.cantidad), 0);
-  const pending = Number(puesta.cantidad_inicial) - totalReal;
-  if (pending <= 0) return {};
-
-  // Create the plancha auto-exit salida_parcial
-  const { error: salidaError } = await supabase.from("salidas_parciales").insert({
-    puesta_id: puestaId,
-    fecha_salida: fechaFinStr,
-    cantidad: pending,
-    tipo: "plancha",
-    comentarios: "Salida automática fin de plancha",
-    created_by: userId,
-  });
-  if (salidaError) return { error: salidaError.message };
-
-  // Create the corresponding outbound_movement
-  const { error: outboundError } = await supabase.from("outbound_movements").insert({
-    warehouse_id: puesta.warehouse_id,
-    product_id: puesta.product_id,
-    quantity: pending,
-    movement_date: fechaFinStr,
-    free_days: 0,
-    customer_id: puesta.customer_id ?? null,
-    comments: `Auto-salida fin de plancha${puesta.numero_contrato ? ` (${puesta.numero_contrato})` : ""}`,
-    from_puesta: true,
-    created_by: userId,
-  });
-  if (outboundError) return { error: outboundError.message };
-
-  return {};
+  const result = await sincronizarPuestaStock(supabase, puestaId, userId);
+  return result.error ? { error: result.error } : {};
 }
 
+/**
+ * Rehace la auto-salida de fin de plancha y los movimientos de stock de la
+ * puesta a partir de sus datos actuales. Es el botón "Recalcular plancha" de
+ * la ficha, y también se usa después de cualquier cambio que altere el
+ * pendiente al vencer la plancha.
+ */
 export async function recalcularPlanchaAutoExit(
   puestaId: string
-): Promise<{ action?: "deleted" | "updated" | "unchanged"; error?: string }> {
-  await requireAuth();
+): Promise<{ action?: "deleted" | "updated" | "created" | "unchanged"; error?: string }> {
+  const user = await requireAuth();
   const supabase = await createServiceClient();
 
-  const { data: puesta, error: puestaErr } = await supabase
-    .from("puestas_a_disposicion")
-    .select("fecha_puesta, dias_plancha, warehouse_id, product_id, cantidad_inicial")
-    .eq("id", puestaId)
-    .single();
+  const result = await sincronizarPuestaStock(supabase, puestaId, user.id);
+  if (result.error) return { error: result.error };
 
-  if (puestaErr || !puesta) return { error: "No se pudo cargar la puesta" };
+  const acciones = {
+    eliminar: "deleted",
+    actualizar: "updated",
+    crear: "created",
+    sin_cambios: "unchanged",
+  } as const;
 
-  const fechaFinPlancha = new Date(puesta.fecha_puesta + "T00:00:00");
-  fechaFinPlancha.setDate(fechaFinPlancha.getDate() + Number(puesta.dias_plancha ?? 0));
-  const fechaFinStr = fechaFinPlancha.toISOString().split("T")[0];
-
-  const { data: planchaExit } = await supabase
-    .from("salidas_parciales")
-    .select("id, cantidad")
-    .eq("puesta_id", puestaId)
-    .eq("tipo", "plancha")
-    .maybeSingle();
-
-  if (!planchaExit) return { action: "unchanged" };
-
-  const { data: realSalidas } = await supabase
-    .from("salidas_parciales")
-    .select("cantidad")
-    .eq("puesta_id", puestaId)
-    .eq("tipo", "real")
-    .lte("fecha_salida", fechaFinStr);
-
-  const totalReal = (realSalidas ?? []).reduce((sum, s) => sum + Number(s.cantidad), 0);
-  const newPending = Math.max(0, Number(puesta.cantidad_inicial) - totalReal);
-
-  if (newPending <= 0) {
-    await supabase.from("salidas_parciales").delete().eq("id", planchaExit.id);
-    await supabase
-      .from("outbound_movements")
-      .delete()
-      .eq("warehouse_id", puesta.warehouse_id)
-      .eq("product_id", puesta.product_id)
-      .eq("movement_date", fechaFinStr)
-      .eq("from_puesta", true);
-    return { action: "deleted" };
+  // Aunque la auto-salida no cambie, la reconciliación puede haber ajustado
+  // movimientos de stock de retiradas que cruzaban el fin de plancha.
+  const { creados, actualizados, eliminados } = result.movimientos;
+  if (result.accionPlancha === "sin_cambios" && creados + actualizados + eliminados > 0) {
+    return { action: "updated" };
   }
 
-  if (newPending === Number(planchaExit.cantidad)) return { action: "unchanged" };
-
-  await supabase.from("salidas_parciales").update({ cantidad: newPending }).eq("id", planchaExit.id);
-  await supabase
-    .from("outbound_movements")
-    .update({ quantity: newPending })
-    .eq("warehouse_id", puesta.warehouse_id)
-    .eq("product_id", puesta.product_id)
-    .eq("movement_date", fechaFinStr)
-    .eq("from_puesta", true);
-
-  return { action: "updated" };
+  return { action: acciones[result.accionPlancha] };
 }
 
 export async function updateSalidaParcial(
   id: string,
   values: SalidaParcialFormValues
-): Promise<{ data?: SalidaParcial; error?: string }> {
-  await requireAuth();
+): Promise<{ data?: SalidaParcial; error?: string; aviso?: string }> {
+  const user = await requireAuth();
   const parsed = salidaParcialSchema.safeParse(values);
   if (!parsed.success) return { error: parsed.error.errors[0].message };
 
@@ -457,7 +347,11 @@ export async function updateSalidaParcial(
 
   if (parsed.data.matricula) await upsertMatricula(parsed.data.matricula);
 
-  return { data: data as SalidaParcial };
+  // Cambiar fecha o cantidad de una retirada mueve su movimiento de stock y
+  // altera lo que quedaba pendiente al vencer la plancha.
+  const sync = await sincronizarPuestaStock(supabase, parsed.data.puesta_id, user.id);
+
+  return { data: data as SalidaParcial, aviso: sync.error };
 }
 
 export async function updatePuestaComentarios(
@@ -475,13 +369,29 @@ export async function updatePuestaComentarios(
 }
 
 export async function deleteSalidaParcial(id: string): Promise<{ error?: string }> {
-  await requireAuth();
+  const user = await requireAuth();
   const supabase = await createServiceClient();
+
+  // La puesta hay que leerla antes: después del borrado ya no hay forma de
+  // saber a cuál pertenecía para reconciliarla.
+  const { data: salida } = await supabase
+    .from("salidas_parciales")
+    .select("puesta_id")
+    .eq("id", id)
+    .single();
+
   const { error } = await supabase
     .from("salidas_parciales")
     .delete()
     .eq("id", id);
   if (error) return { error: error.message };
+
+  // El movimiento de stock asociado cae con ella (ON DELETE CASCADE); la
+  // reconciliación rehace la auto-salida de plancha, que ahora tiene más
+  // pendiente que absorber, y recalcula los costes.
+  if (salida?.puesta_id) {
+    await sincronizarPuestaStock(supabase, salida.puesta_id, user.id);
+  }
   return {};
 }
 
@@ -531,6 +441,8 @@ export async function createDesaplicacion(
       created_by: user.id,
     });
     if (inboundError) return { error: inboundError.message };
+    // La mercancía vuelve a ser stock del almacén desde hoy.
+    await recalcStorageCostsFrom(supabase, today);
   }
 
   // Auto-finalizar si la cantidad pendiente llega a 0
@@ -613,6 +525,7 @@ export async function traspasarPuesta(
       created_by: user.id,
     });
     if (inboundError) return { error: inboundError.message };
+    await recalcStorageCostsFrom(supabase, today);
   }
 
   // 6. Marcar puesta original como 'traspasada' + añadir comentario

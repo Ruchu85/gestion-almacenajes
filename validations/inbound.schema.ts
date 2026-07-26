@@ -45,5 +45,20 @@ export const inboundSchema = z.object({
 
 export const inboundUpdateSchema = inboundSchema.partial();
 
+/**
+ * Campos editables de una entrada ya registrada.
+ *
+ * El almacén y el producto quedan fuera a propósito: son la "cuenta" contra la
+ * que se calculan el stock y los almacenajes, y moverlos equivale a anular la
+ * entrada y crear otra. Cambiar cualquiera de estos campos sí obliga a
+ * recalcular los costes, porque alteran cuánta mercancía hay y desde cuándo
+ * empieza a devengar.
+ */
+export const inboundEditSchema = inboundSchema.omit({
+  warehouse_id: true,
+  product_id: true,
+});
+
 export type InboundFormValues = z.infer<typeof inboundSchema>;
 export type InboundUpdateValues = z.infer<typeof inboundUpdateSchema>;
+export type InboundEditValues = z.infer<typeof inboundEditSchema>;

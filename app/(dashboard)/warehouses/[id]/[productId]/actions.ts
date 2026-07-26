@@ -2,21 +2,11 @@
 
 import { createServiceClient, createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { recalcStorageCostsFrom } from "@/lib/storage-costs";
 
-async function recalcCosts(warehouseId: string, productId: string, fromDate: string) {
-  const today = new Date().toISOString().split("T")[0];
+async function recalcCosts(fromDate: string) {
   const supabase = await createServiceClient();
-  await supabase
-    .from("storage_costs")
-    .delete()
-    .eq("warehouse_id", warehouseId)
-    .eq("product_id", productId)
-    .gte("cost_date", fromDate)
-    .lte("cost_date", today);
-  await supabase.rpc("recalculate_storage_costs", {
-    p_start_date: fromDate,
-    p_end_date: today,
-  });
+  await recalcStorageCostsFrom(supabase, fromDate);
 }
 
 async function requireAuth() {
@@ -71,42 +61,11 @@ export async function updateMonthlyInvoice(
   return {};
 }
 
-// ── Entradas ─────────────────────────────────────────────────
-
-export async function updateInboundMovement(
-  id: string,
-  values: { movement_date: string; quantity: number; free_days: number; comments: string | null },
-  warehouseId: string,
-  productId: string,
-  oldDate: string,
-): Promise<{ error?: string }> {
-  await requireAuth();
-  const supabase = await createServiceClient();
-  const { error } = await supabase
-    .from("inbound_movements")
-    .update({ ...values, updated_at: new Date().toISOString() })
-    .eq("id", id);
-  if (error) return { error: error.message };
-  const fromDate = oldDate < values.movement_date ? oldDate : values.movement_date;
-  await recalcCosts(warehouseId, productId, fromDate);
-  return {};
-}
-
-export async function deleteInboundMovement(
-  id: string,
-  warehouseId: string,
-  productId: string,
-  movementDate: string,
-): Promise<{ error?: string }> {
-  await requireAuth();
-  const supabase = await createServiceClient();
-  const { error } = await supabase.from("inbound_movements").delete().eq("id", id);
-  if (error) return { error: error.message };
-  await recalcCosts(warehouseId, productId, movementDate);
-  return {};
-}
-
 // ── Salidas manuales ─────────────────────────────────────────
+//
+// La edición y el borrado de ENTRADAS viven en lib/actions/movements.ts, para
+// que la vista de almacén/producto y el listado general compartan exactamente
+// la misma lógica de recálculo.
 
 export async function updateOutboundMovement(
   id: string,
@@ -130,7 +89,7 @@ export async function updateOutboundMovement(
     .eq("id", id);
   if (error) return { error: error.message };
   const fromDate = oldDate < values.movement_date ? oldDate : values.movement_date;
-  await recalcCosts(warehouseId, productId, fromDate);
+  await recalcCosts(fromDate);
   return {};
 }
 
@@ -150,7 +109,7 @@ export async function deleteOutboundMovement(
   if (existing?.from_puesta) return { error: "Solo se pueden eliminar salidas manuales" };
   const { error } = await supabase.from("outbound_movements").delete().eq("id", id);
   if (error) return { error: error.message };
-  await recalcCosts(warehouseId, productId, movementDate);
+  await recalcCosts(movementDate);
   return {};
 }
 

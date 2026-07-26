@@ -30,6 +30,10 @@ import {
 } from "@/components/ui/select";
 import { InboundForm } from "@/modules/movements/components/inbound-form";
 import { getInboundColumns } from "@/modules/movements/components/inbound-columns";
+import {
+  updateInboundMovementAction,
+  deleteInboundMovementAction,
+} from "@/lib/actions/movements";
 import { toast } from "@/hooks/use-toast";
 import { exportToCSV, exportToExcel } from "@/utils/export";
 import { formatDate } from "@/utils/format";
@@ -43,6 +47,7 @@ export default function InboundMovementsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<InboundMovementWithRelations | null>(null);
   const [userId, setUserId] = useState<string>("");
   const [presetWarehouseId, setPresetWarehouseId] = useState<string>("");
   const [presetWarehouseName, setPresetWarehouseName] = useState<string>("");
@@ -166,12 +171,55 @@ export default function InboundMovementsPage() {
     setIsSaving(false);
   }
 
+  function handleEdit(movement: InboundMovementWithRelations) {
+    setEditing(movement);
+    setFormOpen(true);
+  }
+
+  /** Alta o edición según haya una entrada seleccionada. */
+  async function handleSubmit(values: InboundFormValues) {
+    if (editing) {
+      setIsSaving(true);
+      const result = await updateInboundMovementAction(editing.id, {
+        supplier_id: values.supplier_id ?? null,
+        quantity: values.quantity,
+        movement_date: values.movement_date,
+        free_days: values.free_days,
+        comments: values.comments ?? null,
+      });
+      if (result.error) {
+        toast({ variant: "destructive", title: "Error al guardar", description: result.error });
+      } else {
+        toast({
+          title: "Entrada actualizada",
+          description: result.aviso ?? "Los almacenajes afectados se han recalculado.",
+          variant: result.aviso ? "destructive" : undefined,
+        });
+        setFormOpen(false);
+        setEditing(null);
+        await loadData();
+      }
+      setIsSaving(false);
+      return;
+    }
+    await handleCreate(values);
+  }
+
+  function handleFormOpenChange(open: boolean) {
+    setFormOpen(open);
+    if (!open) setEditing(null);
+  }
+
   async function handleDelete(id: string) {
-    const result = await movementsService.delete(id);
+    const result = await deleteInboundMovementAction(id);
     if (result.error) {
       toast({ variant: "destructive", title: "Error al eliminar", description: result.error });
     } else {
-      toast({ title: "Entrada eliminada" });
+      toast({
+        title: "Entrada eliminada",
+        description: result.aviso ?? "Los almacenajes afectados se han recalculado.",
+        variant: result.aviso ? "destructive" : undefined,
+      });
       await loadData();
     }
   }
@@ -210,7 +258,7 @@ export default function InboundMovementsPage() {
     });
   }
 
-  const columns = getInboundColumns(handleDelete);
+  const columns = getInboundColumns(handleDelete, handleEdit);
 
   return (
     <>
@@ -347,16 +395,42 @@ export default function InboundMovementsPage() {
 
       <InboundForm
         open={formOpen}
-        onOpenChange={setFormOpen}
-        onSubmit={handleCreate}
+        onOpenChange={handleFormOpenChange}
+        onSubmit={handleSubmit}
         isLoading={isSaving}
         warehouses={warehouses}
         products={products}
         suppliers={suppliers}
-        presetWarehouseId={presetWarehouseId || undefined}
-        presetWarehouseName={presetWarehouseName || undefined}
-        presetProductId={presetProductId || undefined}
-        presetProductName={presetProductName || undefined}
+        mode={editing ? "edit" : "create"}
+        // Al editar, el almacén y el producto se muestran fijados: definen la
+        // cuenta de stock contra la que se calculan los almacenajes.
+        presetWarehouseId={
+          editing ? editing.warehouse_id : presetWarehouseId || undefined
+        }
+        presetWarehouseName={
+          editing
+            ? `${editing.warehouse.code} — ${editing.warehouse.name}`
+            : presetWarehouseName || undefined
+        }
+        presetProductId={editing ? editing.product_id : presetProductId || undefined}
+        presetProductName={
+          editing
+            ? `${editing.product.code} — ${editing.product.name}`
+            : presetProductName || undefined
+        }
+        initialValues={
+          editing
+            ? {
+                warehouse_id: editing.warehouse_id,
+                product_id: editing.product_id,
+                supplier_id: editing.supplier_id ?? null,
+                quantity: Number(editing.quantity),
+                movement_date: editing.movement_date,
+                free_days: Number(editing.free_days),
+                comments: editing.comments ?? "",
+              }
+            : undefined
+        }
       />
     </>
   );

@@ -260,6 +260,8 @@ export interface Database {
           numero_albaran: string | null;
           matricula: string | null;
           from_puesta: boolean;
+          puesta_id: string | null;
+          salida_parcial_id: string | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -276,6 +278,8 @@ export interface Database {
           numero_albaran?: string | null;
           matricula?: string | null;
           from_puesta?: boolean;
+          puesta_id?: string | null;
+          salida_parcial_id?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -292,6 +296,8 @@ export interface Database {
           numero_albaran?: string | null;
           matricula?: string | null;
           from_puesta?: boolean;
+          puesta_id?: string | null;
+          salida_parcial_id?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;

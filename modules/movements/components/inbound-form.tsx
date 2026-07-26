@@ -41,6 +41,14 @@ interface InboundFormProps {
   presetWarehouseName?: string;
   presetProductId?: string;
   presetProductName?: string;
+  /**
+   * En modo edición el almacén y el producto se muestran fijados (definen la
+   * cuenta de stock contra la que se calcula todo) y se avisa de que el cambio
+   * recalcula los almacenajes.
+   */
+  mode?: "create" | "edit";
+  /** Valores de partida al editar una entrada existente. */
+  initialValues?: Partial<InboundFormValues>;
 }
 
 function LockedField({ label, value }: { label: string; value: string }) {
@@ -67,7 +75,10 @@ export function InboundForm({
   presetWarehouseName,
   presetProductId,
   presetProductName,
+  mode = "create",
+  initialValues,
 }: InboundFormProps) {
+  const isEdit = mode === "edit";
   const form = useForm<InboundFormValues>({
     resolver: zodResolver(inboundSchema),
     defaultValues: {
@@ -102,6 +113,18 @@ export function InboundForm({
   useEffect(() => {
     if (open) {
       setSupplierSearch("");
+      if (initialValues) {
+        form.reset({
+          warehouse_id: presetWarehouseId ?? initialValues.warehouse_id ?? "",
+          product_id: presetProductId ?? initialValues.product_id ?? "",
+          supplier_id: initialValues.supplier_id ?? null,
+          quantity: initialValues.quantity as number,
+          movement_date: initialValues.movement_date ?? new Date().toISOString().split("T")[0],
+          free_days: initialValues.free_days ?? 0,
+          comments: initialValues.comments ?? "",
+        });
+        return;
+      }
       if (presetWarehouseId) form.setValue("warehouse_id", presetWarehouseId);
       if (presetProductId) form.setValue("product_id", presetProductId);
     } else {
@@ -115,7 +138,10 @@ export function InboundForm({
         comments: "",
       });
     }
-  }, [open, form, presetWarehouseId, presetProductId]);
+    // `initialValues` es un objeto nuevo en cada render del padre: se compara
+    // por su contenido para no reiniciar el formulario mientras se escribe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, form, presetWarehouseId, presetProductId, JSON.stringify(initialValues ?? null)]);
 
   const activeSuppliers = suppliers.filter((s) => s.active);
   const filteredSuppliers = activeSuppliers.filter((s) =>
@@ -127,9 +153,13 @@ export function InboundForm({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
-          <DialogTitle>Nueva entrada de mercancía</DialogTitle>
+          <DialogTitle>
+            {isEdit ? "Editar entrada de mercancía" : "Nueva entrada de mercancía"}
+          </DialogTitle>
           <DialogDescription>
-            Registra la entrada de mercancía al almacén con sus días de plancha.
+            {isEdit
+              ? "Al guardar se recalculan los almacenajes afectados por la cantidad, la fecha y los días de plancha."
+              : "Registra la entrada de mercancía al almacén con sus días de plancha."}
           </DialogDescription>
         </DialogHeader>
 
@@ -390,7 +420,7 @@ export function InboundForm({
               </Button>
               <Button type="submit" disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Registrar entrada
+                {isEdit ? "Guardar cambios" : "Registrar entrada"}
               </Button>
             </DialogFooter>
           </form>

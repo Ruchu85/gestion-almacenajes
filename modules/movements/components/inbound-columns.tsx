@@ -1,7 +1,7 @@
 "use client";
 
 import type { ColumnDef } from "@tanstack/react-table";
-import { MoreHorizontal, Trash2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import type { InboundMovementWithRelations } from "@/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,8 @@ import { formatDate, formatQuantity } from "@/utils/format";
 import { getCostStartDate } from "@/utils/calculations";
 
 export function getInboundColumns(
-  onDelete: (id: string) => void
+  onDelete: (id: string) => void,
+  onEdit?: (movement: InboundMovementWithRelations) => void
 ): ColumnDef<InboundMovementWithRelations>[] {
   return [
     {
@@ -102,6 +103,11 @@ export function getInboundColumns(
           <DropdownMenuContent align="end">
             <DropdownMenuLabel>Acciones</DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {onEdit && (
+              <DropdownMenuItem onSelect={() => onEdit(row.original)}>
+                <Pencil className="mr-2 h-4 w-4" />Editar
+              </DropdownMenuItem>
+            )}
             <ConfirmDialog
               trigger={
                 <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={(e) => e.preventDefault()}>
@@ -109,7 +115,7 @@ export function getInboundColumns(
                 </DropdownMenuItem>
               }
               title="¿Eliminar entrada?"
-              description="Esta acción eliminará el movimiento. Los costes de almacenaje ya calculados NO se recalcularán automáticamente."
+              description="Se eliminará el movimiento y se recalcularán los costes de almacenaje desde su fecha."
               confirmLabel="Eliminar"
               onConfirm={() => onDelete(row.original.id)}
             />
