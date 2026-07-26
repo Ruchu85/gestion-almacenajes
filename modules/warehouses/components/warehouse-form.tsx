@@ -278,14 +278,14 @@ export function WarehouseForm({
                               key={entry.id}
                               className={cn(
                                 "grid grid-cols-[1fr_120px] px-3 py-1.5 text-xs",
-                                idx === 0 ? "bg-blue-50/40 dark:bg-blue-950/20 font-medium" : "bg-transparent",
+                                idx === 0 ? "bg-brand-50/40 dark:bg-brand-950/20 font-medium" : "bg-transparent",
                                 idx < priceHistory.length - 1 && "border-b border-border/30"
                               )}
                             >
                               <div className="flex items-center gap-2">
                                 <span>{formatDate(entry.effective_from)}</span>
                                 {idx === 0 && (
-                                  <Badge variant="outline" className="text-[9px] h-4 border-blue-300 text-blue-600 dark:border-blue-700 dark:text-blue-400">
+                                  <Badge variant="outline" className="text-[9px] h-4 border-brand-300 text-brand-600 dark:border-brand-700 dark:text-brand-400">
                                     Vigente
                                   </Badge>
                                 )}

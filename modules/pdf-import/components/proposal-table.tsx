@@ -131,7 +131,7 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                   {isNormal ? (
                     normalResolved ? (
                       <div>
-                        <div className="font-medium leading-tight text-sky-700 dark:text-sky-400">
+                        <div className="font-medium leading-tight text-brand-700 dark:text-brand-400">
                           {item.resolvedWarehouseName}
                         </div>
                         <div className="text-xs text-muted-foreground">
@@ -216,7 +216,7 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                   {isNormal ? (
                     <Badge
                       variant={normalResolved ? "outline" : "destructive"}
-                      className={cn("gap-1", normalResolved && "border-sky-500 text-sky-700 dark:text-sky-400")}
+                      className={cn("gap-1", normalResolved && "border-brand-500 text-brand-700 dark:text-brand-400")}
                     >
                       <ArrowRightLeft className="h-3 w-3" />
                       Directa

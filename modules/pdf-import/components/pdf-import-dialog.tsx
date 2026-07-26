@@ -46,10 +46,10 @@ const ALERT_STYLES: Record<
     text: "text-amber-800 dark:text-amber-300",
   },
   info: {
-    box: "border-violet-500/40 bg-violet-50 dark:border-violet-500/40 dark:bg-violet-950/40",
+    box: "border-brand-500/40 bg-brand-50 dark:border-brand-500/40 dark:bg-brand-950/40",
     icon: Info,
-    iconClass: "text-violet-600 dark:text-violet-400",
-    text: "text-violet-800 dark:text-violet-300",
+    iconClass: "text-brand-600 dark:text-brand-400",
+    text: "text-brand-800 dark:text-brand-300",
   },
 };
 
@@ -313,7 +313,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
       <DialogContent className={cn(showResults ? "sm:max-w-[92vw]" : "sm:max-w-[480px]")}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FileUp className="h-5 w-5 text-sky-500" />
+            <FileUp className="h-5 w-5 text-brand-500" />
             {showResults ? "Propuesta de salidas" : "Subir Salidas Puerto (PDF)"}
           </DialogTitle>
           <DialogDescription>
@@ -337,8 +337,8 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
               className={cn(
                 "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-6 py-10 text-center transition-colors cursor-pointer",
                 isDragging
-                  ? "border-sky-500 bg-sky-500/5"
-                  : "border-muted-foreground/25 hover:border-sky-500/50 hover:bg-muted/40"
+                  ? "border-brand-500 bg-brand-500/5"
+                  : "border-muted-foreground/25 hover:border-brand-500/50 hover:bg-muted/40"
               )}
             >
               <input
@@ -350,7 +350,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
               />
               {file ? (
                 <>
-                  <FileText className="h-9 w-9 text-sky-500" />
+                  <FileText className="h-9 w-9 text-brand-500" />
                   <div className="flex items-center gap-2 font-medium">
                     {file.name}
                     <button

@@ -79,7 +79,7 @@ export function getProductColumns(
       cell: ({ row }) => {
         const icon = row.original.icon;
         return (
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30 border border-cyan-200 dark:border-cyan-800 text-base select-none">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted border border-border text-base select-none">
             {icon ?? "📦"}
           </div>
         );

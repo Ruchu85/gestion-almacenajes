@@ -200,7 +200,13 @@ export default function PuestasPage() {
     if (result.error) {
       toast({ variant: "destructive", title: "Error al actualizar", description: result.error });
     } else {
-      toast({ title: "Puesta actualizada correctamente" });
+      toast({
+        title: "Puesta actualizada correctamente",
+        description:
+          result.aviso ??
+          "La salida de fin de plancha, el stock del almacén y los almacenajes se han recalculado.",
+        variant: result.aviso ? "destructive" : undefined,
+      });
       setFormOpen(false);
       setEditingPuesta(null);
       await loadSummaries();

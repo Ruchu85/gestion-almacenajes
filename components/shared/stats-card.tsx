@@ -16,30 +16,24 @@ interface StatsCardProps {
   variant?: "default" | "success" | "warning" | "destructive";
 }
 
+/**
+ * Al estilo Flowbite, la cifra va siempre en el color de texto principal: es
+ * el dato, no un adorno. El color de la variante se reserva para el icono, en
+ * una pastilla de fondo tenue, y para el indicador de tendencia. Así una fila
+ * de KPIs se lee como un bloque homogéneo en lugar de un arcoíris.
+ */
 const variantStyles = {
   default: {
-    border: "border-l-4 border-l-violet-500 dark:border-l-violet-400",
-    iconBg: "bg-gradient-to-br from-violet-500 to-indigo-600 dark:from-violet-400 dark:to-indigo-500",
-    value: "text-violet-700 dark:text-violet-300",
-    glow: "hover:shadow-violet-100 dark:hover:shadow-violet-900/20",
+    iconBg: "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400",
   },
   success: {
-    border: "border-l-4 border-l-emerald-500 dark:border-l-emerald-400",
-    iconBg: "bg-gradient-to-br from-emerald-500 to-teal-600 dark:from-emerald-400 dark:to-teal-500",
-    value: "text-emerald-700 dark:text-emerald-300",
-    glow: "hover:shadow-emerald-100 dark:hover:shadow-emerald-900/20",
+    iconBg: "bg-green-50 text-green-600 dark:bg-green-500/15 dark:text-green-400",
   },
   warning: {
-    border: "border-l-4 border-l-amber-500 dark:border-l-amber-400",
-    iconBg: "bg-gradient-to-br from-amber-500 to-orange-500 dark:from-amber-400 dark:to-orange-400",
-    value: "text-amber-700 dark:text-amber-300",
-    glow: "hover:shadow-amber-100 dark:hover:shadow-amber-900/20",
+    iconBg: "bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400",
   },
   destructive: {
-    border: "border-l-4 border-l-red-500 dark:border-l-red-400",
-    iconBg: "bg-gradient-to-br from-red-500 to-rose-600 dark:from-red-400 dark:to-rose-500",
-    value: "text-red-700 dark:text-red-300",
-    glow: "hover:shadow-red-100 dark:hover:shadow-red-900/20",
+    iconBg: "bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-400",
   },
 };
 
@@ -70,13 +64,7 @@ export function StatsCard({
   const styles = variantStyles[variant];
 
   return (
-    <Card
-      className={cn(
-        "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5",
-        styles.border,
-        styles.glow
-      )}
-    >
+    <Card className="transition-shadow duration-200 hover:shadow-md">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}
@@ -84,16 +72,16 @@ export function StatsCard({
         {Icon && (
           <div
             className={cn(
-              "flex h-10 w-10 items-center justify-center rounded-xl shadow-sm",
+              "flex h-10 w-10 items-center justify-center rounded-lg",
               styles.iconBg
             )}
           >
-            <Icon className="h-5 w-5 text-white" />
+            <Icon className="h-5 w-5" />
           </div>
         )}
       </CardHeader>
       <CardContent>
-        <div className={cn("text-2xl font-bold tabular-nums", styles.value)}>
+        <div className="text-2xl font-bold tabular-nums text-foreground">
           {value}
         </div>
         {(description || trend) && (
@@ -103,7 +91,7 @@ export function StatsCard({
                 className={cn(
                   "font-medium mr-1",
                   trend.value >= 0
-                    ? "text-emerald-600 dark:text-emerald-400"
+                    ? "text-green-600 dark:text-green-400"
                     : "text-red-600 dark:text-red-400"
                 )}
               >

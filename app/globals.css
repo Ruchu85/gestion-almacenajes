@@ -2,82 +2,99 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   Sistema de color — paleta Flowbite (azul + gris azulado).
+   El modo oscuro es el de referencia: fondo gris-azulado profundo
+   (gray-900), superficies un escalón por encima (gray-800), bordes
+   discretos (gray-700) y un único acento azul para lo interactivo.
+   El modo claro es su reflejo: fondo gris muy claro, superficies
+   blancas y el mismo azul un tono más oscuro para que contraste.
+   ============================================================ */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    /* Fondo gris claro con superficies blancas: las tarjetas destacan
+       por elevación, no por borde. */
+    --background: 210 20% 98%;
+    --foreground: 221 39% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 221 39% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 262 83% 58%;
+    --popover-foreground: 221 39% 11%;
+    /* Azul Flowbite 700: sobre fondo claro necesita más profundidad
+       que el 600 para mantener el contraste del texto en blanco. */
+    --primary: 220 79% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 217 19% 27%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 220 14% 96%;
+    --accent-foreground: 221 39% 11%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 219 89% 53%;
     --radius: 0.5rem;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 262 83% 58%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
+    /* Serie categórica de Flowbite: azul, turquesa, morado, verde y
+       naranja. Tonos distinguibles entre sí también en escala de grises. */
+    --chart-1: 219 89% 53%;
+    --chart-2: 184 77% 44%;
+    --chart-3: 259 91% 68%;
+    --chart-4: 158 64% 48%;
+    --chart-5: 21 100% 65%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 215 14% 34%;
+    --sidebar-primary: 220 79% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 96%;
+    --sidebar-accent-foreground: 221 39% 11%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 262 83% 58%;
+    --sidebar-ring: 219 89% 53%;
   }
 
   .dark {
-    /* Jerarquía de elevación de alto contraste: fondo casi negro -> tarjeta
-       -> popover, con saltos amplios entre niveles y bordes bien marcados
-       para separar claramente las zonas (estilo Linear/Vercel). */
-    --background: 224 30% 3%;
-    --foreground: 0 0% 100%;
-    --card: 223 17% 15%;
-    --card-foreground: 0 0% 100%;
-    --popover: 223 17% 18%;
-    --popover-foreground: 0 0% 100%;
-    --primary: 0 0% 100%;
-    --primary-foreground: 224 30% 5%;
-    --secondary: 222 15% 21%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 222 15% 21%;
-    --muted-foreground: 214 24% 80%;
-    --accent: 263 45% 24%;
-    --accent-foreground: 0 0% 100%;
-    /* Rojo equilibrado: legible como TEXTO sobre fondo oscuro (~4.7:1) y
-       válido como FONDO de botón/badge con texto blanco encima (~4:1).
-       Resuelve los avisos/errores que antes quedaban en rojo apagado. */
-    --destructive: 0 74% 57%;
+    /* Tres niveles de superficie, todos en el mismo gris azulado:
+       fondo gray-900 -> tarjetas y sidebar gray-800 -> menús y estados
+       activos gray-700. La separación la dan los propios niveles y un
+       borde discreto, sin necesidad de contrastes duros. */
+    --background: 221 39% 11%;
+    --foreground: 210 20% 98%;
+    --card: 215 28% 17%;
+    --card-foreground: 210 20% 98%;
+    --popover: 217 19% 27%;
+    --popover-foreground: 210 20% 98%;
+    /* Azul Flowbite 600: el acento de botones, enlaces y foco. */
+    --primary: 219 89% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 19% 27%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 217 19% 27%;
+    --muted-foreground: 218 11% 65%;
+    --accent: 217 19% 27%;
+    --accent-foreground: 210 20% 98%;
+    /* Rojo Flowbite 500: legible como texto sobre el fondo oscuro y
+       válido como fondo de botón con texto blanco encima. */
+    --destructive: 0 84% 63%;
     --destructive-foreground: 0 0% 100%;
-    --border: 218 17% 38%;
-    --input: 218 17% 38%;
-    --ring: 258 90% 66%;
-    --chart-1: 258 90% 66%;
-    --chart-2: 152 60% 48%;
-    --chart-3: 38 95% 56%;
-    --chart-4: 280 65% 65%;
-    --chart-5: 340 75% 60%;
-    --sidebar-background: 226 32% 5%;
-    --sidebar-foreground: 213 26% 90%;
-    --sidebar-primary: 258 90% 66%;
+    --border: 217 19% 27%;
+    /* Los campos de formulario llevan el borde un escalón más claro
+       para que se distingan del fondo de la tarjeta que los contiene. */
+    --input: 215 14% 34%;
+    --ring: 217 93% 61%;
+    --chart-1: 217 93% 61%;
+    --chart-2: 184 77% 44%;
+    --chart-3: 259 91% 68%;
+    --chart-4: 158 64% 48%;
+    --chart-5: 21 100% 65%;
+    --sidebar-background: 215 28% 17%;
+    --sidebar-foreground: 216 12% 84%;
+    --sidebar-primary: 217 93% 61%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 263 45% 24%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 218 17% 32%;
-    --sidebar-ring: 258 90% 66%;
+    --sidebar-accent: 217 19% 27%;
+    --sidebar-accent-foreground: 210 20% 98%;
+    --sidebar-border: 217 19% 27%;
+    --sidebar-ring: 217 93% 61%;
   }
 }
 

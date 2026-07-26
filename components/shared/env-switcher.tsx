@@ -33,7 +33,7 @@ export function EnvSwitcher() {
         "flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold transition-all",
         isDev
           ? "bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/70"
-          : "bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/70"
+          : "bg-green-50 border-green-300 text-green-700 hover:bg-green-100 dark:bg-green-950/40 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/70"
       )}
     >
       {isPending ? (

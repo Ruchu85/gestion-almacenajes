@@ -30,31 +30,32 @@ interface NavItem {
   title: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
-  color: string;
-  activeBg: string;
-  hoverBg: string;
 }
 
-// Acento de marca unificado (violeta) para todas las secciones, en línea con
-// el logo GestiPuertos. Se centraliza para mantener la coherencia visual.
-const ACCENT = {
-  color: "text-violet-500",
-  activeBg:
-    "bg-gradient-to-r from-violet-500/15 to-violet-500/5 border-l-2 border-violet-500",
-  hoverBg: "hover:bg-violet-500/8 hover:text-violet-600 dark:hover:text-violet-400",
-} as const;
+/**
+ * Estados de la navegación, al estilo Flowbite: el elemento activo se marca
+ * con una superficie sólida un escalón por encima del sidebar y texto a plena
+ * intensidad; el resto vive en el gris secundario y solo se ilumina al pasar
+ * por encima. Sin degradados ni barras de color: la jerarquía la da el peso
+ * del texto y el fondo.
+ */
+const NAV_BASE =
+  "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors duration-150";
+const NAV_ACTIVE = "bg-sidebar-accent text-sidebar-accent-foreground font-semibold";
+const NAV_IDLE =
+  "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground";
 
 const navItems: NavItem[] = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, ...ACCENT },
-  { title: "Almacenes", href: "/warehouses", icon: Warehouse, ...ACCENT },
-  { title: "Productos", href: "/products", icon: Package, ...ACCENT },
-  { title: "Proveedores", href: "/suppliers", icon: Truck, ...ACCENT },
-  { title: "Clientes", href: "/customers", icon: Users, ...ACCENT },
-  { title: "Puestas", href: "/puestas", icon: ClipboardList, ...ACCENT },
-  { title: "Entradas", href: "/movements/inbound", icon: ArrowDownToLine, ...ACCENT },
-  { title: "Salidas", href: "/movements/outbound", icon: ArrowUpFromLine, ...ACCENT },
-  { title: "Costes", href: "/storage-costs", icon: Calculator, ...ACCENT },
-  { title: "Buscador", href: "/buscador", icon: Search, ...ACCENT },
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { title: "Almacenes", href: "/warehouses", icon: Warehouse },
+  { title: "Productos", href: "/products", icon: Package },
+  { title: "Proveedores", href: "/suppliers", icon: Truck },
+  { title: "Clientes", href: "/customers", icon: Users },
+  { title: "Puestas", href: "/puestas", icon: ClipboardList },
+  { title: "Entradas", href: "/movements/inbound", icon: ArrowDownToLine },
+  { title: "Salidas", href: "/movements/outbound", icon: ArrowUpFromLine },
+  { title: "Costes", href: "/storage-costs", icon: Calculator },
+  { title: "Buscador", href: "/buscador", icon: Search },
 ];
 
 export function Sidebar() {
@@ -78,33 +79,29 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "relative flex flex-col border-r bg-card transition-all duration-300",
+        "relative flex flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300",
         collapsed ? "w-16" : "w-64"
       )}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center border-b px-4 bg-gradient-to-r from-card to-card/80">
-        {!collapsed && (
-          <Link href="/dashboard" className="flex items-center gap-2.5 group">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 shadow-sm group-hover:shadow-violet-200 dark:group-hover:shadow-violet-900/40 transition-shadow">
-              <Warehouse className="h-4 w-4 text-white" />
-            </div>
-            <span className="font-bold text-sm bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">
+      <div className="flex h-16 items-center border-b border-sidebar-border px-4">
+        <Link
+          href="/dashboard"
+          className={cn("flex items-center gap-2.5 group", collapsed && "mx-auto")}
+        >
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+            <Warehouse className="h-4 w-4 text-primary-foreground" />
+          </div>
+          {!collapsed && (
+            <span className="font-semibold text-base text-sidebar-accent-foreground">
               GestiPuertos
             </span>
-          </Link>
-        )}
-        {collapsed && (
-          <Link href="/dashboard" className="mx-auto group">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 shadow-sm group-hover:shadow-violet-200 dark:group-hover:shadow-violet-900/40 transition-shadow">
-              <Warehouse className="h-4 w-4 text-white" />
-            </div>
-          </Link>
-        )}
+          )}
+        </Link>
       </div>
 
-      <ScrollArea className="flex-1 px-2 py-4">
-        <nav className="flex flex-col gap-0.5">
+      <ScrollArea className="flex-1 px-3 py-4">
+        <nav className="flex flex-col gap-1">
           {navItems.map((item) => {
             const isActive =
               pathname === item.href ||
@@ -117,10 +114,9 @@ export function Sidebar() {
                     <Link
                       href={item.href}
                       className={cn(
-                        "flex h-10 w-10 items-center justify-center rounded-md mx-auto transition-all duration-150",
-                        isActive
-                          ? cn("bg-primary/10", item.color)
-                          : cn("text-muted-foreground", item.hoverBg)
+                        NAV_BASE,
+                        "h-10 w-10 justify-center mx-auto",
+                        isActive ? NAV_ACTIVE : NAV_IDLE
                       )}
                     >
                       <item.icon className="h-5 w-5" />
@@ -137,27 +133,25 @@ export function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={cn(
-                  "flex h-9 items-center gap-3 rounded-md px-3 text-sm font-medium transition-all duration-150",
-                  isActive
-                    ? cn(item.activeBg, item.color, "font-semibold")
-                    : cn("text-muted-foreground", item.hoverBg)
-                )}
+                className={cn(NAV_BASE, "h-10 px-3", isActive ? NAV_ACTIVE : NAV_IDLE)}
               >
-                <item.icon className="h-4 w-4 shrink-0" />
+                <item.icon className="h-5 w-5 shrink-0" />
                 <span className="truncate">{item.title}</span>
               </Link>
             );
           })}
 
-          {/* Subir Salidas Puerto (PDF) — abre un popup, no es una ruta */}
+          {/* Acciones de PDF: abren un popup, no son rutas. Se separan de la
+              navegación con un filete, como en el patrón de Flowbite. */}
+          <div className="my-2 border-t border-sidebar-border" />
+
           {collapsed ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
                   onClick={() => setPdfOpen(true)}
-                  className="flex h-10 w-10 items-center justify-center rounded-md mx-auto transition-all duration-150 text-muted-foreground hover:bg-violet-500/8 hover:text-violet-600 dark:hover:text-violet-400"
+                  className={cn(NAV_BASE, "h-10 w-10 justify-center mx-auto", NAV_IDLE)}
                 >
                   <FileUp className="h-5 w-5" />
                 </button>
@@ -168,21 +162,20 @@ export function Sidebar() {
             <button
               type="button"
               onClick={() => setPdfOpen(true)}
-              className="flex h-9 items-center gap-3 rounded-md px-3 text-sm font-medium transition-all duration-150 text-muted-foreground hover:bg-violet-500/8 hover:text-violet-600 dark:hover:text-violet-400"
+              className={cn(NAV_BASE, "h-10 px-3 text-left", NAV_IDLE)}
             >
-              <FileUp className="h-4 w-4 shrink-0" />
+              <FileUp className="h-5 w-5 shrink-0" />
               <span className="truncate">Subir Salidas Puerto (PDF)</span>
             </button>
           )}
 
-          {/* Subir Pta a Disposición (PDF) — abre un popup, no es una ruta */}
           {collapsed ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
                   onClick={() => { setPdfPuestaAutoLoad(false); setPdfPuestaOpen(true); }}
-                  className="flex h-10 w-10 items-center justify-center rounded-md mx-auto transition-all duration-150 text-muted-foreground hover:bg-violet-500/8 hover:text-violet-600 dark:hover:text-violet-400"
+                  className={cn(NAV_BASE, "h-10 w-10 justify-center mx-auto", NAV_IDLE)}
                 >
                   <FilePlus2 className="h-5 w-5" />
                 </button>
@@ -193,9 +186,9 @@ export function Sidebar() {
             <button
               type="button"
               onClick={() => setPdfPuestaOpen(true)}
-              className="flex h-9 items-center gap-3 rounded-md px-3 text-sm font-medium transition-all duration-150 text-muted-foreground hover:bg-violet-500/8 hover:text-violet-600 dark:hover:text-violet-400"
+              className={cn(NAV_BASE, "h-10 px-3 text-left", NAV_IDLE)}
             >
-              <FilePlus2 className="h-4 w-4 shrink-0" />
+              <FilePlus2 className="h-5 w-5 shrink-0" />
               <span className="truncate">Subir Pta a Disposición (PDF)</span>
             </button>
           )}
@@ -209,11 +202,11 @@ export function Sidebar() {
         autoLoad={pdfPuestaAutoLoad}
       />
 
-      <div className="border-t p-2">
+      <div className="border-t border-sidebar-border p-2">
         <Button
           variant="ghost"
           size="icon"
-          className="w-full h-9 hover:bg-muted/80"
+          className="w-full h-9 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           onClick={() => setCollapsed(!collapsed)}
           aria-label={collapsed ? "Expandir sidebar" : "Colapsar sidebar"}
         >

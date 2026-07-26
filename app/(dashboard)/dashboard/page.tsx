@@ -557,7 +557,7 @@ export default function DashboardPage() {
             <span className={cn(
               "relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200",
               showKpis
-                ? "bg-violet-600 dark:bg-violet-500"
+                ? "bg-brand-600 dark:bg-brand-500"
                 : "bg-muted group-hover:bg-muted-foreground/30"
             )}>
               <span className={cn(
@@ -580,11 +580,11 @@ export default function DashboardPage() {
             <>
               <div className="flex items-center justify-between mb-1.5">
                 <p className="text-xs font-medium text-muted-foreground">Coste hoy</p>
-                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-100 dark:bg-violet-900/30">
-                  <Euro className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-100 dark:bg-brand-900/30">
+                  <Euro className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
                 </div>
               </div>
-              <p className="text-lg font-bold tabular-nums text-violet-700 dark:text-violet-300">
+              <p className="text-lg font-bold tabular-nums text-brand-700 dark:text-brand-300">
                 {formatCurrency(kpis?.total_cost_today ?? 0)}
               </p>
               <p className="text-[11px] text-muted-foreground mt-0.5">Generado hoy</p>
@@ -600,11 +600,11 @@ export default function DashboardPage() {
             <>
               <div className="flex items-center justify-between mb-1.5">
                 <p className="text-xs font-medium text-muted-foreground">Coste del mes</p>
-                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-100 dark:bg-emerald-900/30">
-                  <TrendingUp className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-green-100 dark:bg-green-900/30">
+                  <TrendingUp className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
                 </div>
               </div>
-              <p className="text-lg font-bold tabular-nums text-emerald-700 dark:text-emerald-300">
+              <p className="text-lg font-bold tabular-nums text-green-700 dark:text-green-300">
                 {formatCurrency(kpis?.total_cost_month ?? 0)}
               </p>
               <p className="text-[11px] text-muted-foreground mt-0.5">Mes en curso</p>
@@ -640,13 +640,13 @@ export default function DashboardPage() {
             <>
               <div className="flex items-center justify-between mb-1.5">
                 <p className="text-xs font-medium text-muted-foreground">Stock invendido</p>
-                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 dark:bg-slate-800">
-                  <PackageMinus className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted">
+                  <PackageMinus className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
               </div>
               <p className={cn(
                 "text-lg font-bold tabular-nums",
-                totalInvendido < 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-700 dark:text-slate-300"
+                totalInvendido < 0 ? "text-red-600 dark:text-red-400" : "text-foreground"
               )}>
                 {formatQuantity(totalInvendido, "TNS")}
               </p>
@@ -657,7 +657,7 @@ export default function DashboardPage() {
                       <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[60%]">{p.name}</span>
                       <span className={cn(
                         "text-[10px] tabular-nums font-semibold",
-                        p.total < 0 ? "text-rose-500" : "text-slate-600 dark:text-slate-400"
+                        p.total < 0 ? "text-red-500" : "text-muted-foreground"
                       )}>
                         {formatQuantity(p.total, p.unit)}
                       </span>
@@ -675,10 +675,10 @@ export default function DashboardPage() {
 
       {/* Almacenes Activos – árbol 4 niveles */}
       <Card className="border-0 shadow-sm">
-        <CardHeader className="pb-4 bg-gradient-to-r from-violet-500/5 via-transparent to-transparent rounded-t-xl border-b">
+        <CardHeader className="pb-4 border-b">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 shadow-sm">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
                 <Warehouse className="h-5 w-5 text-white" />
               </div>
               <div>
@@ -694,7 +694,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => window.dispatchEvent(new CustomEvent("gestalmacen:open-pdf-puestas"))}
-                className="group flex items-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-orange-500/30 ring-1 ring-orange-400/60 animate-pulse hover:animate-none hover:from-amber-600 hover:to-orange-700 transition-colors"
+                className="group flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-white shadow-sm ring-1 ring-amber-400/60 animate-pulse hover:animate-none hover:bg-amber-600 transition-colors"
                 title="Pulsa para leer los PDFs desde la base de datos"
               >
                 <FileWarning className="h-4 w-4 shrink-0" />
@@ -706,7 +706,7 @@ export default function DashboardPage() {
             )}
 
             {!isLoadingStock && totalWarehouses > 0 && (
-              <Badge variant="outline" className="border-violet-300 text-violet-600 dark:border-violet-700 dark:text-violet-400">
+              <Badge variant="outline" className="border-brand-300 text-brand-600 dark:border-brand-700 dark:text-brand-400">
                 {totalWarehouses}{" "}
                 {totalWarehouses === 1 ? "almacén activo" : "almacenes activos"}
               </Badge>
@@ -752,11 +752,11 @@ export default function DashboardPage() {
             </div>
           ) : filteredGroups.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-3">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-violet-100 to-indigo-100 dark:from-violet-900/30 dark:to-indigo-900/30">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-500/15">
                 {searchQuery ? (
-                  <Search className="h-8 w-8 text-violet-400 dark:text-violet-500" />
+                  <Search className="h-8 w-8 text-brand-400 dark:text-brand-500" />
                 ) : (
-                  <Warehouse className="h-8 w-8 text-violet-400 dark:text-violet-500" />
+                  <Warehouse className="h-8 w-8 text-brand-400 dark:text-brand-500" />
                 )}
               </div>
               <div className="text-center">
@@ -769,7 +769,7 @@ export default function DashboardPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="mt-2 text-violet-600 dark:text-violet-400"
+                      className="mt-2 text-brand-600 dark:text-brand-400"
                       onClick={() => setSearchQuery("")}
                     >
                       Limpiar búsqueda
@@ -797,21 +797,21 @@ export default function DashboardPage() {
                       className={cn(
                         "w-full flex items-center gap-4 p-4 rounded-xl border text-left transition-all duration-200",
                         isPosExpanded
-                          ? "bg-gradient-to-r from-violet-50 to-violet-50/30 dark:from-violet-950/30 dark:to-violet-950/10 border-violet-300 dark:border-violet-700 shadow-sm"
-                          : "bg-card hover:bg-gradient-to-r hover:from-violet-50/50 hover:to-transparent dark:hover:from-violet-950/20 dark:hover:to-transparent border-border hover:border-violet-200 dark:hover:border-violet-800 hover:shadow-sm"
+                          ? "bg-brand-50 dark:bg-brand-500/10 border-brand-200 dark:border-brand-800"
+                          : "bg-card hover:bg-accent/60 border-border hover:shadow-sm"
                       )}
                     >
                       <div className={cn(
                         "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all duration-200",
                         isPosExpanded
-                          ? "bg-gradient-to-br from-violet-500 to-indigo-600 shadow-sm"
+                          ? "bg-primary"
                           : "bg-muted border border-border"
                       )}>
                         <MapPin className={cn("h-5 w-5", isPosExpanded ? "text-white" : "text-muted-foreground")} />
                       </div>
 
                       <div className="flex-1 min-w-0">
-                        <p className={cn("font-semibold text-base truncate", isPosExpanded && "text-violet-700 dark:text-violet-300")}>
+                        <p className={cn("font-semibold text-base truncate", isPosExpanded && "text-brand-700 dark:text-brand-300")}>
                           {pg.posicion_cerrada}
                         </p>
                         <p className="text-sm text-muted-foreground">
@@ -831,15 +831,15 @@ export default function DashboardPage() {
                         <div className="h-8 w-px bg-border hidden md:block" />
                         <div className="text-right hidden md:block">
                           <p className="text-xs text-muted-foreground">Coste/día</p>
-                          <p className="font-bold tabular-nums text-violet-600 dark:text-violet-400">{formatCurrency(pg.totalDailyCost)}</p>
+                          <p className="font-bold tabular-nums text-brand-600 dark:text-brand-400">{formatCurrency(pg.totalDailyCost)}</p>
                         </div>
                         <div className={cn(
                           "flex h-6 w-6 items-center justify-center rounded-full transition-all duration-200",
-                          isPosExpanded ? "bg-violet-100 dark:bg-violet-900/40" : "bg-muted"
+                          isPosExpanded ? "bg-brand-100 dark:bg-brand-900/40" : "bg-muted"
                         )}>
                           <ChevronDown className={cn(
                             "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
-                            isPosExpanded && "rotate-180 text-violet-600 dark:text-violet-400"
+                            isPosExpanded && "rotate-180 text-brand-600 dark:text-brand-400"
                           )} />
                         </div>
                       </div>
@@ -848,13 +848,13 @@ export default function DashboardPage() {
                     {/* ── Nivel 2: Almacenes ───────────────────────── */}
                     {isPosExpanded && (
                       <div className="ml-5 mt-1 relative">
-                        <div className="absolute left-0 top-0 bottom-3 w-0.5 bg-gradient-to-b from-violet-300 to-transparent dark:from-violet-700 rounded-full" />
+                        <div className="absolute left-0 top-0 bottom-3 w-0.5 bg-border rounded-full" />
                         <div className="space-y-1.5 pl-1">
                           {pg.warehouses.map((group) => {
                             const isExpanded = expandedWarehouses.has(group.warehouse_id);
                             return (
                               <div key={group.warehouse_id} className="relative">
-                                <div className="absolute left-[-4px] top-[22px] w-5 h-0.5 bg-violet-200 dark:bg-violet-800" />
+                                <div className="absolute left-[-4px] top-[22px] w-5 h-0.5 bg-brand-200 dark:bg-brand-800" />
                                 <div className="ml-5">
                                   {/* ── Nodo Almacén ─────────────────── */}
                                   <button
@@ -862,21 +862,21 @@ export default function DashboardPage() {
                                     className={cn(
                                       "w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-all duration-200",
                                       isExpanded
-                                        ? "bg-gradient-to-r from-blue-50 to-blue-50/30 dark:from-blue-950/30 dark:to-blue-950/10 border-blue-300 dark:border-blue-700 shadow-sm"
-                                        : "bg-card hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-transparent dark:hover:from-blue-950/20 dark:hover:to-transparent border-border hover:border-blue-200 dark:hover:border-blue-800 hover:shadow-sm"
+                                        ? "bg-brand-50 dark:bg-brand-500/10 border-brand-200 dark:border-brand-800"
+                                        : "bg-card hover:bg-accent/60 border-border hover:shadow-sm"
                                     )}
                                   >
                                     <div className={cn(
                                       "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-all duration-200",
                                       isExpanded
-                                        ? "bg-gradient-to-br from-blue-500 to-indigo-600 shadow-sm"
+                                        ? "bg-primary"
                                         : "bg-muted border border-border"
                                     )}>
                                       <Warehouse className={cn("h-4 w-4", isExpanded ? "text-white" : "text-muted-foreground")} />
                                     </div>
 
                                     <div className="flex-1 min-w-0">
-                                      <p className={cn("font-semibold text-sm truncate", isExpanded && "text-blue-700 dark:text-blue-300")}>
+                                      <p className={cn("font-semibold text-sm truncate", isExpanded && "text-brand-700 dark:text-brand-300")}>
                                         {group.warehouse_name}
                                       </p>
                                       <p className="text-xs text-muted-foreground">
@@ -893,15 +893,15 @@ export default function DashboardPage() {
                                       <div className="h-6 w-px bg-border hidden md:block" />
                                       <div className="text-right hidden md:block">
                                         <p className="text-xs text-muted-foreground">Coste/día</p>
-                                        <p className="font-bold tabular-nums text-sm text-blue-600 dark:text-blue-400">{formatCurrency(group.totalDailyCost)}</p>
+                                        <p className="font-bold tabular-nums text-sm text-brand-600 dark:text-brand-400">{formatCurrency(group.totalDailyCost)}</p>
                                       </div>
                                       <div className={cn(
                                         "flex h-5 w-5 items-center justify-center rounded-full transition-all duration-200",
-                                        isExpanded ? "bg-blue-100 dark:bg-blue-900/40" : "bg-muted"
+                                        isExpanded ? "bg-brand-100 dark:bg-brand-900/40" : "bg-muted"
                                       )}>
                                         <ChevronDown className={cn(
                                           "h-3 w-3 text-muted-foreground transition-transform duration-200",
-                                          isExpanded && "rotate-180 text-blue-600 dark:text-blue-400"
+                                          isExpanded && "rotate-180 text-brand-600 dark:text-brand-400"
                                         )} />
                                       </div>
                                     </div>
@@ -910,7 +910,7 @@ export default function DashboardPage() {
                                   {/* ── Nivel 3: Productos ─────────────── */}
                                   {isExpanded && (
                                     <div className="ml-5 mt-1 relative">
-                                      <div className="absolute left-0 top-0 bottom-3 w-0.5 bg-gradient-to-b from-blue-300 to-transparent dark:from-blue-700 rounded-full" />
+                                      <div className="absolute left-0 top-0 bottom-3 w-0.5 bg-border rounded-full" />
                                       <div className="space-y-1.5 pl-1">
                                         {group.products.map((product) => {
                                           const puestasKey = `${group.warehouse_id}||${product.product_id}`;
@@ -920,17 +920,17 @@ export default function DashboardPage() {
 
                                           return (
                                             <div key={product.product_id} className="relative">
-                                              <div className="absolute left-[-4px] top-[22px] w-5 h-0.5 bg-blue-200 dark:bg-blue-800" />
-                                              <div className="ml-5 rounded-lg border bg-card hover:border-cyan-200 dark:hover:border-cyan-800 transition-all duration-150 overflow-hidden">
+                                              <div className="absolute left-[-4px] top-[22px] w-5 h-0.5 bg-brand-200 dark:bg-brand-800" />
+                                              <div className="ml-5 rounded-lg border bg-card hover:border-brand-300 dark:hover:border-brand-700 transition-all duration-150 overflow-hidden">
 
                                                 {/* Fila del producto */}
                                                 <div
-                                                  className="relative flex items-center gap-3 px-4 py-3 transition-all duration-150 group hover:bg-gradient-to-r hover:from-cyan-50/60 hover:to-transparent dark:hover:from-cyan-950/20 dark:hover:to-transparent"
+                                                  className="relative flex items-center gap-3 px-4 py-3 transition-all duration-150 group hover:bg-accent/60"
                                                 >
-                                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-cyan-100 to-blue-100 dark:from-cyan-900/30 dark:to-blue-900/30 border border-cyan-200 dark:border-cyan-800 group-hover:from-cyan-200 group-hover:to-blue-200 transition-all duration-150 text-base select-none">
+                                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted border border-border transition-colors duration-150 text-base select-none">
                                                     {product.product_icon
                                                       ? <span>{product.product_icon}</span>
-                                                      : <Package className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+                                                      : <Package className="h-4 w-4 text-brand-600 dark:text-brand-400" />
                                                     }
                                                   </div>
 
@@ -949,15 +949,15 @@ export default function DashboardPage() {
                                                       <div className={cn(
                                                         "text-right px-2.5 py-1 rounded-md border",
                                                         product.cant_invendida < 0
-                                                          ? "bg-rose-50 border-rose-200 dark:bg-rose-950/30 dark:border-rose-800"
-                                                          : "bg-slate-50 border-slate-200 dark:bg-slate-900/40 dark:border-slate-700"
+                                                          ? "bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800"
+                                                          : "bg-muted/50 border-border"
                                                       )}>
                                                         <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Cant. Invendida</p>
                                                         <p className={cn(
                                                           "tabular-nums font-bold text-sm",
                                                           product.cant_invendida < 0
-                                                            ? "text-rose-600 dark:text-rose-400"
-                                                            : "text-slate-700 dark:text-slate-300"
+                                                            ? "text-red-600 dark:text-red-400"
+                                                            : "text-foreground"
                                                         )}>
                                                           {formatQuantity(product.cant_invendida, product.unit)}
                                                         </p>
@@ -967,13 +967,13 @@ export default function DashboardPage() {
 
                                                       <div className="text-right">
                                                         <p className="text-xs text-muted-foreground">Entradas</p>
-                                                        <p className="tabular-nums text-emerald-600 dark:text-emerald-400 font-semibold">
+                                                        <p className="tabular-nums text-green-600 dark:text-green-400 font-semibold">
                                                           +{formatQuantity(product.total_inbound, product.unit)}
                                                         </p>
                                                       </div>
                                                       <div className="text-right">
                                                         <p className="text-xs text-muted-foreground">Salidas</p>
-                                                        <p className="tabular-nums text-rose-600 dark:text-rose-400 font-semibold">
+                                                        <p className="tabular-nums text-red-600 dark:text-red-400 font-semibold">
                                                           -{formatQuantity(product.total_outbound, product.unit)}
                                                         </p>
                                                       </div>
@@ -988,7 +988,7 @@ export default function DashboardPage() {
                                                       </div>
                                                       <div className="text-right hidden lg:block">
                                                         <p className="text-xs text-muted-foreground">Coste/día</p>
-                                                        <p className="tabular-nums font-bold text-blue-600 dark:text-blue-400">
+                                                        <p className="tabular-nums font-bold text-brand-600 dark:text-brand-400">
                                                           {formatCurrency(product.daily_cost)}
                                                         </p>
                                                       </div>
@@ -999,7 +999,7 @@ export default function DashboardPage() {
                                                         <Button
                                                           variant="outline"
                                                           size="sm"
-                                                          className="gap-1.5 border-violet-200 hover:border-violet-400 hover:bg-violet-50 dark:border-violet-800 dark:hover:border-violet-600 dark:hover:bg-violet-950/50 text-violet-600 dark:text-violet-400 transition-colors"
+                                                          className="gap-1.5 border-brand-200 hover:border-brand-400 hover:bg-brand-50 dark:border-brand-800 dark:hover:border-brand-600 dark:hover:bg-brand-950/50 text-brand-600 dark:text-brand-400 transition-colors"
                                                         >
                                                           <Plus className="h-3.5 w-3.5" />
                                                           Acciones
@@ -1014,13 +1014,13 @@ export default function DashboardPage() {
 
                                                         <DropdownMenuItem asChild>
                                                           <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}`} className="cursor-pointer">
-                                                            <CalendarDays className="mr-2 h-4 w-4 text-blue-500" />
+                                                            <CalendarDays className="mr-2 h-4 w-4 text-brand-500" />
                                                             Ver calendario de stock
                                                           </Link>
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem asChild>
                                                           <Link href={`/warehouses/${group.warehouse_id}/${product.product_id}?tab=puestas`} className="cursor-pointer">
-                                                            <FileText className="mr-2 h-4 w-4 text-violet-500" />
+                                                            <FileText className="mr-2 h-4 w-4 text-brand-500" />
                                                             Ver puestas activas
                                                           </Link>
                                                         </DropdownMenuItem>
@@ -1029,13 +1029,13 @@ export default function DashboardPage() {
 
                                                         <DropdownMenuItem asChild>
                                                           <Link href={`/movements/inbound?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`} className="cursor-pointer">
-                                                            <ArrowDownToLine className="mr-2 h-4 w-4 text-emerald-500" />
+                                                            <ArrowDownToLine className="mr-2 h-4 w-4 text-green-500" />
                                                             Nueva entrada
                                                           </Link>
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem asChild>
                                                           <Link href={`/movements/outbound?warehouse_id=${group.warehouse_id}&product_id=${product.product_id}&back=%2Fdashboard`} className="cursor-pointer">
-                                                            <ArrowUpFromLine className="mr-2 h-4 w-4 text-rose-500" />
+                                                            <ArrowUpFromLine className="mr-2 h-4 w-4 text-red-500" />
                                                             Nueva salida
                                                           </Link>
                                                         </DropdownMenuItem>
@@ -1093,7 +1093,7 @@ export default function DashboardPage() {
                                                               className={cn(
                                                                 "grid grid-cols-[150px_110px_1fr_96px_92px_100px_82px] items-center gap-x-2 px-3 py-2",
                                                                 idx % 2 === 0
-                                                                  ? "bg-white dark:bg-transparent"
+                                                                  ? "bg-card dark:bg-transparent"
                                                                   : "bg-amber-50/30 dark:bg-amber-950/10",
                                                                 idx < product.puestas.length - 1 && "border-b border-amber-100/60 dark:border-amber-900/30"
                                                               )}
@@ -1109,7 +1109,7 @@ export default function DashboardPage() {
                                                                   {formatDate(puesta.fecha_puesta)}
                                                                 </span>
                                                                 {puesta.fecha_fin_plancha && (
-                                                                  <div className="text-[10px] tabular-nums text-sky-600 dark:text-sky-400 whitespace-nowrap">
+                                                                  <div className="text-[10px] tabular-nums text-brand-600 dark:text-brand-400 whitespace-nowrap">
                                                                     ↳ {formatDate(puesta.fecha_fin_plancha)}
                                                                   </div>
                                                                 )}
@@ -1146,7 +1146,7 @@ export default function DashboardPage() {
                                                                   asChild
                                                                   size="sm"
                                                                   variant="outline"
-                                                                  className="h-6 px-2 text-[11px] gap-1 border-rose-200 text-rose-600 hover:bg-rose-50 hover:border-rose-400 dark:border-rose-800 dark:text-rose-400 dark:hover:bg-rose-950/30"
+                                                                  className="h-6 px-2 text-[11px] gap-1 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-400 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30"
                                                                 >
                                                                   <Link href={`/puestas/${puesta.id}?back=%2Fdashboard&autoSalida=1`}>
                                                                     <Truck className="h-3 w-3" />
@@ -1161,7 +1161,7 @@ export default function DashboardPage() {
                                                                   asChild
                                                                   size="sm"
                                                                   variant="outline"
-                                                                  className="h-6 px-2 text-[11px] gap-1 border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-400 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                                                                  className="h-6 px-2 text-[11px] gap-1 border-brand-200 text-brand-600 hover:bg-brand-50 hover:border-brand-400 dark:border-brand-800 dark:text-brand-400 dark:hover:bg-brand-950/30"
                                                                 >
                                                                   <Link href={`/puestas/${puesta.id}?back=%2Fdashboard`}>
                                                                     <FileText className="h-3 w-3" />

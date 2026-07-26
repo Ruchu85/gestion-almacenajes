@@ -163,8 +163,8 @@ export function ProductForm({
                         className={cn(
                           "flex h-9 w-9 items-center justify-center rounded-md border text-lg transition-all select-none",
                           field.value === emoji
-                            ? "border-violet-500 bg-violet-100 dark:bg-violet-900/40 ring-1 ring-violet-500"
-                            : "border-border bg-muted/40 hover:border-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/30"
+                            ? "border-brand-500 bg-brand-100 dark:bg-brand-900/40 ring-1 ring-brand-500"
+                            : "border-border bg-muted/40 hover:border-brand-300 hover:bg-brand-50 dark:hover:bg-brand-950/30"
                         )}
                       >
                         {emoji}

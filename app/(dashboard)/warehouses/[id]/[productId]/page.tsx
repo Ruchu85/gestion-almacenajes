@@ -46,6 +46,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { MatriculaInput } from "@/components/shared/matricula-input";
 import { getMatriculas, upsertMatricula } from "@/lib/actions/matriculas";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -56,11 +59,13 @@ import {
   addMonthlyInvoice,
   updateMonthlyInvoice,
   deleteMonthlyInvoice,
-  updateInboundMovement,
-  deleteInboundMovement,
   updateOutboundMovement,
   deleteOutboundMovement,
 } from "./actions";
+import {
+  updateInboundMovementAction,
+  deleteInboundMovementAction,
+} from "@/lib/actions/movements";
 import { SalidaParcialForm } from "@/modules/puestas/components/salida-parcial-form";
 import { createSalidaParcial, triggerPlanchaAutoExit } from "../../../puestas/actions";
 import type { SalidaParcialFormValues } from "@/validations/salida-parcial.schema";
@@ -100,6 +105,7 @@ interface InboundRow {
   quantity: number;
   free_days: number;
   comments: string | null;
+  supplier_id: string | null;
   supplier: { name: string } | null;
 }
 
@@ -350,8 +356,10 @@ export default function WarehouseProductPage() {
 
   // Edit inbound state
   const [editingInbound, setEditingInbound] = useState<InboundRow | null>(null);
-  const [inboundEditValues, setInboundEditValues] = useState({ movement_date: "", quantity: "", free_days: "0", comments: "" });
+  const [inboundEditValues, setInboundEditValues] = useState({ movement_date: "", quantity: "", free_days: "0", comments: "", supplier_id: "" });
   const [isSavingInbound, setIsSavingInbound] = useState(false);
+  /** Proveedores activos, para poder reasignar el de una entrada. */
+  const [suppliers, setSuppliers] = useState<{ id: string; name: string; codigo: string | null }[]>([]);
 
   // Edit outbound state
   const [editingOutbound, setEditingOutbound] = useState<OutboundRow | null>(null);
@@ -381,12 +389,12 @@ export default function WarehouseProductPage() {
   // ── Load meta + tabs data ─────────────────────────────────────
   const loadMeta = useCallback(async () => {
     setIsLoadingMeta(true);
-    const [warehouseRes, productRes, inboundRes, outboundRes, puestaRes, mats] = await Promise.all([
+    const [warehouseRes, productRes, inboundRes, outboundRes, puestaRes, mats, suppliersRes] = await Promise.all([
       supabase.from("warehouses").select("name").eq("id", params.id).single(),
       supabase.from("products").select("name, code, unit").eq("id", params.productId).single(),
       supabase
         .from("inbound_movements")
-        .select("id, movement_date, quantity, free_days, comments, supplier:suppliers(name)")
+        .select("id, movement_date, quantity, free_days, comments, supplier_id, supplier:suppliers(name)")
         .eq("warehouse_id", params.id)
         .eq("product_id", params.productId)
         .order("movement_date", { ascending: false }),
@@ -403,10 +411,12 @@ export default function WarehouseProductPage() {
         .eq("product_id", params.productId)
         .order("fecha_puesta", { ascending: false }),
       getMatriculas(),
+      supabase.from("suppliers").select("id, name, codigo").eq("active", true).order("name"),
     ]);
 
     if (warehouseRes.data) setWarehouseName(warehouseRes.data.name);
     setMatriculas(mats);
+    setSuppliers(suppliersRes.data ?? []);
     if (productRes.data) {
       setProductName(productRes.data.name);
       setProductCode(productRes.data.code);
@@ -602,34 +612,34 @@ export default function WarehouseProductPage() {
       quantity: String(row.quantity),
       free_days: String(row.free_days ?? 0),
       comments: row.comments ?? "",
+      supplier_id: row.supplier_id ?? "",
     });
   }
 
   async function handleSaveInbound() {
     if (!editingInbound) return;
     setIsSavingInbound(true);
-    const qty = parseFloat(inboundEditValues.quantity);
+    const qty = parseFloat(inboundEditValues.quantity.replace(",", "."));
     if (isNaN(qty) || qty <= 0) {
       toast({ variant: "destructive", title: "Cantidad inválida" });
       setIsSavingInbound(false);
       return;
     }
-    const result = await updateInboundMovement(
-      editingInbound.id,
-      {
-        movement_date: inboundEditValues.movement_date,
-        quantity: qty,
-        free_days: parseInt(inboundEditValues.free_days) || 0,
-        comments: inboundEditValues.comments.trim() || null,
-      },
-      params.id,
-      params.productId,
-      editingInbound.movement_date,
-    );
+    const result = await updateInboundMovementAction(editingInbound.id, {
+      supplier_id: inboundEditValues.supplier_id || null,
+      movement_date: inboundEditValues.movement_date,
+      quantity: qty,
+      free_days: parseInt(inboundEditValues.free_days) || 0,
+      comments: inboundEditValues.comments.trim() || null,
+    });
     if (result.error) {
       toast({ variant: "destructive", title: "Error al actualizar", description: result.error });
     } else {
-      toast({ title: "Entrada actualizada y costes recalculados" });
+      toast({
+        title: "Entrada actualizada y costes recalculados",
+        description: result.aviso,
+        variant: result.aviso ? "destructive" : undefined,
+      });
       setEditingInbound(null);
       await loadMeta();
       await loadCalendar();
@@ -638,11 +648,15 @@ export default function WarehouseProductPage() {
   }
 
   async function handleDeleteInbound(row: InboundRow) {
-    const result = await deleteInboundMovement(row.id, params.id, params.productId, row.movement_date);
+    const result = await deleteInboundMovementAction(row.id);
     if (result.error) {
       toast({ variant: "destructive", title: "Error al eliminar", description: result.error });
     } else {
-      toast({ title: "Entrada eliminada y costes recalculados" });
+      toast({
+        title: "Entrada eliminada y costes recalculados",
+        description: result.aviso,
+        variant: result.aviso ? "destructive" : undefined,
+      });
       await loadMeta();
       await loadCalendar();
     }
@@ -841,8 +855,8 @@ export default function WarehouseProductPage() {
             <Card>
               <CardContent className="pt-5 pb-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-950/40">
-                    <Euro className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-100 dark:bg-brand-950/40">
+                    <Euro className="h-4 w-4 text-brand-600 dark:text-brand-400" />
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">
@@ -997,7 +1011,7 @@ export default function WarehouseProductPage() {
                                       "font-medium",
                                       day.isEstimated
                                         ? "text-amber-600/70 dark:text-amber-400/60"
-                                        : "text-blue-600 dark:text-blue-400"
+                                        : "text-brand-600 dark:text-brand-400"
                                     )}>
                                       {day.isEstimated && "~"}{formatCurrency(day.cost)}
                                     </span>
@@ -1023,7 +1037,7 @@ export default function WarehouseProductPage() {
                           mg.hasEstimated
                             ? "text-amber-600/80 dark:text-amber-400/70"
                             : mg.totalCost > 0
-                            ? "text-blue-600 dark:text-blue-400"
+                            ? "text-brand-600 dark:text-brand-400"
                             : "text-muted-foreground"
                         )}>
                           {mg.hasEstimated && "~"}{formatCurrency(mg.totalCost)}
@@ -1326,6 +1340,27 @@ export default function WarehouseProductPage() {
             <DialogTitle>Editar entrada</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
+            <div>
+              <label className="text-sm font-medium">Proveedor</label>
+              <Select
+                value={inboundEditValues.supplier_id || "none"}
+                onValueChange={(val) =>
+                  setInboundEditValues((v) => ({ ...v, supplier_id: val === "none" ? "" : val }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin proveedor asignado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin proveedor</SelectItem>
+                  {suppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.codigo ? `[${s.codigo}] ` : ""}{s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <label className="text-sm font-medium">Fecha *</label>
               <Input type="date" value={inboundEditValues.movement_date}

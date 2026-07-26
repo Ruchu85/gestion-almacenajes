@@ -20,6 +20,27 @@ const config: Config = {
     },
     extend: {
       colors: {
+        /**
+         * Azul de marca (paleta Flowbite). Se usa donde hace falta un tono
+         * concreto de la escala —degradados, fondos translúcidos, iconos
+         * destacados— en lugar de un token semántico. Para botones, enlaces y
+         * foco, usar `primary`/`ring`, que además se adaptan al tema.
+         */
+        brand: {
+          50: "#EBF5FF",
+          100: "#E1EFFE",
+          200: "#C3DDFD",
+          300: "#A4CAFE",
+          400: "#76A9FA",
+          500: "#3F83F8",
+          600: "#1C64F2",
+          700: "#1A56DB",
+          800: "#1E429F",
+          900: "#233876",
+          /* Fuera de la escala Flowbite: fondo de avisos en modo oscuro,
+             donde el 900 aún resulta demasiado luminoso. */
+          950: "#172554",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

@@ -106,8 +106,8 @@ type SearchResult = ResultPuesta | ResultSalidaParcial | ResultEntrada | ResultS
 
 function estadoBadge(estado: string) {
   const map: Record<string, { label: string; className: string }> = {
-    abierta: { label: "Abierta", className: "border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400" },
-    finalizada: { label: "Finalizada", className: "border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-400" },
+    abierta: { label: "Abierta", className: "border-green-300 text-green-700 dark:border-green-700 dark:text-green-400" },
+    finalizada: { label: "Finalizada", className: "border-brand-300 text-brand-700 dark:border-brand-700 dark:text-brand-400" },
     cerrada_manual: { label: "Cerrada", className: "border-muted text-muted-foreground" },
   };
   const { label, className } = map[estado] ?? { label: estado, className: "border-muted text-muted-foreground" };
@@ -142,7 +142,7 @@ function RowPuesta({ r }: { r: ResultPuesta }) {
 function RowSalidaParcial({ r }: { r: ResultSalidaParcial }) {
   return (
     <div className="flex items-center gap-3 py-2.5 px-3 text-sm border-b last:border-0 border-border/50 hover:bg-muted/30 transition-colors">
-      <Truck className="h-4 w-4 shrink-0 text-rose-500" />
+      <Truck className="h-4 w-4 shrink-0 text-red-500" />
       <div className="flex-1 min-w-0 grid grid-cols-[100px_100px_1fr_110px_90px_80px] gap-x-4 items-center">
         <span className="font-mono font-semibold text-foreground truncate">{r.matricula ?? "—"}</span>
         <span className="text-muted-foreground text-xs truncate">{r.n_camion ?? "—"}</span>
@@ -166,7 +166,7 @@ function RowSalidaParcial({ r }: { r: ResultSalidaParcial }) {
 function RowEntrada({ r }: { r: ResultEntrada }) {
   return (
     <div className="flex items-center gap-3 py-2.5 px-3 text-sm border-b last:border-0 border-border/50 hover:bg-muted/30 transition-colors">
-      <ArrowDownToLine className="h-4 w-4 shrink-0 text-emerald-500" />
+      <ArrowDownToLine className="h-4 w-4 shrink-0 text-green-500" />
       <div className="flex-1 min-w-0 grid grid-cols-[120px_1fr_110px_90px_80px] gap-x-4 items-center">
         <span className="font-mono font-semibold text-foreground truncate">{r.numero_albaran ?? "—"}</span>
         <span className="text-muted-foreground text-xs truncate">{r.supplier_name ?? "—"}</span>
@@ -181,7 +181,7 @@ function RowEntrada({ r }: { r: ResultEntrada }) {
 function RowSalida({ r }: { r: ResultSalida }) {
   return (
     <div className="flex items-center gap-3 py-2.5 px-3 text-sm border-b last:border-0 border-border/50 hover:bg-muted/30 transition-colors">
-      <ArrowUpFromLine className="h-4 w-4 shrink-0 text-rose-500" />
+      <ArrowUpFromLine className="h-4 w-4 shrink-0 text-red-500" />
       <div className="flex-1 min-w-0 grid grid-cols-[100px_120px_1fr_110px_90px_80px] gap-x-4 items-center">
         <span className="font-mono font-semibold text-foreground truncate">{r.matricula ?? "—"}</span>
         <span className="font-mono text-xs text-muted-foreground truncate">{r.numero_albaran ?? "—"}</span>
@@ -694,7 +694,7 @@ export default function BuscadorPage() {
           </ResultSection>
 
           {/* Salidas de puestas */}
-          <ResultSection title="Salidas de Puestas" icon={Truck} count={salidasParciales.length} color="text-rose-500">
+          <ResultSection title="Salidas de Puestas" icon={Truck} count={salidasParciales.length} color="text-red-500">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground grid grid-cols-[100px_100px_1fr_110px_90px_80px] gap-x-4 px-10 py-1.5 bg-muted/20 border-b border-border/50">
               <span>Matrícula</span>
               <span>Nº Camión</span>
@@ -707,7 +707,7 @@ export default function BuscadorPage() {
           </ResultSection>
 
           {/* Entradas */}
-          <ResultSection title="Entradas" icon={ArrowDownToLine} count={entradas.length} color="text-emerald-500">
+          <ResultSection title="Entradas" icon={ArrowDownToLine} count={entradas.length} color="text-green-500">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground grid grid-cols-[120px_1fr_110px_90px_80px] gap-x-4 px-10 py-1.5 bg-muted/20 border-b border-border/50">
               <span>Nº Albarán</span>
               <span>Proveedor</span>
@@ -719,7 +719,7 @@ export default function BuscadorPage() {
           </ResultSection>
 
           {/* Salidas directas */}
-          <ResultSection title="Salidas Directas" icon={ArrowUpFromLine} count={salidas.length} color="text-rose-500">
+          <ResultSection title="Salidas Directas" icon={ArrowUpFromLine} count={salidas.length} color="text-red-500">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground grid grid-cols-[100px_120px_1fr_110px_90px_80px] gap-x-4 px-10 py-1.5 bg-muted/20 border-b border-border/50">
               <span>Matrícula</span>
               <span>Nº Albarán</span>

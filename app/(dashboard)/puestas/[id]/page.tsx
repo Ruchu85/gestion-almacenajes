@@ -212,7 +212,11 @@ export default function PuestaDetailPage() {
     if (result.error) {
       toast({ variant: "destructive", title: "Error al actualizar", description: result.error });
     } else {
-      toast({ title: "Salida actualizada correctamente" });
+      toast({
+        title: "Salida actualizada correctamente",
+        description: result.aviso,
+        variant: result.aviso ? "destructive" : undefined,
+      });
       setSalidaFormOpen(false);
       setEditingSalida(null);
       await loadData();
@@ -238,8 +242,11 @@ export default function PuestaDetailPage() {
     } else if (result.action === "deleted") {
       toast({ title: "Auto-salida de plancha eliminada", description: "La cantidad pendiente en fecha de fin de plancha era 0." });
       await loadData();
+    } else if (result.action === "created") {
+      toast({ title: "Auto-salida de plancha generada", description: "El período de plancha ya había vencido." });
+      await loadData();
     } else if (result.action === "updated") {
-      toast({ title: "Auto-salida de plancha recalculada correctamente" });
+      toast({ title: "Auto-salida de plancha recalculada correctamente", description: "El stock del almacén y los almacenajes se han actualizado." });
       await loadData();
     } else {
       toast({ title: "Sin cambios", description: "La auto-salida de plancha ya era correcta." });
@@ -652,9 +659,29 @@ export default function PuestaDetailPage() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: number) => [formatCurrency(v), "Coste día"]} />
+                  {/* Recharts pinta ejes y tooltip con colores fijos, que no
+                      siguen el tema: se le pasan los tokens explícitamente. */}
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    stroke="hsl(var(--border))"
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    stroke="hsl(var(--border))"
+                  />
+                  <Tooltip
+                    formatter={(v: number) => [formatCurrency(v), "Coste día"]}
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--popover))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "0.5rem",
+                      color: "hsl(var(--popover-foreground))",
+                      fontSize: 12,
+                    }}
+                    labelStyle={{ color: "hsl(var(--popover-foreground))" }}
+                    cursor={{ stroke: "hsl(var(--border))" }}
+                  />
                   <Area type="monotone" dataKey="coste" stroke="hsl(var(--primary))"
                     fill="url(#costGradient)" strokeWidth={2} />
                 </AreaChart>
@@ -674,7 +701,7 @@ export default function PuestaDetailPage() {
             <CardDescription>
               {salidasReales.length} salida{salidasReales.length !== 1 ? "s" : ""} real{salidasReales.length !== 1 ? "es" : ""}
               {salidasDesaplicadas.length > 0 && (
-                <span className="ml-2 text-blue-500 font-medium">
+                <span className="ml-2 text-brand-500 font-medium">
                   · {salidasDesaplicadas.length} desaplicación{salidasDesaplicadas.length !== 1 ? "es" : ""}
                 </span>
               )}
