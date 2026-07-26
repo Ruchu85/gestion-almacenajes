@@ -63,7 +63,32 @@ jobs:
             echo "::error::Faltan secrets:${faltan}. Configúralos en Settings → Secrets and variables → Actions."
             exit 1
           fi
-          echo "✅ Secrets presentes. Host: ${DB_HOST}"
+
+          # Diagnóstico sin revelar los valores: GitHub enmascara los
+          # secrets en el log, así que se informa de su FORMA (longitud,
+          # espacios sobrantes, estructura) que es donde suelen estar los
+          # errores al pegarlos a mano.
+          echo "✅ Secrets presentes."
+          echo "· Usuario: ${#DB_USER} caracteres"
+          case "${DB_USER}" in
+            postgres.*) echo "  ✅ incluye el ref del proyecto (postgres.<ref>)" ;;
+            *) echo "::error::SUPABASE_DB_USER debe ser 'postgres.<project-ref>', p. ej. postgres.ptylfsashyeivxvutdtg. El pooler no acepta 'postgres' a secas." ; exit 1 ;;
+          esac
+          echo "· Contraseña: ${#DB_PASSWORD} caracteres"
+          if [ "${DB_PASSWORD}" != "$(printf '%s' "${DB_PASSWORD}" | tr -d '[:space:]')" ]; then
+            echo "::error::La contraseña contiene espacios o saltos de línea. Suele pasar al copiarla y pegarla; vuelve a guardar el secret sin ellos."
+            exit 1
+          fi
+          case "${DB_PASSWORD}" in
+            *"[YOUR-PASSWORD]"*|*"YOUR-PASSWORD"*)
+              echo "::error::La contraseña guardada es el texto de ejemplo '[YOUR-PASSWORD]', no una contraseña real."
+              exit 1 ;;
+          esac
+          case "${DB_HOST}" in
+            *pooler.supabase.com) echo "· Host: pooler (IPv4) ✅" ;;
+            db.*.supabase.co) echo "::error::El host es la conexión directa, que solo resuelve por IPv6 y los runners de GitHub no lo soportan. Usa el Session pooler." ; exit 1 ;;
+            *) echo "· Host: formato no reconocido, se intentará igualmente" ;;
+          esac
 
       # ── 2. Cliente PostgreSQL 17 ────────────────────────────
       #    El paquete de Ubuntu va por detrás de la versión del
