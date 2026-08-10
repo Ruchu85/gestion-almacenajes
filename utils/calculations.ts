@@ -153,3 +153,17 @@ export function getRemainingFreeDays(
   const daysElapsed = differenceInDays(targetDate, date);
   return Math.max(0, freeDays - daysElapsed);
 }
+
+/**
+ * Redondea una cantidad a la precisión con la que se guarda en BD
+ * (DECIMAL(12,3)). Las restas encadenadas de cantidades (p.ej.
+ * cantidad_inicial - salidas) se hacen en JS con números de coma flotante,
+ * que no representan exactamente decimales como 23,30 o 3,78: el resultado
+ * puede quedar en algo como 2,9199999999999999 en vez de 2,92. Sin este
+ * redondeo, ese ruido de coma flotante hace que comparaciones "≤ máximo"
+ * rechacen el propio valor que se muestra en pantalla como máximo.
+ */
+export function roundQty(value: number, decimals = 3): number {
+  const factor = 10 ** decimals;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+}

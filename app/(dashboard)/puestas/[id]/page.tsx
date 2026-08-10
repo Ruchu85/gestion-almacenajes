@@ -28,6 +28,7 @@ import { DesaplicarDialog } from "@/modules/puestas/components/desaplicar-dialog
 import { TraspassarDialog } from "@/modules/puestas/components/traspasar-dialog";
 import { toast } from "@/hooks/use-toast";
 import { formatDate, formatNumber, formatCurrency } from "@/utils/format";
+import { roundQty } from "@/utils/calculations";
 import {
   createSalidaParcial,
   updateSalidaParcial,
@@ -416,7 +417,10 @@ export default function PuestaDetailPage() {
 
   const realTotal          = salidasReales.reduce((s, r) => s + Number(r.cantidad), 0);
   const desaplicadoTotal   = salidasDesaplicadas.reduce((s, r) => s + Number(r.cantidad), 0);
-  const realPending        = summary.cantidad_inicial - realTotal - desaplicadoTotal;
+  // Redondeado a 3 decimales (precisión de BD): sin esto, restas encadenadas
+  // como 30 - 23,30 - 3,78 quedan en 2,9199999999999999 por coma flotante, y
+  // el usuario no puede escribir el propio "2,92" que ve como máximo.
+  const realPending        = roundQty(summary.cantidad_inicial - realTotal - desaplicadoTotal);
   const porcentajeSalida   = summary.cantidad_inicial > 0
     ? Math.round(((realTotal + desaplicadoTotal) / summary.cantidad_inicial) * 100)
     : 0;

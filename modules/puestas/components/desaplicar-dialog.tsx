@@ -35,7 +35,10 @@ export function DesaplicarDialog({
   const [cantidad, setCantidad] = useState<number | null>(null);
 
   const cantidadNum = cantidad ?? 0;
-  const isValid = cantidadNum > 0 && cantidadNum <= maxCantidad;
+  // Tolerancia de media milésima: evita que el ruido de coma flotante de
+  // maxCantidad (calculado en el padre restando cantidades) rechace el
+  // propio valor que se muestra como máximo (p.ej. 2,92 > 2,9199999999999999).
+  const isValid = cantidadNum > 0 && cantidadNum <= maxCantidad + 0.0005;
 
   function handleClose(open: boolean) {
     onOpenChange(open);
@@ -78,7 +81,7 @@ export function DesaplicarDialog({
               onChange={(n) => setCantidad(n)}
               autoFocus
             />
-            {cantidadNum > maxCantidad && cantidadNum > 0 && (
+            {cantidadNum > maxCantidad + 0.0005 && cantidadNum > 0 && (
               <p className="text-xs text-destructive">
                 La cantidad no puede superar {formatNumber(maxCantidad)} {unit}
               </p>
