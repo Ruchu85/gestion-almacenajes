@@ -208,10 +208,10 @@ export default function DashboardPage() {
           "id, numero_contrato, fecha_puesta, fecha_fin_plancha, warehouse_id, product_id, cantidad_inicial, salidas_parciales(cantidad, tipo), customer:customers(name), warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
         )
         .eq("estado", "abierta"),
-      // Todas las puestas (cualquier estado) para calcular Cant. Invendida
+      // Todas las puestas (cualquier estado salvo cerrada_manual) para calcular Cant. Invendida
       supabase
         .from("puestas_a_disposicion")
-        .select("warehouse_id, product_id, cantidad_inicial, cant_traspasada"),
+        .select("warehouse_id, product_id, cantidad_inicial, cant_traspasada, estado"),
       // Icono y fondo por producto — query separada y resiliente
       supabase
         .from("products")
@@ -277,10 +277,13 @@ export default function DashboardPage() {
       }
     }
 
-    // Mapa de cantidad inicial total de puestas (todos los estados) para Cant. Invendida
+    // Mapa de cantidad inicial total de puestas (todos los estados salvo "Cerrada manualmente")
+    // para Cant. Invendida — una puesta cerrada manualmente no representa mercancía
+    // vendida/comprometida, así que no debe restar de lo invendido.
     const allPuestaQtyByKey = new Map<string, number>();
     const allTraspasadaByKey = new Map<string, number>();
     for (const p of allPuestasRes.data ?? []) {
+      if (p.estado === "cerrada_manual") continue;
       const key = `${p.warehouse_id}||${p.product_id}`;
       allPuestaQtyByKey.set(key, (allPuestaQtyByKey.get(key) ?? 0) + Number(p.cantidad_inicial));
       allTraspasadaByKey.set(key, (allTraspasadaByKey.get(key) ?? 0) + Number(p.cant_traspasada ?? 0));

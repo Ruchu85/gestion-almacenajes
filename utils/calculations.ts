@@ -17,17 +17,44 @@ export interface StorageCostCalculation {
 }
 
 /**
+ * Corte de la migración 017: las entradas/puestas creadas a partir de esta
+ * fecha cuentan los días de plancha desde el propio día de la entrada
+ * (incluido); las anteriores mantienen el cálculo de siempre para no alterar
+ * nada retroactivamente. Debe coincidir exactamente con el literal usado en
+ * `calculate_storage_costs_for_date` (supabase/migrations/017_*.sql).
+ */
+export const DIAS_PLANCHA_CUTOFF = new Date("2026-08-10T00:00:00+02:00");
+
+/**
  * Calcula la fecha en que empieza a generar costes un movimiento de entrada.
- * La fecha de inicio es: movement_date + free_days + 1
+ *
+ * Desde el corte [[DIAS_PLANCHA_CUTOFF]], los días de plancha se cuentan
+ * desde el día de la entrada (incluido): con free_days = N, el día de la
+ * entrada es el día 1 de plancha, el último día franco es
+ * movement_date + (N - 1) y el coste empieza el día siguiente: movement_date + N.
+ *
+ * Para entradas creadas antes del corte se mantiene la fórmula anterior
+ * (movement_date + N + 1), igual que ya está persistido en la base de datos.
+ *
+ * `createdAt` es la fecha de creación real del registro; si se omite (p.ej.
+ * al previsualizar una entrada que aún no existe) se asume que se crea ahora,
+ * es decir, después del corte.
  */
 export function getCostStartDate(
   movementDate: string | Date,
-  freeDays: number
+  freeDays: number,
+  createdAt?: string | Date | null
 ): Date {
   const date =
     typeof movementDate === "string" ? parseISO(movementDate) : movementDate;
+  const created = createdAt
+    ? typeof createdAt === "string"
+      ? parseISO(createdAt)
+      : createdAt
+    : null;
+  const usesNewRule = !created || !isAfter(DIAS_PLANCHA_CUTOFF, created);
   const result = new Date(date);
-  result.setDate(result.getDate() + freeDays + 1);
+  result.setDate(result.getDate() + freeDays + (usesNewRule ? 0 : 1));
   return result;
 }
 
@@ -37,9 +64,10 @@ export function getCostStartDate(
 export function isMovementActiveForCosts(
   movementDate: string | Date,
   freeDays: number,
-  targetDate: Date = new Date()
+  targetDate: Date = new Date(),
+  createdAt?: string | Date | null
 ): boolean {
-  const costStart = getCostStartDate(movementDate, freeDays);
+  const costStart = getCostStartDate(movementDate, freeDays, createdAt);
   return !isAfter(costStart, targetDate);
 }
 
@@ -50,14 +78,14 @@ export function isMovementActiveForCosts(
 export function calculatePendingQuantity(
   inboundMovements: Pick<
     InboundMovement,
-    "quantity" | "movement_date" | "free_days"
+    "quantity" | "movement_date" | "free_days" | "created_at"
   >[],
   outboundMovements: Pick<OutboundMovement, "quantity" | "movement_date">[],
   targetDate: Date = new Date()
 ): number {
   const activeInbound = inboundMovements
     .filter((m) =>
-      isMovementActiveForCosts(m.movement_date, m.free_days, targetDate)
+      isMovementActiveForCosts(m.movement_date, m.free_days, targetDate, m.created_at)
     )
     .reduce((acc, m) => acc + Number(m.quantity), 0);
 

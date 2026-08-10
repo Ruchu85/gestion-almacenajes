@@ -49,6 +49,13 @@ interface InboundFormProps {
   mode?: "create" | "edit";
   /** Valores de partida al editar una entrada existente. */
   initialValues?: Partial<InboundFormValues>;
+  /**
+   * Fecha de creación real de la entrada que se edita (no forma parte del
+   * formulario). Determina si el preview de "coste desde" usa la regla de
+   * días de plancha antigua o la nueva (ver DIAS_PLANCHA_CUTOFF). Si se
+   * omite (alta nueva), se asume que la entrada se crea ahora.
+   */
+  initialCreatedAt?: string | null;
 }
 
 function LockedField({ label, value }: { label: string; value: string }) {
@@ -77,6 +84,7 @@ export function InboundForm({
   presetProductName,
   mode = "create",
   initialValues,
+  initialCreatedAt,
 }: InboundFormProps) {
   const isEdit = mode === "edit";
   const form = useForm<InboundFormValues>({
@@ -102,13 +110,13 @@ export function InboundForm({
   useEffect(() => {
     if (movementDate && freeDays >= 0) {
       try {
-        const date = getCostStartDate(movementDate, freeDays);
+        const date = getCostStartDate(movementDate, freeDays, isEdit ? initialCreatedAt : null);
         setCostStartDate(formatDate(date));
       } catch {
         setCostStartDate(null);
       }
     }
-  }, [movementDate, freeDays]);
+  }, [movementDate, freeDays, isEdit, initialCreatedAt]);
 
   useEffect(() => {
     if (open) {

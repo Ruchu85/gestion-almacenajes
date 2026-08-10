@@ -27,7 +27,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatDate } from "@/utils/format";
-import { addDays, parseISO } from "date-fns";
+import { addDays, isAfter, parseISO } from "date-fns";
+import { DIAS_PLANCHA_CUTOFF } from "@/utils/calculations";
 import { cn } from "@/lib/utils";
 
 interface PuestaFormProps {
@@ -94,10 +95,16 @@ export function PuestaForm({
   const fechaPuesta = form.watch("fecha_puesta");
   const diasPlancha = form.watch("dias_plancha");
 
+  // Desde el corte de la migración 017, los días de plancha cuentan desde el
+  // propio día de la puesta (incluido): fecha_fin_plancha = fecha_puesta +
+  // dias_plancha - 1. Las puestas creadas antes del corte mantienen la
+  // fórmula anterior (fecha_puesta + dias_plancha), igual que en la BD.
   useEffect(() => {
     if (fechaPuesta && diasPlancha !== undefined && diasPlancha >= 0) {
       try {
-        const d = addDays(parseISO(fechaPuesta), diasPlancha);
+        const createdAt = defaultValues?.created_at;
+        const usesNewRule = !createdAt || !isAfter(DIAS_PLANCHA_CUTOFF, parseISO(createdAt));
+        const d = addDays(parseISO(fechaPuesta), diasPlancha - (usesNewRule ? 1 : 0));
         setFinPlancha(d.toISOString().split("T")[0]);
       } catch {
         setFinPlancha(null);
@@ -105,7 +112,7 @@ export function PuestaForm({
     } else {
       setFinPlancha(null);
     }
-  }, [fechaPuesta, diasPlancha]);
+  }, [fechaPuesta, diasPlancha, defaultValues?.created_at]);
 
   useEffect(() => {
     if (open) {

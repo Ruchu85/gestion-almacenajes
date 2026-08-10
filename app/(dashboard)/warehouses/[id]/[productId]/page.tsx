@@ -477,7 +477,7 @@ export default function WarehouseProductPage() {
     const [inboundRes, outboundRes, costsRes, invoicesRes, warehouseRes] = await Promise.all([
       supabase
         .from("inbound_movements")
-        .select("movement_date, quantity, free_days")
+        .select("movement_date, quantity, free_days, created_at")
         .eq("warehouse_id", params.id)
         .eq("product_id", params.productId)
         .order("movement_date", { ascending: true }),
@@ -506,7 +506,7 @@ export default function WarehouseProductPage() {
     ]);
 
     const dailyPrice = Number(warehouseRes.data?.storage_daily_price ?? 0);
-    const inboundMovements = (inboundRes.data ?? []) as { movement_date: string; quantity: number; free_days: number }[];
+    const inboundMovements = (inboundRes.data ?? []) as { movement_date: string; quantity: number; free_days: number; created_at: string }[];
     const outboundMovements = (outboundRes.data ?? []) as { movement_date: string; quantity: number }[];
 
     if (inboundMovements.length === 0) {

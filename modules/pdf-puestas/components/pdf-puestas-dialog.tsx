@@ -330,11 +330,13 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
   const currentName = queueMode ? queue[queueIndex] : null;
   const fromPendientes = !!currentName?.startsWith("pendientes/");
 
-  // Fin de plancha calculado para mostrar
+  // Fin de plancha calculado para mostrar — esta pantalla siempre crea
+  // puestas nuevas, así que aplica siempre la regla vigente (el día de la
+  // puesta cuenta como el primer día de plancha).
   let finPlancha: string | null = null;
   if (editable?.fecha_puesta && editable.dias_plancha !== null && editable.dias_plancha >= 0) {
     try {
-      finPlancha = addDays(parseISO(editable.fecha_puesta), editable.dias_plancha)
+      finPlancha = addDays(parseISO(editable.fecha_puesta), editable.dias_plancha - 1)
         .toISOString()
         .split("T")[0];
     } catch {

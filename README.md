@@ -21,11 +21,11 @@ SaaS para la gestión integral de costes de almacenaje, movimientos de mercancí
 
 ## Regla de negocio: días de plancha
 
-Los **días de plancha** son los días desde la entrada/puesta en los que **no** se genera coste. El coste empieza a correr el día siguiente al fin de plancha.
+Los **días de plancha** son los días sin generar coste, contados **desde el propio día de la entrada/puesta, incluido**. El coste empieza a correr el día siguiente al fin de plancha.
 
-Ejemplo: puesta el 1 de enero con 3 días de plancha → `fecha_fin_plancha = 4 de enero` → el coste comienza el 5 de enero.
+Ejemplo: puesta el 1 de enero con 3 días de plancha → días francos: 1, 2 y 3 de enero → `fecha_fin_plancha = 3 de enero` → el coste comienza el 4 de enero.
 
-En las puestas a disposición, `fecha_fin_plancha` es una columna **GENERATED ALWAYS** (`fecha_puesta + dias_plancha`) calculada en la base de datos.
+En las puestas a disposición, `fecha_fin_plancha` es una columna **GENERATED ALWAYS** (`fecha_puesta + dias_plancha - 1`) calculada en la base de datos.
 
 ## Stack técnico
 

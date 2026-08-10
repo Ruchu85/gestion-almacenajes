@@ -68,7 +68,7 @@ export function getInboundColumns(
       header: "Días plancha",
       cell: ({ row }) => {
         const freeDays = row.getValue("free_days") as number;
-        const costStart = getCostStartDate(row.original.movement_date, freeDays);
+        const costStart = getCostStartDate(row.original.movement_date, freeDays, row.original.created_at);
         return (
           <div className="text-center">
             <Badge variant={freeDays > 0 ? "warning" : "secondary"} className="tabular-nums">

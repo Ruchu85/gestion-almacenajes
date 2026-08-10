@@ -431,6 +431,7 @@ export default function InboundMovementsPage() {
               }
             : undefined
         }
+        initialCreatedAt={editing?.created_at}
       />
     </>
   );
