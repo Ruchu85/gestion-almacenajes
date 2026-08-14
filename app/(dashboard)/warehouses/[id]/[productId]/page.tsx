@@ -126,6 +126,8 @@ interface PuestaRow {
   cantidad_inicial: number;
   estado: string;
   dias_plancha: number;
+  /** Columna generada en la BD: última fecha del período de plancha. */
+  fecha_fin_plancha: string;
   customer: { name: string } | null;
   salidas_parciales: { cantidad: number; tipo: string }[];
 }
@@ -406,7 +408,7 @@ export default function WarehouseProductPage() {
         .order("movement_date", { ascending: false }),
       supabase
         .from("puestas_a_disposicion")
-        .select("id, numero_contrato, fecha_puesta, cantidad_inicial, estado, dias_plancha, customer:customers(name), salidas_parciales(cantidad, tipo)")
+        .select("id, numero_contrato, fecha_puesta, cantidad_inicial, estado, dias_plancha, fecha_fin_plancha, customer:customers(name), salidas_parciales(cantidad, tipo)")
         .eq("warehouse_id", params.id)
         .eq("product_id", params.productId)
         .order("fecha_puesta", { ascending: false }),
@@ -433,11 +435,10 @@ export default function WarehouseProductPage() {
       if (p.estado === "abierta") {
         const hasAutoExit = (p.salidas_parciales ?? []).some((s) => s.tipo === "plancha");
         if (!hasAutoExit) {
-          const fechaPuesta = new Date(p.fecha_puesta + "T00:00:00");
-          const fechaFin = new Date(fechaPuesta);
-          fechaFin.setDate(fechaFin.getDate() + (Number(p.dias_plancha) ?? 0));
-          const fechaFinStr = fechaFin.toISOString().split("T")[0];
-          if (todayStr > fechaFinStr) {
+          // El fin de plancha lo calcula la BD (columna generada), que ya
+          // aplica la regla que corresponde a cada puesta según su fecha de
+          // creación. Recalcularlo aquí desviaba la fecha un día.
+          if (p.fecha_fin_plancha && todayStr >= p.fecha_fin_plancha) {
             await triggerPlanchaAutoExit(p.id);
             anyAutoExit = true;
           }
@@ -450,7 +451,7 @@ export default function WarehouseProductPage() {
       const [puestaRes2, outboundRes2] = await Promise.all([
         supabase
           .from("puestas_a_disposicion")
-          .select("id, numero_contrato, fecha_puesta, cantidad_inicial, estado, dias_plancha, customer:customers(name), salidas_parciales(cantidad, tipo)")
+          .select("id, numero_contrato, fecha_puesta, cantidad_inicial, estado, dias_plancha, fecha_fin_plancha, customer:customers(name), salidas_parciales(cantidad, tipo)")
           .eq("warehouse_id", params.id)
           .eq("product_id", params.productId)
           .order("fecha_puesta", { ascending: false }),

@@ -40,8 +40,8 @@ type ServiceClient = Awaited<ReturnType<typeof createServiceClient>>;
 
 interface PuestaRow {
   id: string;
-  fecha_puesta: string;
-  dias_plancha: number;
+  /** Columna generada en la BD: última fecha del período de plancha. */
+  fecha_fin_plancha: string;
   cantidad_inicial: number;
   warehouse_id: string;
   product_id: string;
@@ -99,7 +99,7 @@ export async function sincronizarPuestaStock(
   const { data: puesta, error: puestaError } = await supabase
     .from("puestas_a_disposicion")
     .select(
-      "id, fecha_puesta, dias_plancha, cantidad_inicial, warehouse_id, product_id, customer_id, numero_contrato, salidas_parciales(id, tipo, fecha_salida, cantidad)"
+      "id, fecha_fin_plancha, cantidad_inicial, warehouse_id, product_id, customer_id, numero_contrato, salidas_parciales(id, tipo, fecha_salida, cantidad)"
     )
     .eq("id", puestaId)
     .single();
@@ -123,8 +123,7 @@ export async function sincronizarPuestaStock(
 
   // ── 2. Qué auto-salida de plancha debería existir ────────────
   const plan = planPlanchaAutoExit({
-    fechaPuesta: row.fecha_puesta,
-    diasPlancha: Number(row.dias_plancha) || 0,
+    fechaFinPlancha: row.fecha_fin_plancha,
     cantidadInicial: Number(row.cantidad_inicial),
     salidas,
     hoy: hoy(),

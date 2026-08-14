@@ -27,8 +27,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatDate } from "@/utils/format";
-import { addDays, isAfter, parseISO } from "date-fns";
-import { DIAS_PLANCHA_CUTOFF } from "@/utils/calculations";
+import { isAfter, parseISO } from "date-fns";
+import { addDaysISO, DIAS_PLANCHA_CUTOFF } from "@/utils/calculations";
 import { cn } from "@/lib/utils";
 
 interface PuestaFormProps {
@@ -104,8 +104,7 @@ export function PuestaForm({
       try {
         const createdAt = defaultValues?.created_at;
         const usesNewRule = !createdAt || !isAfter(DIAS_PLANCHA_CUTOFF, parseISO(createdAt));
-        const d = addDays(parseISO(fechaPuesta), diasPlancha - (usesNewRule ? 1 : 0));
-        setFinPlancha(d.toISOString().split("T")[0]);
+        setFinPlancha(addDaysISO(fechaPuesta, diasPlancha - (usesNewRule ? 1 : 0)));
       } catch {
         setFinPlancha(null);
       }
@@ -412,11 +411,7 @@ export function PuestaForm({
                   {finPlancha && (
                     <FormDescription>
                       Fin de plancha: <strong>{formatDate(finPlancha)}</strong> — el coste empieza el{" "}
-                      <strong>
-                        {formatDate(
-                          addDays(parseISO(finPlancha), 1).toISOString().split("T")[0]
-                        )}
-                      </strong>
+                      <strong>{formatDate(addDaysISO(finPlancha, 1))}</strong>
                     </FormDescription>
                   )}
                   <FormMessage />

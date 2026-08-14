@@ -17,6 +17,20 @@ export interface StorageCostCalculation {
 }
 
 /**
+ * Suma días naturales a una fecha ISO (YYYY-MM-DD) y devuelve otra fecha ISO.
+ *
+ * Se opera en UTC a propósito. Construir la fecha en horario local y volver a
+ * serializarla con `toISOString()` resta un día en los husos al este de
+ * Greenwich —España lo está todo el año—, que es justo el error que hacía
+ * mostrar el fin de plancha un día antes de lo que luego se guardaba.
+ */
+export function addDaysISO(dateStr: string, days: number): string {
+  const date = new Date(`${dateStr}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().split("T")[0];
+}
+
+/**
  * Corte de la migración 017: las entradas/puestas creadas a partir de esta
  * fecha cuentan los días de plancha desde el propio día de la entrada
  * (incluido); las anteriores mantienen el cálculo de siempre para no alterar

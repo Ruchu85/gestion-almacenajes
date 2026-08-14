@@ -21,18 +21,6 @@ export interface SalidaParcialRef {
   cantidad: number;
 }
 
-/** Suma días naturales a una fecha ISO (YYYY-MM-DD) sin líos de zona horaria. */
-export function addDays(dateStr: string, days: number): string {
-  const date = new Date(`${dateStr}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().split("T")[0];
-}
-
-/** Fecha en la que vence el período de plancha de una puesta. */
-export function calcFechaFinPlancha(fechaPuesta: string, diasPlancha: number): string {
-  return addDays(fechaPuesta, Number(diasPlancha) || 0);
-}
-
 /** La menor de varias fechas ISO, ignorando las vacías. */
 export function minDate(...dates: (string | null | undefined)[]): string | null {
   const valid = dates.filter((d): d is string => !!d);
@@ -65,22 +53,34 @@ export interface PlanchaPlan {
  * Decide si a día de hoy debe existir una auto-salida de fin de plancha y de
  * cuánto.
  *
+ * La auto-salida se fecha EL DÍA de fin de plancha (el último día franco), no
+ * el siguiente: ese día la mercancía deja de ser stock del almacén y el coste
+ * pasa a correr desde el día posterior.
+ *
  * La cantidad es lo que quedaba pendiente EN la fecha de fin de plancha, es
  * decir descontando solo las salidas reales hasta esa fecha inclusive. Las
  * retiradas posteriores no cuentan: ocurrieron cuando la mercancía ya estaba a
  * cargo del cliente.
  */
 export function planPlanchaAutoExit(input: {
-  fechaPuesta: string;
-  diasPlancha: number;
+  /**
+   * Fecha de fin de plancha de la puesta, tal cual la calcula la base de datos
+   * en la columna generada `fecha_fin_plancha`. No se recalcula aquí a
+   * propósito: es la misma frontera que usa el cálculo de costes y ya
+   * contempla el corte de la migración 017 (las puestas creadas antes
+   * mantienen la regla antigua).
+   */
+  fechaFinPlancha: string;
   cantidadInicial: number;
   salidas: SalidaParcialRef[];
   hoy: string;
 }): PlanchaPlan {
-  const fechaFin = calcFechaFinPlancha(input.fechaPuesta, input.diasPlancha);
+  const fechaFin = input.fechaFinPlancha;
 
-  // La auto-salida se genera cuando la plancha ya ha vencido, nunca antes.
-  if (input.hoy <= fechaFin) {
+  // La auto-salida se genera el propio día en que vence la plancha, nunca
+  // antes. Es el mismo umbral que aplica el cron nocturno, para que ambos
+  // caminos coincidan y ninguno deshaga lo que hizo el otro.
+  if (input.hoy < fechaFin) {
     return { fechaFin, autoSalida: null, motivo: "en_plancha" };
   }
 

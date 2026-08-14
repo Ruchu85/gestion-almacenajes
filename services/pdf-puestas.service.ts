@@ -141,12 +141,25 @@ function resolveWarehouse(
 // CÁLCULO DE DÍAS DE PLANCHA
 // ============================================================
 
-/** Días entre fecha_aplicacion y fecha_plancha (fin de plancha). */
-function diffDays(desde: string, hasta: string): number {
+/**
+ * Días de plancha que van del día de la aplicación al día indicado en el campo
+ * "Plancha" del PDF, contando AMBOS incluidos.
+ *
+ * El día de la puesta a disposición es el día 1 de plancha y la fecha del campo
+ * "Plancha" es el último día franco, así que la cuenta es inclusiva por los dos
+ * extremos. Ejemplo del PDF de aplicación:
+ *
+ *   Fecha aplic. 17/08 · Plancha 26/08 → 10 días de plancha (del 17 al 26)
+ *   → fin de plancha = 26/08 y el coste empieza el 27/08.
+ *
+ * Con la resta simple (9 días) el fin de plancha caía el 25/08 y el coste
+ * arrancaba un día antes de lo pactado.
+ */
+function diasPlanchaInclusivos(fechaAplicacion: string, fechaPlancha: string): number {
   const ms = 1000 * 60 * 60 * 24;
-  const a = new Date(desde + "T00:00:00Z").getTime();
-  const b = new Date(hasta + "T00:00:00Z").getTime();
-  return Math.round((b - a) / ms);
+  const a = new Date(fechaAplicacion + "T00:00:00Z").getTime();
+  const b = new Date(fechaPlancha + "T00:00:00Z").getTime();
+  return Math.round((b - a) / ms) + 1;
 }
 
 // ============================================================
@@ -187,8 +200,8 @@ export function buildPuestaProposal(
   // ── Días de plancha (calculado a partir de las dos fechas) ──
   let dias_plancha: number | null = null;
   if (fecha_puesta && extraction.fecha_plancha) {
-    const d = diffDays(fecha_puesta, extraction.fecha_plancha);
-    if (d < 0) {
+    const d = diasPlanchaInclusivos(fecha_puesta, extraction.fecha_plancha);
+    if (d < 1) {
       dias_plancha = 0;
       warnings.push(
         `La fecha de plancha (${extraction.fecha_plancha}) es anterior a la de aplicación; se ponen 0 días.`

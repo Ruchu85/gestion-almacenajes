@@ -64,7 +64,10 @@ export interface PuestaProposal {
   numero_contrato: string | null;
   cantidad_inicial: number | null;
   fecha_puesta: string | null;
-  /** Calculado: fecha_plancha − fecha_aplicacion (en días). */
+  /**
+   * Calculado: días de fecha_aplicacion a fecha_plancha, ambos incluidos
+   * (el día de la puesta es el día 1 de plancha).
+   */
   dias_plancha: number | null;
   comentarios: string | null;
   /** Resolución de cada maestro contra la BD. */

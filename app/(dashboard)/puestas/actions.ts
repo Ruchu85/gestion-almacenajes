@@ -8,7 +8,7 @@ import { redirect } from "next/navigation";
 import { upsertMatricula } from "@/lib/actions/matriculas";
 import { sincronizarPuestaStock } from "@/lib/puesta-stock-sync";
 import { recalcStorageCostsFrom } from "@/lib/storage-costs";
-import { calcFechaFinPlancha, minDate } from "@/services/puestas-plancha.service";
+import { minDate } from "@/services/puestas-plancha.service";
 
 async function requireAuth() {
   const supabase = await createClient();
@@ -69,16 +69,15 @@ export async function updatePuesta(
   const supabase = await createServiceClient();
 
   // Estado anterior: hace falta el fin de plancha previo para saber desde qué
-  // fecha hay que recalcular los costes.
+  // fecha hay que recalcular los costes. Se lee la columna generada, que ya
+  // aplica la regla vigente para la puesta según cuándo se creó.
   const { data: anterior } = await supabase
     .from("puestas_a_disposicion")
-    .select("fecha_puesta, dias_plancha, warehouse_id, product_id")
+    .select("fecha_puesta, fecha_fin_plancha, warehouse_id, product_id")
     .eq("id", id)
     .single();
 
-  const finPlanchaAnterior = anterior
-    ? calcFechaFinPlancha(anterior.fecha_puesta, Number(anterior.dias_plancha) || 0)
-    : null;
+  const finPlanchaAnterior = anterior?.fecha_fin_plancha ?? null;
 
   const { data, error } = await supabase
     .from("puestas_a_disposicion")
@@ -180,7 +179,7 @@ export async function createSalidaParcial(
   // Fetch puesta to determine plancha period and warehouse/product context
   const { data: puesta, error: puestaError } = await supabase
     .from("puestas_a_disposicion")
-    .select("fecha_puesta, dias_plancha, warehouse_id, product_id, customer_id, numero_contrato, cantidad_inicial, salidas_parciales(cantidad, tipo, fecha_salida), customer:customers(name, codigo)")
+    .select("fecha_fin_plancha, warehouse_id, product_id, customer_id, numero_contrato, cantidad_inicial, salidas_parciales(cantidad, tipo, fecha_salida), customer:customers(name, codigo)")
     .eq("id", parsed.data.puesta_id)
     .single();
 
@@ -208,10 +207,7 @@ export async function createSalidaParcial(
 
   if (parsed.data.matricula) await upsertMatricula(parsed.data.matricula);
 
-  const fechaFinStr = calcFechaFinPlancha(
-    puesta.fecha_puesta,
-    Number(puesta.dias_plancha) || 0
-  );
+  const fechaFinStr = puesta.fecha_fin_plancha as string;
 
   // Rebase: mercancía retirada por encima de lo que quedaba pendiente. No es
   // el reflejo de ninguna salida parcial (esa ya salió del stock con la

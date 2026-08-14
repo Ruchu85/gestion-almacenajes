@@ -5,7 +5,7 @@ import {
   FileUp, FileText, Loader2, ScanSearch, X, ArrowLeft, CheckCircle2,
   AlertTriangle, ChevronsUpDown, Check, Search, Info, Database, Trash2, Clock,
 } from "lucide-react";
-import { addDays, parseISO } from "date-fns";
+import { addDaysISO } from "@/utils/calculations";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -336,9 +336,7 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
   let finPlancha: string | null = null;
   if (editable?.fecha_puesta && editable.dias_plancha !== null && editable.dias_plancha >= 0) {
     try {
-      finPlancha = addDays(parseISO(editable.fecha_puesta), editable.dias_plancha - 1)
-        .toISOString()
-        .split("T")[0];
+      finPlancha = addDaysISO(editable.fecha_puesta, editable.dias_plancha - 1);
     } catch {
       finPlancha = null;
     }
@@ -622,8 +620,8 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
                 <Tooltip>
                   <TooltipTrigger asChild><Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" /></TooltipTrigger>
                   <TooltipContent className="max-w-xs">
-                    Calculado a partir de la fecha de plancha del PDF (fecha plancha − fecha aplicación).
-                    Puedes ajustarlo.
+                    Calculado a partir de la fecha del campo «Plancha» del PDF, contando el día de la
+                    aplicación como primer día de plancha y ese día como último. Puedes ajustarlo.
                   </TooltipContent>
                 </Tooltip>
               </label>
@@ -638,7 +636,7 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
               {finPlancha && (
                 <p className="text-xs text-muted-foreground mt-1">
                   Fin de plancha: <strong>{formatDate(finPlancha)}</strong> — el coste empieza el{" "}
-                  <strong>{formatDate(addDays(parseISO(finPlancha), 1).toISOString().split("T")[0])}</strong>
+                  <strong>{formatDate(addDaysISO(finPlancha, 1))}</strong>
                 </p>
               )}
             </div>

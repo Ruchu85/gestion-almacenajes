@@ -25,7 +25,11 @@ Los **días de plancha** son los días sin generar coste, contados **desde el pr
 
 Ejemplo: puesta el 1 de enero con 3 días de plancha → días francos: 1, 2 y 3 de enero → `fecha_fin_plancha = 3 de enero` → el coste comienza el 4 de enero.
 
-En las puestas a disposición, `fecha_fin_plancha` es una columna **GENERATED ALWAYS** (`fecha_puesta + dias_plancha - 1`) calculada en la base de datos.
+En las puestas a disposición, `fecha_fin_plancha` es una columna **GENERATED ALWAYS** (`fecha_puesta + dias_plancha - 1`) calculada en la base de datos. Es la única fuente de verdad del fin de plancha: la auto-salida y la reconciliación de stock la leen de ahí en vez de recalcularla, porque contempla el corte no retroactivo de la migración 017.
+
+La **auto-salida de fin de plancha** se fecha **el propio día de fin de plancha** (el último día franco), no el siguiente: ese día la mercancía deja de ser stock del almacén y a partir del día posterior el coste corre a cargo del cliente.
+
+Al importar un PDF de aplicación, los días de plancha salen del campo **«Plancha»** (que es una fecha, no un número de días) contando **ambos extremos incluidos**: `Fecha aplic. 17/08` + `Plancha 26/08` → **10 días**, fin de plancha el 26/08 y primer día con coste el 27/08.
 
 ## Stack técnico
 
