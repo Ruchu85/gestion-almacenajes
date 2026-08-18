@@ -16,6 +16,7 @@ export type SalidaParcial = Tables<"salidas_parciales">;
 export type TarifaTramo = Tables<"tarifa_tramos">;
 export type Matricula = Tables<"matriculas">;
 export type WarehousePriceHistory = Tables<"warehouse_price_history">;
+export type ExcelImportWatermark = Tables<"excel_import_watermarks">;
 
 // ============================================================
 // TIPOS ENRIQUECIDOS (con relaciones joined)

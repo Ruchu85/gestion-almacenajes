@@ -17,6 +17,7 @@ import {
   Search,
   FileUp,
   FilePlus2,
+  FileSpreadsheet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useState, useEffect } from "react";
 import { PdfImportDialog } from "@/modules/pdf-import/components/pdf-import-dialog";
 import { PdfPuestasDialog } from "@/modules/pdf-puestas/components/pdf-puestas-dialog";
+import { ExcelImportDialog } from "@/modules/excel-import/components/excel-import-dialog";
 
 interface NavItem {
   title: string;
@@ -62,6 +64,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
+  const [excelOpen, setExcelOpen] = useState(false);
   const [pdfPuestaOpen, setPdfPuestaOpen] = useState(false);
   const [pdfPuestaAutoLoad, setPdfPuestaAutoLoad] = useState(false);
 
@@ -174,6 +177,30 @@ export function Sidebar() {
               <TooltipTrigger asChild>
                 <button
                   type="button"
+                  onClick={() => setExcelOpen(true)}
+                  className={cn(NAV_BASE, "h-10 w-10 justify-center mx-auto", NAV_IDLE)}
+                >
+                  <FileSpreadsheet className="h-5 w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Subir Salidas Puerto (Excel)</TooltipContent>
+            </Tooltip>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setExcelOpen(true)}
+              className={cn(NAV_BASE, "h-10 px-3 text-left", NAV_IDLE)}
+            >
+              <FileSpreadsheet className="h-5 w-5 shrink-0" />
+              <span className="truncate">Subir Salidas Puerto (Excel)</span>
+            </button>
+          )}
+
+          {collapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
                   onClick={() => { setPdfPuestaAutoLoad(false); setPdfPuestaOpen(true); }}
                   className={cn(NAV_BASE, "h-10 w-10 justify-center mx-auto", NAV_IDLE)}
                 >
@@ -196,6 +223,7 @@ export function Sidebar() {
       </ScrollArea>
 
       <PdfImportDialog open={pdfOpen} onOpenChange={setPdfOpen} />
+      <ExcelImportDialog open={excelOpen} onOpenChange={setExcelOpen} />
       <PdfPuestasDialog
         open={pdfPuestaOpen}
         onOpenChange={(o) => { setPdfPuestaOpen(o); if (!o) setPdfPuestaAutoLoad(false); }}

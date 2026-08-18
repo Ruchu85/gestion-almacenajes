@@ -160,6 +160,8 @@ export const pdfConfirmNormalItemSchema = z.object({
   matricula: z.string().min(1, "La matrícula es obligatoria").max(50),
   cantidad: z.number().positive("La cantidad debe ser mayor que 0").max(999999),
   comentarios: z.string().max(2000).optional().nullable(),
+  /** Origen del import, para la traza del comentario ("PDF", "Excel", ...). Por defecto "PDF". */
+  origen: z.string().max(30).optional(),
 });
 
 export const pdfConfirmNormalesSchema = z.object({

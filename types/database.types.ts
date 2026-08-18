@@ -609,6 +609,51 @@ export interface Database {
           }
         ];
       };
+      excel_import_watermarks: {
+        Row: {
+          id: string;
+          warehouse_id: string;
+          product_id: string;
+          source: string;
+          last_imported_date: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          warehouse_id: string;
+          product_id: string;
+          source?: string;
+          last_imported_date: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          warehouse_id?: string;
+          product_id?: string;
+          source?: string;
+          last_imported_date?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "excel_import_watermarks_warehouse_id_fkey";
+            columns: ["warehouse_id"];
+            isOneToOne: false;
+            referencedRelation: "warehouses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "excel_import_watermarks_product_id_fkey";
+            columns: ["product_id"];
+            isOneToOne: false;
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       storage_costs: {
         Row: {
           id: string;
