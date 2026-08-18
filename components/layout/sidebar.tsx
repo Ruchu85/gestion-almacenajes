@@ -18,6 +18,7 @@ import {
   FileUp,
   FilePlus2,
   FileSpreadsheet,
+  FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState, useEffect } from "react";
 import { PdfImportDialog } from "@/modules/pdf-import/components/pdf-import-dialog";
+import { PdfImportDialogGemini35 } from "@/modules/pdf-import/components/pdf-import-dialog-gemini35";
 import { PdfPuestasDialog } from "@/modules/pdf-puestas/components/pdf-puestas-dialog";
 import { ExcelImportDialog } from "@/modules/excel-import/components/excel-import-dialog";
 
@@ -64,6 +66,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
+  const [pdfGemini35Open, setPdfGemini35Open] = useState(false);
   const [excelOpen, setExcelOpen] = useState(false);
   const [pdfPuestaOpen, setPdfPuestaOpen] = useState(false);
   const [pdfPuestaAutoLoad, setPdfPuestaAutoLoad] = useState(false);
@@ -177,6 +180,30 @@ export function Sidebar() {
               <TooltipTrigger asChild>
                 <button
                   type="button"
+                  onClick={() => setPdfGemini35Open(true)}
+                  className={cn(NAV_BASE, "h-10 w-10 justify-center mx-auto", NAV_IDLE)}
+                >
+                  <FlaskConical className="h-5 w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Subir Salidas Puerto (PDF) · Beta Gemini 3.5</TooltipContent>
+            </Tooltip>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setPdfGemini35Open(true)}
+              className={cn(NAV_BASE, "h-10 px-3 text-left", NAV_IDLE)}
+            >
+              <FlaskConical className="h-5 w-5 shrink-0" />
+              <span className="truncate">Subir Salidas Puerto (PDF) · Beta 3.5</span>
+            </button>
+          )}
+
+          {collapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
                   onClick={() => setExcelOpen(true)}
                   className={cn(NAV_BASE, "h-10 w-10 justify-center mx-auto", NAV_IDLE)}
                 >
@@ -223,6 +250,7 @@ export function Sidebar() {
       </ScrollArea>
 
       <PdfImportDialog open={pdfOpen} onOpenChange={setPdfOpen} />
+      <PdfImportDialogGemini35 open={pdfGemini35Open} onOpenChange={setPdfGemini35Open} />
       <ExcelImportDialog open={excelOpen} onOpenChange={setExcelOpen} />
       <PdfPuestasDialog
         open={pdfPuestaOpen}

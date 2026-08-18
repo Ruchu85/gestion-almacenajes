@@ -206,7 +206,8 @@ export interface GeminiRawExtraction {
 async function callGemini(
   pdfBase64: string,
   prompt: string,
-  responseSchema: unknown
+  responseSchema: unknown,
+  model: string = GEMINI_MODEL
 ): Promise<unknown> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -241,7 +242,7 @@ async function callGemini(
   let response: Response | null = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      response = await fetch(`${GEMINI_ENDPOINT(GEMINI_MODEL)}?key=${apiKey}`, {
+      response = await fetch(`${GEMINI_ENDPOINT(model)}?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
@@ -302,8 +303,8 @@ async function callGemini(
  * Envía un PDF (en base64) a Gemini y devuelve el JSON crudo extraído.
  * Lanza Error con un mensaje legible si la llamada falla.
  */
-export async function extractSalidasFromPdf(pdfBase64: string): Promise<unknown> {
-  return callGemini(pdfBase64, EXTRACTION_PROMPT, RESPONSE_SCHEMA);
+export async function extractSalidasFromPdf(pdfBase64: string, model?: string): Promise<unknown> {
+  return callGemini(pdfBase64, EXTRACTION_PROMPT, RESPONSE_SCHEMA, model);
 }
 
 // ============================================================
