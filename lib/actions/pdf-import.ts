@@ -21,6 +21,7 @@ import {
 } from "@/validations/pdf-import.schema";
 
 const MAX_PDF_BYTES = 15 * 1024 * 1024; // 15 MB
+const GEMINI_MODEL_SALIDAS = "gemini-3.5-flash";
 
 // ============================================================
 // ANALIZAR — extrae del PDF y propone (NUNCA graba)
@@ -47,7 +48,7 @@ export async function analyzePdfAction(
   const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
   let raw: unknown;
   try {
-    raw = await extractSalidasFromPdf(base64);
+    raw = await extractSalidasFromPdf(base64, GEMINI_MODEL_SALIDAS);
   } catch (err) {
     return { error: (err as Error).message };
   }
