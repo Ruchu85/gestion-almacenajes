@@ -10,6 +10,10 @@ import {
   ChevronUp,
   AlertCircle,
   Euro,
+  Pencil,
+  Trash2,
+  Check,
+  X,
 } from "lucide-react";
 import { DecimalInput } from "@/components/ui/decimal-input";
 import { warehouseSchema, type WarehouseFormValues } from "@/validations/warehouse.schema";
@@ -18,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import {
   Form,
   FormControl,
@@ -76,6 +81,8 @@ interface WarehouseFormProps {
   priceHistory?: WarehousePriceHistory[];
   isPriceHistoryLoading?: boolean;
   onPriceChange?: (price: number, effectiveFrom: string) => Promise<void>;
+  onPriceEntryUpdate?: (entryId: string, price: number, effectiveFrom: string) => Promise<void>;
+  onPriceEntryDelete?: (entryId: string) => Promise<void>;
 }
 
 export function WarehouseForm({
@@ -87,6 +94,8 @@ export function WarehouseForm({
   priceHistory = [],
   isPriceHistoryLoading = false,
   onPriceChange,
+  onPriceEntryUpdate,
+  onPriceEntryDelete,
 }: WarehouseFormProps) {
   const isEditing = !!defaultValues;
   const today = new Date().toISOString().split("T")[0];
@@ -96,6 +105,12 @@ export function WarehouseForm({
   const [newPriceDate, setNewPriceDate] = useState(today);
   const [isSavingPrice, setIsSavingPrice] = useState(false);
   const [priceError, setPriceError] = useState("");
+
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
+  const [editEntryPrice, setEditEntryPrice] = useState<number | null>(null);
+  const [editEntryDate, setEditEntryDate] = useState("");
+  const [entryActionError, setEntryActionError] = useState("");
+  const [isMutatingEntry, setIsMutatingEntry] = useState(false);
 
   const form = useForm<WarehouseFormValues>({
     resolver: zodResolver(warehouseSchema),
@@ -127,8 +142,50 @@ export function WarehouseForm({
       setNewPrice(null);
       setNewPriceDate(today);
       setPriceError("");
+      setEditingEntryId(null);
+      setEditEntryPrice(null);
+      setEditEntryDate("");
+      setEntryActionError("");
     }
   }, [open, defaultValues, form, today]);
+
+  function startEditEntry(entry: WarehousePriceHistory) {
+    setEditingEntryId(entry.id);
+    setEditEntryPrice(Number(entry.price));
+    setEditEntryDate(entry.effective_from);
+    setEntryActionError("");
+  }
+
+  function cancelEditEntry() {
+    setEditingEntryId(null);
+    setEditEntryPrice(null);
+    setEditEntryDate("");
+    setEntryActionError("");
+  }
+
+  async function handleSaveEditEntry() {
+    if (!editingEntryId) return;
+    const price = editEntryPrice ?? NaN;
+    if (isNaN(price) || price < 0) {
+      setEntryActionError("Introduce un precio válido (≥ 0)");
+      return;
+    }
+    if (!editEntryDate) {
+      setEntryActionError("La fecha de aplicación es obligatoria");
+      return;
+    }
+    setEntryActionError("");
+    setIsMutatingEntry(true);
+    await onPriceEntryUpdate?.(editingEntryId, price, editEntryDate);
+    setIsMutatingEntry(false);
+    cancelEditEntry();
+  }
+
+  async function handleDeleteEntry(entryId: string) {
+    setIsMutatingEntry(true);
+    await onPriceEntryDelete?.(entryId);
+    setIsMutatingEntry(false);
+  }
 
   async function handleSavePrice() {
     const price = newPrice ?? NaN;
@@ -269,33 +326,113 @@ export function WarehouseForm({
                         <p className="text-xs text-muted-foreground py-1">Sin registros de historial</p>
                       ) : (
                         <div className="rounded-md border border-border/50 overflow-hidden">
-                          <div className="grid grid-cols-[1fr_120px] text-[10px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted/40 px-3 py-1.5">
+                          <div className="grid grid-cols-[1fr_100px_64px] text-[10px] font-semibold uppercase tracking-wide text-muted-foreground bg-muted/40 px-3 py-1.5">
                             <span>Fecha de aplicación</span>
                             <span className="text-right">Precio</span>
+                            <span />
                           </div>
-                          {priceHistory.map((entry, idx) => (
-                            <div
-                              key={entry.id}
-                              className={cn(
-                                "grid grid-cols-[1fr_120px] px-3 py-1.5 text-xs",
-                                idx === 0 ? "bg-brand-50/40 dark:bg-brand-950/20 font-medium" : "bg-transparent",
-                                idx < priceHistory.length - 1 && "border-b border-border/30"
-                              )}
-                            >
-                              <div className="flex items-center gap-2">
-                                <span>{formatDate(entry.effective_from)}</span>
-                                {idx === 0 && (
-                                  <Badge variant="outline" className="text-[9px] h-4 border-brand-300 text-brand-600 dark:border-brand-700 dark:text-brand-400">
-                                    Vigente
-                                  </Badge>
+                          {priceHistory.map((entry, idx) => {
+                            const isRowEditing = editingEntryId === entry.id;
+                            return (
+                              <div
+                                key={entry.id}
+                                className={cn(
+                                  "grid grid-cols-[1fr_100px_64px] items-center px-3 py-1.5 text-xs gap-1",
+                                  !isRowEditing && idx === 0 ? "bg-brand-50/40 dark:bg-brand-950/20 font-medium" : "bg-transparent",
+                                  idx < priceHistory.length - 1 && "border-b border-border/30"
+                                )}
+                              >
+                                {isRowEditing ? (
+                                  <>
+                                    <Input
+                                      type="date"
+                                      className="h-7 text-xs"
+                                      value={editEntryDate}
+                                      onChange={(e) => setEditEntryDate(e.target.value)}
+                                    />
+                                    <DecimalInput
+                                      className="h-7 text-xs text-right"
+                                      value={editEntryPrice}
+                                      onChange={(n) => setEditEntryPrice(n)}
+                                    />
+                                    <div className="flex items-center justify-end gap-0.5">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 text-brand-600 hover:text-brand-700"
+                                        disabled={isMutatingEntry}
+                                        onClick={handleSaveEditEntry}
+                                        aria-label="Guardar"
+                                      >
+                                        {isMutatingEntry ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 text-muted-foreground"
+                                        disabled={isMutatingEntry}
+                                        onClick={cancelEditEntry}
+                                        aria-label="Cancelar"
+                                      >
+                                        <X className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="flex items-center gap-2">
+                                      <span>{formatDate(entry.effective_from)}</span>
+                                      {idx === 0 && (
+                                        <Badge variant="outline" className="text-[9px] h-4 border-brand-300 text-brand-600 dark:border-brand-700 dark:text-brand-400">
+                                          Vigente
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <span className="tabular-nums text-right">
+                                      {Number(entry.price).toLocaleString("es-ES", { minimumFractionDigits: 4 })} €
+                                    </span>
+                                    <div className="flex items-center justify-end gap-0.5">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                        disabled={isMutatingEntry || editingEntryId !== null}
+                                        onClick={() => startEditEntry(entry)}
+                                        aria-label="Editar entrada"
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                      </Button>
+                                      <ConfirmDialog
+                                        trigger={
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                                            disabled={isMutatingEntry || editingEntryId !== null || priceHistory.length <= 1}
+                                            aria-label="Eliminar entrada"
+                                          >
+                                            <Trash2 className="h-3 w-3" />
+                                          </Button>
+                                        }
+                                        title="Eliminar entrada de precio"
+                                        description={`Vas a eliminar el precio de ${Number(entry.price).toLocaleString("es-ES", { minimumFractionDigits: 4 })} € vigente desde ${formatDate(entry.effective_from)}. Los costes de almacenaje ya calculados en el rango afectado se recalcularán con el precio que quede vigente en cada fecha.`}
+                                        confirmLabel="Eliminar y recalcular"
+                                        onConfirm={() => handleDeleteEntry(entry.id)}
+                                      />
+                                    </div>
+                                  </>
                                 )}
                               </div>
-                              <span className="tabular-nums text-right">
-                                {Number(entry.price).toLocaleString("es-ES", { minimumFractionDigits: 4 })} €
-                              </span>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
+                      )}
+                      {entryActionError && (
+                        <p className="text-xs text-destructive">{entryActionError}</p>
                       )}
                     </div>
 

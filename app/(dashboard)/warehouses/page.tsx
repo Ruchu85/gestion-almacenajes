@@ -20,6 +20,8 @@ import {
   toggleWarehouseActive,
   getWarehousePriceHistory,
   addWarehousePriceEntry,
+  updateWarehousePriceEntry,
+  deleteWarehousePriceEntry,
 } from "./actions";
 
 export default function WarehousesPage() {
@@ -107,6 +109,15 @@ export default function WarehousesPage() {
     setIsPriceHistoryLoading(false);
   }
 
+  async function refreshPriceState(warehouseId: string) {
+    const histResult = await getWarehousePriceHistory(warehouseId);
+    setPriceHistory(histResult.data ?? []);
+    // Actualizar el warehouse editando con el precio más reciente
+    const updated = (await service.getById(warehouseId)).data;
+    if (updated) setEditingWarehouse(updated);
+    await loadWarehouses();
+  }
+
   async function handlePriceChange(price: number, effectiveFrom: string) {
     if (!editingWarehouse) return;
     const result = await addWarehousePriceEntry(editingWarehouse.id, price, effectiveFrom);
@@ -119,13 +130,35 @@ export default function WarehousesPage() {
     } else {
       toast({ title: "Precio programado correctamente", description: `Se aplicará a partir del ${effectiveFrom}.` });
     }
-    // Refrescar historial y lista de almacenes
-    const histResult = await getWarehousePriceHistory(editingWarehouse.id);
-    setPriceHistory(histResult.data ?? []);
-    // Actualizar el warehouse editando con el precio más reciente
-    const updated = (await service.getById(editingWarehouse.id)).data;
-    if (updated) setEditingWarehouse(updated);
-    await loadWarehouses();
+    await refreshPriceState(editingWarehouse.id);
+  }
+
+  async function handlePriceEntryUpdate(entryId: string, price: number, effectiveFrom: string) {
+    if (!editingWarehouse) return;
+    const result = await updateWarehousePriceEntry(editingWarehouse.id, entryId, price, effectiveFrom);
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al editar la entrada", description: result.error });
+      return;
+    }
+    toast({
+      title: "Entrada de precio actualizada",
+      description: result.recalculated ? "Los costes afectados han sido recalculados." : "Se aplicará según la fecha indicada.",
+    });
+    await refreshPriceState(editingWarehouse.id);
+  }
+
+  async function handlePriceEntryDelete(entryId: string) {
+    if (!editingWarehouse) return;
+    const result = await deleteWarehousePriceEntry(editingWarehouse.id, entryId);
+    if (result.error) {
+      toast({ variant: "destructive", title: "Error al eliminar la entrada", description: result.error });
+      return;
+    }
+    toast({
+      title: "Entrada de precio eliminada",
+      description: result.recalculated ? "Los costes afectados han sido recalculados con el precio vigente en cada fecha." : "Historial actualizado.",
+    });
+    await refreshPriceState(editingWarehouse.id);
   }
 
   function handleOpenCreate() {
@@ -181,6 +214,8 @@ export default function WarehousesPage() {
         priceHistory={priceHistory}
         isPriceHistoryLoading={isPriceHistoryLoading}
         onPriceChange={handlePriceChange}
+        onPriceEntryUpdate={handlePriceEntryUpdate}
+        onPriceEntryDelete={handlePriceEntryDelete}
       />
     </>
   );

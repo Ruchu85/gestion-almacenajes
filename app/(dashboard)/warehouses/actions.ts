@@ -101,21 +101,11 @@ export async function getWarehousePriceHistory(
   return { data: data as WarehousePriceHistory[] };
 }
 
-export async function addWarehousePriceEntry(
+/** Sincroniza warehouses.storage_daily_price con la entrada de fecha más reciente del historial. */
+async function syncWarehouseCurrentPrice(
+  supabase: Awaited<ReturnType<typeof createServiceClient>>,
   warehouseId: string,
-  price: number,
-  effectiveFrom: string, // YYYY-MM-DD
-): Promise<{ error?: string; recalculated?: boolean }> {
-  await requireAuth();
-  const supabase = await createServiceClient();
-
-  // 1. Insertar en el historial
-  const { error: histErr } = await supabase
-    .from("warehouse_price_history")
-    .insert({ warehouse_id: warehouseId, price, effective_from: effectiveFrom });
-  if (histErr) return { error: histErr.message };
-
-  // 2. Actualizar warehouses.storage_daily_price con el precio más reciente
+) {
   const { data: latest } = await supabase
     .from("warehouse_price_history")
     .select("price")
@@ -129,18 +119,124 @@ export async function addWarehousePriceEntry(
       .update({ storage_daily_price: latest.price })
       .eq("id", warehouseId);
   }
+}
 
-  // 3. Recalcular costes si la fecha es pasada o presente
+/** Recalcula storage_costs desde `fromDate` hasta hoy, solo si `fromDate` no es futura. */
+async function recalculateCostsFrom(
+  supabase: Awaited<ReturnType<typeof createServiceClient>>,
+  fromDate: string,
+): Promise<boolean> {
   const today = new Date().toISOString().split("T")[0];
-  if (effectiveFrom <= today) {
-    await supabase.rpc("recalculate_storage_costs", {
-      p_start_date: effectiveFrom,
-      p_end_date: today,
-    });
-    return { recalculated: true };
+  if (fromDate > today) return false;
+  await supabase.rpc("recalculate_storage_costs", {
+    p_start_date: fromDate,
+    p_end_date: today,
+  });
+  return true;
+}
+
+export async function addWarehousePriceEntry(
+  warehouseId: string,
+  price: number,
+  effectiveFrom: string, // YYYY-MM-DD
+): Promise<{ error?: string; recalculated?: boolean }> {
+  await requireAuth();
+  const supabase = await createServiceClient();
+
+  // 1. Insertar en el historial
+  const { error: histErr } = await supabase
+    .from("warehouse_price_history")
+    .insert({ warehouse_id: warehouseId, price, effective_from: effectiveFrom });
+  if (histErr) {
+    if (histErr.code === "23505") {
+      return { error: `Ya existe una entrada de precio con fecha de aplicación ${effectiveFrom}.` };
+    }
+    return { error: histErr.message };
   }
 
-  return {};
+  // 2. Actualizar warehouses.storage_daily_price con el precio más reciente
+  await syncWarehouseCurrentPrice(supabase, warehouseId);
+
+  // 3. Recalcular costes si la fecha es pasada o presente
+  const recalculated = await recalculateCostsFrom(supabase, effectiveFrom);
+  return recalculated ? { recalculated: true } : {};
+}
+
+export async function updateWarehousePriceEntry(
+  warehouseId: string,
+  entryId: string,
+  price: number,
+  effectiveFrom: string, // YYYY-MM-DD
+): Promise<{ error?: string; recalculated?: boolean }> {
+  await requireAuth();
+  const supabase = await createServiceClient();
+
+  // 1. Recuperar la fecha original, para recalcular desde la más antigua de las dos
+  const { data: original, error: fetchErr } = await supabase
+    .from("warehouse_price_history")
+    .select("effective_from")
+    .eq("id", entryId)
+    .eq("warehouse_id", warehouseId)
+    .single();
+  if (fetchErr || !original) return { error: "No se encontró la entrada del historial." };
+
+  // 2. Actualizar
+  const { error: updErr } = await supabase
+    .from("warehouse_price_history")
+    .update({ price, effective_from: effectiveFrom })
+    .eq("id", entryId)
+    .eq("warehouse_id", warehouseId);
+  if (updErr) {
+    if (updErr.code === "23505") {
+      return { error: `Ya existe una entrada de precio con fecha de aplicación ${effectiveFrom}.` };
+    }
+    return { error: updErr.message };
+  }
+
+  // 3. Sincronizar precio actual y recalcular desde la fecha más antigua afectada
+  await syncWarehouseCurrentPrice(supabase, warehouseId);
+  const fromDate = original.effective_from < effectiveFrom ? original.effective_from : effectiveFrom;
+  const recalculated = await recalculateCostsFrom(supabase, fromDate);
+  return recalculated ? { recalculated: true } : {};
+}
+
+export async function deleteWarehousePriceEntry(
+  warehouseId: string,
+  entryId: string,
+): Promise<{ error?: string; recalculated?: boolean }> {
+  await requireAuth();
+  const supabase = await createServiceClient();
+
+  // 1. No permitir borrar la última entrada: el almacén debe conservar siempre un precio vigente
+  const { count } = await supabase
+    .from("warehouse_price_history")
+    .select("id", { count: "exact", head: true })
+    .eq("warehouse_id", warehouseId);
+  if ((count ?? 0) <= 1) {
+    return { error: "No puedes eliminar la última entrada del historial: el almacén debe conservar siempre un precio vigente." };
+  }
+
+  // 2. Recuperar su fecha antes de borrarla, para saber qué recalcular
+  const { data: entry, error: fetchErr } = await supabase
+    .from("warehouse_price_history")
+    .select("effective_from")
+    .eq("id", entryId)
+    .eq("warehouse_id", warehouseId)
+    .single();
+  if (fetchErr || !entry) return { error: "No se encontró la entrada del historial." };
+
+  // 3. Borrar
+  const { error: delErr } = await supabase
+    .from("warehouse_price_history")
+    .delete()
+    .eq("id", entryId)
+    .eq("warehouse_id", warehouseId);
+  if (delErr) return { error: delErr.message };
+
+  // 4. Sincronizar precio actual y recalcular costes desde la fecha de la entrada borrada
+  await syncWarehouseCurrentPrice(supabase, warehouseId);
+  const recalculated = await recalculateCostsFrom(supabase, entry.effective_from);
+  return recalculated ? { recalculated: true } : {};
 }
 
 export async function toggleWarehouseActive(id: string, active: boolean): Promise<{ error?: string }> {
