@@ -102,6 +102,13 @@ export interface PdfProposalItem {
   confidence: MatchConfidence;
   /** Avisos no bloqueantes (supera pendiente, duplicado, etc.). */
   warnings: string[];
+  /**
+   * Contraste con la segunda lectura del PDF. `coincide: false` significa que
+   * las dos lecturas del documento no leyeron la misma cantidad para esta
+   * pesada, así que la cifra no es de fiar y hay que mirarla en el papel.
+   * null si esa pesada no se pudo cruzar entre ambas lecturas.
+   */
+  verificacion?: { neto: number; coincide: boolean } | null;
   /** Almacén resuelto desde BD para tipo='normal'. */
   resolvedWarehouseId?: string | null;
   resolvedWarehouseName?: string | null;

@@ -49,6 +49,7 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
         <TableHeader>
           <TableRow>
             <TableHead className="w-10"></TableHead>
+            <TableHead className="w-10 text-center">#</TableHead>
             <TableHead>Datos del PDF</TableHead>
             <TableHead>Puesta / Destino</TableHead>
             <TableHead className="w-[140px]">Fecha</TableHead>
@@ -74,6 +75,8 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
             const isDuplicate = item.warnings.some((w) =>
               w.includes("Ya existe una salida idéntica")
             );
+            /** Las dos lecturas del PDF discrepan en la cantidad de esta fila. */
+            const lecturaDudosa = !!item.verificacion && !item.verificacion.coincide;
             const isClean = isSelectable && item.warnings.length === 0;
 
             return (
@@ -83,6 +86,9 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                   !isSelectable && "bg-muted/60 opacity-70",
                   isDuplicate && "bg-red-500/10 dark:bg-red-500/15",
                   !isDuplicate && isClean && "bg-green-500/10 dark:bg-green-500/15",
+                  // La cifra no es de fiar: manda sobre cualquier otro estado.
+                  lecturaDudosa &&
+                    "bg-red-500/20 dark:bg-red-500/25 outline outline-2 -outline-offset-2 outline-red-500/70",
                 )}
               >
                 {/* Selección */}
@@ -93,6 +99,11 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                     onCheckedChange={(c) => onToggle(index, c === true)}
                     aria-label="Seleccionar fila"
                   />
+                </TableCell>
+
+                {/* Nº de fila, para poder referirse a ella en los avisos */}
+                <TableCell className="text-center text-xs font-semibold tabular-nums text-muted-foreground">
+                  {index + 1}
                 </TableCell>
 
                 {/* Datos crudos del PDF */}
@@ -198,7 +209,10 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                 {/* Cantidad editable */}
                 <TableCell>
                   <DecimalInput
-                    className="h-8"
+                    className={cn(
+                      "h-8",
+                      lecturaDudosa && "border-red-500 ring-1 ring-red-500/40 font-semibold"
+                    )}
                     value={item.edited.cantidad}
                     disabled={!isEditable}
                     onChange={(n) => onEdit(index, "cantidad", n ?? 0)}
@@ -207,6 +221,15 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                     <div className="mt-0.5 text-[11px] text-muted-foreground">
                       {formatNumber(item.line.cantidad_origen)} {item.line.unidad_origen ?? ""} →{" "}
                       {item.line.unidad_destino ?? ""}
+                    </div>
+                  )}
+                  {lecturaDudosa && (
+                    <div className="mt-1 flex items-start gap-1 text-[11px] font-medium text-red-700 dark:text-red-400">
+                      <AlertTriangle className="h-3 w-3 shrink-0 mt-px" />
+                      <span>
+                        2ª lectura: {formatNumber(item.verificacion!.neto)}{" "}
+                        {item.line.unidad_origen ?? item.line.unidad ?? ""}
+                      </span>
                     </div>
                   )}
                 </TableCell>

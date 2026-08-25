@@ -173,12 +173,21 @@ export function PdfAuditDialog({ open, onOpenChange }: PdfAuditDialogProps) {
       (acc, r) => acc + r.lines.filter(isLineaProblematica).length,
       0
     );
+    const sinGrabar = acumulados.reduce(
+      (acc, r) => acc + r.lines.filter((l) => l.status === "no_registrada").length,
+      0
+    );
     toast({
-      title: problemas === 0 ? "Revisión completada sin diferencias" : `${problemas} línea(s) a revisar`,
+      title:
+        problemas === 0
+          ? "Revisión completada: no falta nada"
+          : sinGrabar > 0
+            ? `${sinGrabar} pesada(s) del PDF sin grabar`
+            : `${problemas} línea(s) a revisar`,
       description:
         problemas === 0
-          ? "Todo lo leído en los PDF cuadra con lo registrado."
-          : "Revisa el informe: se han detectado diferencias con lo grabado.",
+          ? "Todas las pesadas de los PDF están registradas con la cantidad correcta."
+          : "Revisa el informe: hay datos del PDF que no cuadran con lo grabado.",
       variant: problemas === 0 ? "default" : "destructive",
     });
   }
@@ -361,24 +370,24 @@ export function PdfAuditDialog({ open, onOpenChange }: PdfAuditDialogProps) {
         {showResults && summary && (
           <div className="space-y-3 max-h-[68vh] overflow-auto pr-1">
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-              <SummaryCard label="Archivos" value={summary.archivos} />
-              <SummaryCard label="Pesadas" value={summary.lineas} />
+              <SummaryCard label="Sin grabar" value={summary.noRegistradas} tone="bad" />
+              <SummaryCard label="Cantidad distinta" value={summary.cantidades} tone="bad" />
               <SummaryCard
                 label="Correctas"
                 value={summary.lineas - summary.problemas}
                 tone="good"
               />
-              <SummaryCard label="Cantidad distinta" value={summary.cantidades} tone="bad" />
-              <SummaryCard label="No registradas" value={summary.noRegistradas} tone="bad" />
-              <SummaryCard label="Sobrantes" value={summary.sobrantes} tone="warn" />
+              <SummaryCard label="Pesadas" value={summary.lineas} />
+              <SummaryCard label="Archivos" value={summary.archivos} />
+              <SummaryCard label="Solo en sistema" value={summary.sobrantes} />
             </div>
 
-            {!progress && summary.problemas === 0 && summary.sobrantes === 0 && (
+            {!progress && summary.problemas === 0 && (
               <div className="flex gap-3 rounded-lg border border-green-500/40 bg-green-50 dark:bg-green-950/30 p-3">
                 <CheckCircle2 className="h-5 w-5 shrink-0 text-green-600 dark:text-green-400 mt-0.5" />
                 <p className="text-sm text-green-800 dark:text-green-300">
-                  Todo lo leído en los PDF coincide con lo registrado en el sistema. No se han
-                  detectado diferencias de cantidad ni salidas sin grabar.
+                  Todas las pesadas de los PDF están grabadas y con la cantidad correcta. No falta
+                  nada por importar.
                 </p>
               </div>
             )}

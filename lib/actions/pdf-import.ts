@@ -1,13 +1,16 @@
 "use server";
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { extractSalidasFromPdf } from "@/lib/gemini";
+import { extractSalidasFromPdf, extractPesadasVerification } from "@/lib/gemini";
 import {
   buildProposals,
   buildResumenAlerts,
   filterByText,
   normalizeLineUnits,
 } from "@/services/pdf-import.service";
+import { compareExtractionPasses } from "@/services/pdf-audit.service";
+import { pdfVerificacionSchema } from "@/validations/pdf-audit.schema";
+import { formatNumber } from "@/utils/format";
 import { PuestasService } from "@/services/puestas.service";
 import { createSalidaParcial } from "@/app/(dashboard)/puestas/actions";
 import { upsertMatricula } from "@/lib/actions/matriculas";
@@ -44,16 +47,21 @@ export async function analyzePdfAction(
   if (file.size === 0) return { error: "El PDF está vacío." };
   if (file.size > MAX_PDF_BYTES) return { error: "El PDF supera el tamaño máximo (15 MB)." };
 
-  // 3. Extraer con Gemini
+  // 3. Extraer con Gemini — DOS lecturas del mismo documento, en paralelo.
+  //    La segunda usa un prompt distinto y enfocado solo en las cantidades:
+  //    si las dos lecturas no coinciden en una cifra, es que ese número no se
+  //    lee de forma estable y el usuario tiene que mirarlo antes de grabar.
   const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
-  let raw: unknown;
-  try {
-    raw = await extractSalidasFromPdf(base64, GEMINI_MODEL_SALIDAS);
-  } catch (err) {
-    return { error: (err as Error).message };
+  const [principal, verificacion] = await Promise.allSettled([
+    extractSalidasFromPdf(base64, GEMINI_MODEL_SALIDAS),
+    extractPesadasVerification(base64, GEMINI_MODEL_SALIDAS),
+  ]);
+
+  if (principal.status === "rejected") {
+    return { error: (principal.reason as Error)?.message ?? "No se pudo analizar el PDF." };
   }
 
-  const parsed = pdfExtractionSchema.safeParse(raw);
+  const parsed = pdfExtractionSchema.safeParse(principal.value);
   if (!parsed.success) {
     return { error: "La IA devolvió los datos en un formato inesperado. Reinténtalo." };
   }
@@ -84,6 +92,52 @@ export async function analyzePdfAction(
   //     cliente de la primera página): todo cliente que retira debe tener una
   //     puesta abierta a su nombre, y los kilos deben cuadrar con las pesadas.
   const alerts = buildResumenAlerts(parsed.data.resumen_clientes, proposals, abiertas, products);
+
+  // 5.c Cruzar la segunda lectura contra la principal. Las discrepancias se
+  //     cuelgan de la propia fila para que salten a la vista en el diálogo.
+  const verificado =
+    verificacion.status === "fulfilled"
+      ? pdfVerificacionSchema.safeParse(verificacion.value)
+      : null;
+
+  if (verificado?.success) {
+    // buildProposals genera el id de cada fila con esta misma fórmula.
+    const ids = lineas.map((l, i) => `${i}-${l.matricula}-${l.cantidad}`);
+    const comparacion = compareExtractionPasses(lineas, ids, verificado.data.pesadas);
+
+    for (const proposal of proposals) {
+      const check = comparacion.byLineId.get(proposal.id);
+      proposal.verificacion = check ?? null;
+      if (check && !check.coincide) {
+        const leido = proposal.line.cantidad_origen ?? proposal.line.cantidad;
+        const unidad = proposal.line.unidad_origen ?? proposal.line.unidad ?? "";
+        proposal.warnings.push(
+          `Las dos lecturas del PDF no coinciden en la cantidad: ${formatNumber(leido)} frente a ` +
+            `${formatNumber(check.neto)} ${unidad}. Comprueba esta cifra en el documento antes de grabarla.`
+        );
+      }
+    }
+
+    if (comparacion.soloEnVerificacion.length > 0) {
+      alerts.push({
+        level: "error",
+        cliente: "",
+        message:
+          `La segunda lectura del PDF encontró ${comparacion.soloEnVerificacion.length} pesada(s) que ` +
+          `la principal no ha listado (netos: ${comparacion.soloEnVerificacion
+            .map((p) => formatNumber(p.neto))
+            .join(", ")}). Revisa el documento: puede que falten filas por importar.`,
+      });
+    }
+  } else if (verificacion.status === "rejected" || verificado?.success === false) {
+    alerts.push({
+      level: "warning",
+      cliente: "",
+      message:
+        "No se ha podido hacer la segunda lectura de verificación del PDF, así que las cantidades " +
+        "no se han podido contrastar. Revísalas con más atención de lo habitual.",
+    });
+  }
 
   // 6. Resolver almacén y producto para filas de tipo 'normal' (salidas directas)
   for (const proposal of proposals.filter((p) => p.tipo === "normal")) {

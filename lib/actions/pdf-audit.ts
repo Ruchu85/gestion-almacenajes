@@ -281,13 +281,27 @@ export async function auditPdfAction(formData: FormData): Promise<AuditFileRepor
     sospechas,
   });
 
-  if (sobrantes.length > 0) {
+  // Lo que importa es que no falte nada del PDF por grabar. El sentido
+  // contrario (grabado que no está en el PDF) es secundario: casi siempre son
+  // salidas de otro documento o metidas a mano, así que se deja como nota.
+  const noRegistradas = results.filter((l) => l.status === "no_registrada").length;
+  if (noRegistradas > 0) {
     findings.push({
-      level: "warning",
+      level: "error",
       code: "sobrante",
       message:
-        `Hay ${sobrantes.length} salida(s) grabada(s) en el sistema en estas fechas que no ` +
-        `aparecen en el PDF. Pueden ser duplicados, salidas de otro documento o errores.`,
+        `${noRegistradas} pesada(s) de este PDF no están grabadas en el sistema. ` +
+        `Son las que hay que revisar: puede que se perdieran al importar.`,
+    });
+  }
+
+  if (sobrantes.length > 0) {
+    findings.push({
+      level: "info",
+      code: "sobrante",
+      message:
+        `Nota: hay ${sobrantes.length} salida(s) grabada(s) en estas fechas que no aparecen en ` +
+        `este PDF. Puede ser normal si vienen de otro documento.`,
     });
   }
 

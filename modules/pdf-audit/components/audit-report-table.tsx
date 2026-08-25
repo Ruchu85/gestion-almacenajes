@@ -95,6 +95,8 @@ export function AuditReportTable({ report, soloProblemas }: AuditReportTableProp
 
   const visibles = soloProblemas ? report.lines.filter(isLineaProblematica) : report.lines;
   const problemas = report.lines.filter(isLineaProblematica).length;
+  // El nº de fila es el del documento completo, para que no cambie al filtrar.
+  const numeroDeFila = new Map(report.lines.map((l, i) => [l.id, i + 1]));
 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
@@ -162,6 +164,7 @@ export function AuditReportTable({ report, soloProblemas }: AuditReportTableProp
         <table className="w-full text-xs">
           <thead className="bg-muted/30 text-[10px] uppercase tracking-wide text-muted-foreground">
             <tr>
+              <th className="text-center font-semibold px-2 py-2 w-10">#</th>
               <th className="text-left font-semibold px-3 py-2">Estado</th>
               <th className="text-left font-semibold px-3 py-2">Ticket</th>
               <th className="text-left font-semibold px-3 py-2">Fecha</th>
@@ -175,7 +178,7 @@ export function AuditReportTable({ report, soloProblemas }: AuditReportTableProp
           <tbody>
             {visibles.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
                   {soloProblemas
                     ? "Ninguna línea de este documento necesita revisión."
                     : "El documento no tiene líneas."}
@@ -193,6 +196,9 @@ export function AuditReportTable({ report, soloProblemas }: AuditReportTableProp
                       meta.problema && "bg-red-50/40 dark:bg-red-950/10"
                     )}
                   >
+                    <td className="px-2 py-2 text-center font-semibold tabular-nums text-muted-foreground">
+                      {numeroDeFila.get(line.id)}
+                    </td>
                     <td className="px-3 py-2">
                       <Badge variant={meta.variant} className="whitespace-nowrap">
                         {meta.label}
@@ -243,7 +249,7 @@ export function AuditReportTable({ report, soloProblemas }: AuditReportTableProp
               line.findings.length > 0 ? (
                 <tr key={`${line.id}-avisos`} className="border-t border-border/20">
                   <td />
-                  <td colSpan={7} className="px-3 pb-2">
+                  <td colSpan={8} className="px-3 pb-2">
                     <ul className="space-y-1">
                       {line.findings.map((f, i) => (
                         <li
@@ -259,7 +265,10 @@ export function AuditReportTable({ report, soloProblemas }: AuditReportTableProp
                         >
                           <span aria-hidden>•</span>
                           <span>
-                            <span className="font-mono opacity-70">{line.ticket ?? line.matricula}</span>{" "}
+                            <strong>Fila {numeroDeFila.get(line.id)}</strong>{" "}
+                            <span className="font-mono opacity-70">
+                              ({line.ticket ?? line.matricula})
+                            </span>{" "}
                             {f.message}
                           </span>
                         </li>
@@ -273,15 +282,19 @@ export function AuditReportTable({ report, soloProblemas }: AuditReportTableProp
         </table>
       </div>
 
-      {/* Registros del sistema sin respaldo en el PDF */}
+      {/* Secundario: lo grabado que no aparece en este PDF. Se muestra plegado
+          porque suele ser ruido (salidas de otro documento o metidas a mano). */}
       {report.sobrantes.length > 0 && (
-        <div className="border-t border-border bg-amber-50/40 dark:bg-amber-950/10 px-4 py-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-400 mb-2">
-            Grabado en el sistema pero no en el PDF ({report.sobrantes.length})
-          </p>
-          <ul className="space-y-1 text-xs">
+        <details className="border-t border-border bg-muted/20 px-4 py-2 group">
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground select-none">
+            Ver {report.sobrantes.length} salida{report.sobrantes.length > 1 ? "s" : ""} grabada
+            {report.sobrantes.length > 1 ? "s" : ""} que no aparece
+            {report.sobrantes.length > 1 ? "n" : ""} en este PDF
+            <span className="opacity-70"> — informativo</span>
+          </summary>
+          <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
             {report.sobrantes.map((s) => (
-              <li key={s.id} className="flex flex-wrap gap-x-3 text-amber-900 dark:text-amber-300">
+              <li key={s.id} className="flex flex-wrap gap-x-3">
                 <span className="tabular-nums">{formatDate(s.fecha)}</span>
                 <span className="font-mono">{s.matricula ?? "sin matrícula"}</span>
                 <span className="tabular-nums font-medium">{formatNumber(s.cantidad)}</span>
@@ -290,7 +303,7 @@ export function AuditReportTable({ report, soloProblemas }: AuditReportTableProp
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       )}
     </div>
   );

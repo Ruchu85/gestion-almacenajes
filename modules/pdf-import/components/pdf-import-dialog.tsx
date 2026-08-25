@@ -151,10 +151,14 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
         ...p,
         // Se preseleccionan las filas resueltas sin dudas: puestas con match de
         // confianza alta y salidas directas con almacén y producto identificados.
+        // Si las dos lecturas del PDF discrepan en la cantidad, la fila NUNCA
+        // viene marcada: que sea el usuario quien la valide contra el papel.
         selected:
-          p.tipo === "normal"
-            ? !!(p.resolvedWarehouseId && p.resolvedProductId) && p.warnings.length === 0
-            : p.confidence === "alta",
+          p.verificacion && !p.verificacion.coincide
+            ? false
+            : p.tipo === "normal"
+              ? !!(p.resolvedWarehouseId && p.resolvedProductId) && p.warnings.length === 0
+              : p.confidence === "alta",
         chosenPuestaId: p.match?.puesta_id ?? null,
         edited: {
           fecha: p.line.fecha,
@@ -389,8 +393,47 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
             if (p.tipo === "normal") return !(p.resolvedWarehouseId && p.resolvedProductId);
             return p.confidence === "nula";
           });
+          const dudosas = proposals
+            .map((p, i) => ({ p, n: i + 1 }))
+            .filter(({ p }) => p.verificacion && !p.verificacion.coincide);
           return (
             <div className="space-y-3">
+              {/* Lo más grave primero: cifras que el PDF no ha leído igual dos veces. */}
+              {dudosas.length > 0 && (
+                <div className="rounded-lg border-2 border-red-500 bg-red-50 dark:bg-red-950/50 p-4">
+                  <div className="flex gap-3">
+                    <TriangleAlert className="h-6 w-6 shrink-0 text-red-600 dark:text-red-400" />
+                    <div className="space-y-2">
+                      <p className="font-bold text-red-800 dark:text-red-200">
+                        Revisa {dudosas.length} cantidad{dudosas.length > 1 ? "es" : ""} antes de grabar
+                      </p>
+                      <p className="text-sm text-red-700 dark:text-red-300">
+                        El documento se ha leído dos veces y estas cifras <strong>no han salido
+                        iguales</strong>, así que alguna puede estar mal interpretada. Se han dejado{" "}
+                        <strong>sin marcar</strong> a propósito: compruébalas en el PDF original y
+                        márcalas tú si son correctas.
+                      </p>
+                      <ul className="space-y-1 text-sm text-red-800 dark:text-red-200">
+                        {dudosas.map(({ p, n }) => (
+                          <li key={p.id} className="flex flex-wrap items-center gap-x-2">
+                            <span className="font-semibold">Fila {n}</span>
+                            <span className="font-mono text-xs">{p.line.matricula}</span>
+                            {p.line.ticket && (
+                              <span className="text-xs opacity-80">ticket {p.line.ticket}</span>
+                            )}
+                            <span className="tabular-nums">
+                              {formatNumber(p.line.cantidad_origen ?? p.line.cantidad)}
+                              {" vs "}
+                              {formatNumber(p.verificacion!.neto)}{" "}
+                              {p.line.unidad_origen ?? p.line.unidad ?? ""}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
               {alerts.length > 0 && <ResumenAlerts alerts={alerts} />}
               {unmatchedItems.length > 0 && (
                 <div className="flex gap-3 rounded-lg border border-red-500/40 bg-red-50 dark:border-red-500/40 dark:bg-red-950/40 p-3">
