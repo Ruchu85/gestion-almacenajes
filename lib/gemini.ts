@@ -362,3 +362,118 @@ Devuelve el resultado siguiendo el esquema JSON proporcionado.
 export async function extractPuestaFromPdf(pdfBase64: string): Promise<unknown> {
   return callGemini(pdfBase64, PUESTA_EXTRACTION_PROMPT, PUESTA_RESPONSE_SCHEMA);
 }
+
+// ============================================================
+// SEGUNDA PASADA DE VERIFICACIÓN (auditoría de cantidades)
+// ============================================================
+
+/**
+ * Esquema deliberadamente mínimo: solo lo que identifica cada pesada y su
+ * cantidad. Cuanto menos tiene que devolver el modelo, menos se distrae de la
+ * única cifra que aquí importa.
+ */
+const VERIFICATION_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    pesadas: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          ticket: { type: "string", description: "Nº de ticket/pesada. Vacío si el documento no lo trae." },
+          matricula: { type: "string", description: "Matrícula del camión (cabeza tractora)." },
+          neto: { type: "number", description: "Cantidad de la fila, tal cual figura impresa." },
+          unidad: { type: "string", description: '"kg" o "tns", según el documento.' },
+        },
+        required: ["neto", "unidad"],
+      },
+    },
+    totales: {
+      type: "array",
+      description: "Totales que el documento declara explícitamente.",
+      items: {
+        type: "object",
+        properties: {
+          concepto: { type: "string", description: 'Etiqueta del total: "RET. DIA", "SALIDAS DIA"…' },
+          producto: { type: "string", description: "Mercancía del bloque, si consta." },
+          valor: { type: "number" },
+          unidad: { type: "string", description: '"kg" o "tns".' },
+        },
+        required: ["concepto", "valor"],
+      },
+    },
+  },
+  required: ["pesadas", "totales"],
+} as const;
+
+const VERIFICATION_PROMPT = `
+Tu única tarea es leer CANTIDADES de un informe logístico en español, con la máxima precisión.
+No interpretes nada más: no te interesan clientes, contratos, saldos ni cupos.
+
+════════════════════════════════════════════════════════════════════════════════
+QUÉ EXTRAER
+════════════════════════════════════════════════════════════════════════════════
+Localiza la tabla de movimientos de salida del documento:
+
+- Si el documento tiene una sección "LISTADO DE PESADAS" (columnas "TICK.",
+  "MATR./REM.", "POR CTA/DESTINAT.", "SIT", "NETO", "CONTRATO REF."):
+  extrae UNA ENTRADA POR FILA de esa tabla.
+    · "ticket"    = columna "TICK.".
+    · "matricula" = PRIMER renglón de "MATR./REM." (el camión, no el remolque).
+    · "neto"      = columna "NETO". En este formato el PUNTO es separador de MILES
+                    y NO hay decimales: "29.300" → 29300, "1.360" → 1360.
+    · "unidad"    = "kg".
+  IGNORA por completo los bloques "CODIGO CUPO" y sus subtablas de clientes:
+  son saldos, no pesadas.
+
+- Si en cambio el documento es un "Informe de Salidas a Vendedor" (con columnas
+  "Nombre", "Contrato" y "Salidas"): extrae una entrada por cada fila cuya
+  columna "Salidas" sea mayor que 0.
+    · "ticket"    = "" (este formato no trae ticket).
+    · "matricula" = la matrícula de esa fila.
+    · "neto"      = valor de "Salidas". Aquí la COMA es separador DECIMAL:
+                    "30,08" → 30.08.
+    · "unidad"    = "tns".
+
+════════════════════════════════════════════════════════════════════════════════
+TOTALES DECLARADOS
+════════════════════════════════════════════════════════════════════════════════
+Rellena "totales" con las cifras de total que el documento imprime de forma
+explícita, una entrada por cada una:
+- "RET. DIA:" → concepto "RET. DIA", con el valor y la mercancía de su bloque.
+- "SALIDAS DIA:" → concepto "SALIDAS DIA".
+- Cualquier otra línea de total de la tabla de movimientos.
+Aplica las MISMAS reglas de separadores que arriba. Si el documento no imprime
+ningún total, devuelve una lista vacía.
+
+════════════════════════════════════════════════════════════════════════════════
+PRECISIÓN AL LEER LAS CIFRAS — LO MÁS IMPORTANTE
+════════════════════════════════════════════════════════════════════════════════
+Estas cifras se van a auditar, así que cada dígito cuenta:
+- Lee dígito a dígito. NO redondees, NO estimes, NO completes cifras de memoria.
+- Extrema el cuidado con los dígitos que se parecen entre sí en documentos
+  escaneados: 6 y 8, 3 y 8, 5 y 6, 0 y 8, 1 y 7, 9 y 8. Si un dígito es
+  ambiguo, quédate con la forma que realmente ves impresa.
+- No corrijas ni "arregles" una cifra para que cuadre con ningún total: queremos
+  la lectura literal del papel, aunque no cuadre.
+- Procesa TODAS las filas de TODAS las páginas. No omitas ninguna.
+- No inventes filas que no existan.
+
+Devuelve el resultado siguiendo el esquema JSON proporcionado.
+`.trim();
+
+/**
+ * Segunda lectura del mismo PDF, enfocada solo en las cantidades y en los
+ * totales que declara el documento.
+ *
+ * Existe para auditar: al contrastarla con la extracción principal, cualquier
+ * cifra que no coincida entre ambas lecturas señala un dígito que el modelo no
+ * lee de forma estable. Usa un prompt distinto a propósito, para que las dos
+ * lecturas sean lo más independientes posible.
+ */
+export async function extractPesadasVerification(
+  pdfBase64: string,
+  model?: string
+): Promise<unknown> {
+  return callGemini(pdfBase64, VERIFICATION_PROMPT, VERIFICATION_RESPONSE_SCHEMA, model);
+}

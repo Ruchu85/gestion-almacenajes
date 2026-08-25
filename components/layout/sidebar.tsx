@@ -18,6 +18,7 @@ import {
   FileUp,
   FilePlus2,
   FileSpreadsheet,
+  ClipboardCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState, useEffect } from "react";
 import { PdfImportDialog } from "@/modules/pdf-import/components/pdf-import-dialog";
+import { PdfAuditDialog } from "@/modules/pdf-audit/components/pdf-audit-dialog";
 import { PdfPuestasDialog } from "@/modules/pdf-puestas/components/pdf-puestas-dialog";
 import { ExcelImportDialog } from "@/modules/excel-import/components/excel-import-dialog";
 
@@ -64,6 +66,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
+  const [pdfAuditOpen, setPdfAuditOpen] = useState(false);
   const [excelOpen, setExcelOpen] = useState(false);
   const [pdfPuestaOpen, setPdfPuestaOpen] = useState(false);
   const [pdfPuestaAutoLoad, setPdfPuestaAutoLoad] = useState(false);
@@ -219,10 +222,38 @@ export function Sidebar() {
               <span className="truncate">Subir Pta a Disposición (PDF)</span>
             </button>
           )}
+
+          {/* Revisión: no importa nada, solo compara los PDF con lo grabado. */}
+          <div className="my-2 border-t border-sidebar-border" />
+
+          {collapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setPdfAuditOpen(true)}
+                  className={cn(NAV_BASE, "h-10 w-10 justify-center mx-auto", NAV_IDLE)}
+                >
+                  <ClipboardCheck className="h-5 w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Revisar Salidas Puerto (PDF)</TooltipContent>
+            </Tooltip>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setPdfAuditOpen(true)}
+              className={cn(NAV_BASE, "h-10 px-3 text-left", NAV_IDLE)}
+            >
+              <ClipboardCheck className="h-5 w-5 shrink-0" />
+              <span className="truncate">Revisar Salidas Puerto (PDF)</span>
+            </button>
+          )}
         </nav>
       </ScrollArea>
 
       <PdfImportDialog open={pdfOpen} onOpenChange={setPdfOpen} />
+      <PdfAuditDialog open={pdfAuditOpen} onOpenChange={setPdfAuditOpen} />
       <ExcelImportDialog open={excelOpen} onOpenChange={setExcelOpen} />
       <PdfPuestasDialog
         open={pdfPuestaOpen}
