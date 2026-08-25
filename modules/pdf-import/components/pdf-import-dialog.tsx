@@ -434,6 +434,32 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
                   </div>
                 </div>
               )}
+              {/* Resumen de avisos: el detalle de cada uno se abre desde el
+                  icono ⚠ de su propia fila. */}
+              {(() => {
+                const duplicadas = proposals.filter((p) =>
+                  p.warnings.some((w) => w.includes("Ya existe una salida idéntica"))
+                ).length;
+                const conAvisos = proposals.filter((p) => p.warnings.length > 0).length;
+                if (conAvisos === 0) return null;
+                return (
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm">
+                    <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <span className="font-medium text-amber-900 dark:text-amber-200">
+                      {conAvisos} fila{conAvisos > 1 ? "s" : ""} con avisos
+                    </span>
+                    {duplicadas > 0 && (
+                      <span className="font-semibold text-red-700 dark:text-red-400">
+                        · {duplicadas} parece{duplicadas > 1 ? "n" : ""} ya registrada
+                        {duplicadas > 1 ? "s" : ""}
+                      </span>
+                    )}
+                    <span className="text-xs text-amber-800/80 dark:text-amber-300/80">
+                      — pulsa el icono ⚠ de cada fila para ver el detalle
+                    </span>
+                  </div>
+                );
+              })()}
               {alerts.length > 0 && <ResumenAlerts alerts={alerts} />}
               {unmatchedItems.length > 0 && (
                 <div className="flex gap-3 rounded-lg border border-red-500/40 bg-red-50 dark:border-red-500/40 dark:bg-red-950/40 p-3">

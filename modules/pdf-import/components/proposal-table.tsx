@@ -12,6 +12,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatNumber } from "@/utils/format";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +43,76 @@ const CONFIDENCE_META: Record<
   nula: { label: "Sin match", variant: "destructive", icon: XCircle },
 };
 
+/**
+ * Campana de avisos de una fila. Los mensajes viven aquí, junto a la línea que
+ * los provoca, en vez de en una lista al final de la tabla: así se ve de un
+ * vistazo qué filas tienen algo que mirar, y el detalle se abre al pulsar.
+ */
+function RowWarnings({
+  warnings,
+  grave,
+  numero,
+  matricula,
+}: {
+  warnings: string[];
+  /** El aviso es de los que no se pueden pasar por alto (duplicado, cifra dudosa). */
+  grave: boolean;
+  numero: number;
+  matricula: string;
+}) {
+  if (warnings.length === 0) {
+    return <span className="sr-only">Sin avisos</span>;
+  }
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Ver ${warnings.length} aviso(s) de la fila ${numero}`}
+          className={cn(
+            "relative inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors",
+            grave
+              ? "bg-red-500/15 text-red-600 hover:bg-red-500/25 dark:text-red-400 ring-2 ring-red-500/60"
+              : "bg-amber-500/15 text-amber-600 hover:bg-amber-500/25 dark:text-amber-400"
+          )}
+        >
+          <AlertTriangle className="h-4 w-4" />
+          {warnings.length > 1 && (
+            <span
+              className={cn(
+                "absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white",
+                grave ? "bg-red-600" : "bg-amber-600"
+              )}
+            >
+              {warnings.length}
+            </span>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 p-3">
+        <p className="text-xs font-semibold mb-2">
+          Fila {numero} · {matricula}
+        </p>
+        <ul className="space-y-2">
+          {warnings.map((w, i) => (
+            <li
+              key={i}
+              className={cn(
+                "flex gap-2 text-xs leading-snug",
+                grave ? "text-red-700 dark:text-red-300" : "text-amber-800 dark:text-amber-300"
+              )}
+            >
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span>{w}</span>
+            </li>
+          ))}
+        </ul>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: ProposalTableProps) {
   return (
     <div className="rounded-md border">
@@ -56,6 +127,7 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
             <TableHead className="w-[160px]">Matrícula</TableHead>
             <TableHead className="w-[130px]">Cantidad</TableHead>
             <TableHead className="w-[120px]">Tipo</TableHead>
+            <TableHead className="w-14 text-center">Avisos</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -84,9 +156,11 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                 key={item.id}
                 className={cn(
                   !isSelectable && "bg-muted/60 opacity-70",
-                  isDuplicate && "bg-red-500/10 dark:bg-red-500/15",
                   !isDuplicate && isClean && "bg-green-500/10 dark:bg-green-500/15",
-                  // La cifra no es de fiar: manda sobre cualquier otro estado.
+                  // Duplicado y cifra dudosa mandan sobre cualquier otro estado:
+                  // son las dos cosas que el usuario no puede pasar por alto.
+                  isDuplicate &&
+                    "bg-red-500/15 dark:bg-red-500/20 outline outline-2 -outline-offset-2 outline-red-500/50",
                   lecturaDudosa &&
                     "bg-red-500/20 dark:bg-red-500/25 outline outline-2 -outline-offset-2 outline-red-500/70",
                 )}
@@ -251,30 +325,21 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                     </Badge>
                   )}
                 </TableCell>
+
+                {/* Avisos de la fila, desplegables */}
+                <TableCell className="text-center">
+                  <RowWarnings
+                    warnings={item.warnings}
+                    grave={lecturaDudosa || isDuplicate}
+                    numero={index + 1}
+                    matricula={item.line.matricula}
+                  />
+                </TableCell>
               </TableRow>
             );
           })}
         </TableBody>
       </Table>
-
-      {/* Avisos por fila */}
-      {items.some((i) => i.warnings.length > 0) && (
-        <div className="border-t bg-muted/30 p-3 space-y-1.5">
-          {items.map((item, index) =>
-            item.warnings.map((w, wi) => (
-              <div
-                key={`${item.id}-w-${wi}`}
-                className="flex items-start gap-2 text-xs text-amber-700 dark:text-amber-400"
-              >
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                <span>
-                  <strong>Fila {index + 1}</strong> ({item.line.matricula}): {w}
-                </span>
-              </div>
-            ))
-          )}
-        </div>
-      )}
     </div>
   );
 }

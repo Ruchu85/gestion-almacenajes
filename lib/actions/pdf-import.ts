@@ -201,6 +201,10 @@ export async function analyzePdfAction(
       );
       if (dup) {
         proposal.warnings.push("Ya existe una salida idéntica registrada para esta puesta.");
+        // Lo normal es que sea una salida ya grabada, así que nunca se propone
+        // como buena: baja a "Revisar" para que no venga marcada y la valide
+        // el usuario antes de arriesgarse a duplicarla.
+        proposal.confidence = "media";
       }
     }
   }
