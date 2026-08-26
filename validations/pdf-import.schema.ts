@@ -113,6 +113,12 @@ export interface PdfProposalItem {
    * null si esa pesada no se pudo cruzar entre ambas lecturas.
    */
   verificacion?: { neto: number; coincide: boolean } | null;
+  /**
+   * Presente solo en las líneas NEGATIVAS (devoluciones). `tieneSalidaPositiva`
+   * indica si el documento trae también la retirada que esta línea anula: solo
+   * en ese caso se puede grabar, porque se sabe contra qué va.
+   */
+  devolucion?: { tieneSalidaPositiva: boolean } | null;
   /** Almacén resuelto desde BD para tipo='normal'. */
   resolvedWarehouseId?: string | null;
   resolvedWarehouseName?: string | null;
@@ -151,7 +157,11 @@ export const pdfConfirmItemSchema = z.object({
   puesta_id: z.string().uuid("Puesta inválida"),
   fecha_salida: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
   matricula: z.string().min(1, "La matrícula es obligatoria").max(50),
-  cantidad: z.number().positive("La cantidad debe ser mayor que 0").max(999999),
+  // Negativa cuando es una devolución que anula parte de una retirada.
+  cantidad: z
+    .number()
+    .refine((v) => v !== 0, "La cantidad no puede ser 0")
+    .refine((v) => Math.abs(v) <= 999999, "Máximo 999.999"),
   cantidad_pendiente: z.number(),
   n_camion: z.string().max(100).optional().nullable(),
   comentarios: z.string().max(2000).optional().nullable(),

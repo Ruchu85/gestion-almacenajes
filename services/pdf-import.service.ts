@@ -520,19 +520,40 @@ export function buildProposals(
     };
   });
 
-  // Devoluciones/abonos: el informe las trae en negativo porque la mercancía
-  // vuelve al almacén. Se muestran para que no desaparezcan sin dejar rastro
-  // (antes se descartaban en silencio y el total no cuadraba), pero no se
-  // pueden grabar desde aquí: toda la cadena de salidas parciales, stock y
-  // plancha da por hecho que la cantidad es positiva.
+  // Devoluciones: el informe las trae en negativo porque la mercancía vuelve al
+  // almacén (albarán "V…", que anula una retirada anterior). Se distinguen dos
+  // situaciones, porque no se resuelven igual:
+  //
+  //  · La devolución anula una salida que viene en ESTE MISMO documento. Se
+  //    puede grabar: resta de lo retirado y devuelve pendiente al cliente.
+  //  · La devolución viene suelta, sin la salida que anula. No hay forma de
+  //    saber contra qué retirada va, así que la ajusta el usuario a mano.
+  //
+  // En ninguno de los dos casos se propone marcada: la valida siempre alguien.
   for (const proposal of proposals) {
-    if (proposal.line.cantidad < 0) {
-      proposal.warnings.unshift(
-        "Línea NEGATIVA (devolución o abono): la mercancía vuelve al almacén. " +
-          "No se puede grabar desde la importación; anótala a mano en la puesta."
-      );
-      proposal.confidence = "media";
-    }
+    const { line } = proposal;
+    if (line.cantidad >= 0) continue;
+
+    const contrato = normContrato(line.numero_puesta);
+    const base = contratoBase(line.numero_puesta);
+
+    const tieneSalidaPositiva = lineas.some((otra) => {
+      if (otra === line || otra.cantidad <= 0) return false;
+      if (contrato) return normContrato(otra.numero_puesta) === contrato;
+      if (base.length >= MIN_BASE_LEN) return contratoBase(otra.numero_puesta) === base;
+      return clienteMatches(otra.cliente, line.cliente);
+    });
+
+    proposal.devolucion = { tieneSalidaPositiva };
+    proposal.confidence = "media";
+    proposal.warnings.unshift(
+      tieneSalidaPositiva
+        ? "DEVOLUCIÓN: esta línea viene en negativo y anula parte de una retirada del mismo " +
+            "documento. Al grabarla se descuenta de lo retirado y esa cantidad vuelve a quedar " +
+            "pendiente para el cliente. Revísala y márcala tú."
+        : "Línea negativa, debes ajustar las salidas del cliente manualmente. En este documento " +
+            "no aparece la retirada que anula, así que no se puede grabar desde aquí."
+    );
   }
 
   return proposals;

@@ -148,9 +148,18 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
             const isNormal = item.tipo === "normal";
             const hasMatch = !!item.match;
             const normalResolved = isNormal && !!(item.resolvedWarehouseId && item.resolvedProductId);
-            /** Devolución/abono: el informe la trae en negativo. No se graba desde aquí. */
+            /** Devolución: el informe la trae en negativo (anula una retirada). */
             const esDevolucion = item.line.cantidad < 0;
-            const isSelectable = (isNormal ? normalResolved : hasMatch) && !esDevolucion;
+            // Solo se puede grabar la devolución que anula una salida presente en
+            // el mismo documento y que tiene puesta asignada: la suelta la ajusta
+            // el usuario a mano.
+            const devolucionGrabable =
+              esDevolucion && !!item.devolucion?.tieneSalidaPositiva && hasMatch;
+            const isSelectable = esDevolucion
+              ? devolucionGrabable
+              : isNormal
+                ? normalResolved
+                : hasMatch;
             const isEditable = isSelectable;
 
             const meta = CONFIDENCE_META[item.confidence];
@@ -172,10 +181,13 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                 className={cn(
                   !isSelectable && !esDevolucion && "bg-muted/60 opacity-70",
                   !isDuplicate && isClean && "bg-green-500/25 dark:bg-green-500/20",
-                  // Devolución: ni error ni salida normal. Color propio para que
-                  // no se confunda con las filas en rojo.
-                  esDevolucion &&
+                  // Devolución que se puede grabar: color propio, para que no se
+                  // confunda con un error.
+                  esDevolucion && devolucionGrabable &&
                     "bg-violet-500/30 dark:bg-violet-500/25 outline outline-2 -outline-offset-2 outline-violet-500",
+                  // Devolución suelta: hay que ajustarla a mano, va en rojo.
+                  esDevolucion && !devolucionGrabable &&
+                    "bg-red-500/30 dark:bg-red-500/25 outline outline-2 -outline-offset-2 outline-red-500",
                   // Duplicado y cifra dudosa mandan sobre cualquier otro estado:
                   // son las dos cosas que el usuario no puede pasar por alto.
                   isDuplicate &&
@@ -330,9 +342,16 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                 {/* Tipo / Confianza */}
                 <TableCell>
                   {esDevolucion ? (
-                    <Badge className="gap-1 border-transparent bg-violet-600 text-white hover:bg-violet-600">
+                    <Badge
+                      className={cn(
+                        "gap-1 border-transparent text-white",
+                        devolucionGrabable
+                          ? "bg-violet-600 hover:bg-violet-600"
+                          : "bg-red-600 hover:bg-red-600"
+                      )}
+                    >
                       <Undo2 className="h-3 w-3" />
-                      Devolución
+                      {devolucionGrabable ? "Devolución" : "Ajustar a mano"}
                     </Badge>
                   ) : isNormal ? (
                     <Badge
@@ -355,7 +374,7 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                   <RowWarnings
                     warnings={item.warnings}
                     tono={
-                      lecturaDudosa || isDuplicate
+                      lecturaDudosa || isDuplicate || (esDevolucion && !devolucionGrabable)
                         ? "rojo"
                         : esDevolucion
                           ? "violeta"

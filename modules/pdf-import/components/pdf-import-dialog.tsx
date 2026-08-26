@@ -412,21 +412,39 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
                         {devoluciones.length} devolución{devoluciones.length > 1 ? "es" : ""} en el documento
                       </p>
                       <p className="text-sm font-medium text-violet-800 dark:text-violet-300">
-                        Estas líneas vienen en <strong>negativo</strong>: la mercancía vuelve al
-                        almacén. Se muestran para que sepas que están, pero{" "}
-                        <strong>no se pueden grabar desde aquí</strong> — regístralas a mano en la
-                        puesta correspondiente.
+                        Estas líneas vienen en <strong>negativo</strong>: anulan una retirada y la
+                        mercancía vuelve al almacén. <strong>Ninguna viene marcada</strong>:
+                        revísalas y márcalas tú.
                       </p>
                       <ul className="space-y-1 text-sm font-semibold text-violet-900 dark:text-violet-200">
-                        {devoluciones.map(({ p, n }) => (
-                          <li key={p.id} className="flex flex-wrap items-center gap-x-2">
-                            <span>Fila {n}</span>
-                            <span className="font-mono text-xs">{p.line.matricula}</span>
-                            {p.line.cliente && <span className="text-xs">{p.line.cliente}</span>}
-                            <span className="tabular-nums">{formatNumber(p.line.cantidad)}</span>
-                          </li>
-                        ))}
+                        {devoluciones.map(({ p, n }) => {
+                          const grabable = !!p.devolucion?.tieneSalidaPositiva && !!p.match;
+                          return (
+                            <li key={p.id} className="flex flex-wrap items-center gap-x-2">
+                              <span>Fila {n}</span>
+                              <span className="font-mono text-xs">{p.line.matricula}</span>
+                              {p.line.cliente && <span className="text-xs">{p.line.cliente}</span>}
+                              <span className="tabular-nums">{formatNumber(p.line.cantidad)}</span>
+                              <span
+                                className={cn(
+                                  "rounded px-1.5 py-0.5 text-[11px] font-bold uppercase text-white",
+                                  grabable ? "bg-violet-600" : "bg-red-600"
+                                )}
+                              >
+                                {grabable
+                                  ? "devuelve pendiente al cliente"
+                                  : "ajústala a mano"}
+                              </span>
+                            </li>
+                          );
+                        })}
                       </ul>
+                      {devoluciones.some((d) => !d.p.devolucion?.tieneSalidaPositiva || !d.p.match) && (
+                        <p className="text-sm font-medium text-red-800 dark:text-red-300">
+                          Las marcadas en rojo llegan <strong>sin la retirada que anulan</strong>, así
+                          que no se sabe contra qué van: ajusta las salidas de ese cliente a mano.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>

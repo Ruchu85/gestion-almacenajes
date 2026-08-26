@@ -168,7 +168,11 @@ export async function createSalidaParcial(
   const parsed = salidaParcialSchema.safeParse(values);
   if (!parsed.success) return { error: parsed.error.errors[0].message };
 
-  if (!forceOverflow && parsed.data.cantidad > cantidadPendiente) {
+  /** Devolución/anulación de retirada: viene en negativo y devuelve pendiente. */
+  const esDevolucion = parsed.data.cantidad < 0;
+
+  // Una devolución nunca "supera lo pendiente": lo aumenta.
+  if (!forceOverflow && !esDevolucion && parsed.data.cantidad > cantidadPendiente) {
     return {
       error: `La cantidad (${parsed.data.cantidad}) supera la pendiente (${cantidadPendiente})`,
     };
@@ -206,6 +210,26 @@ export async function createSalidaParcial(
   if (error) return { error: error.message };
 
   if (parsed.data.matricula) await upsertMatricula(parsed.data.matricula);
+
+  // La mercancía devuelta vuelve a ser stock del almacén. Se registra como
+  // ENTRADA porque outbound_movements exige quantity > 0 y el espejo de la
+  // puesta deja fuera las salidas negativas a propósito. Es el mismo patrón
+  // que usa una desaplicación.
+  if (esDevolucion) {
+    const puestaRefDev = puesta.numero_contrato || parsed.data.puesta_id.slice(0, 8).toUpperCase();
+    const { error: devError } = await supabase.from("inbound_movements").insert({
+      warehouse_id: puesta.warehouse_id,
+      product_id: puesta.product_id,
+      quantity: Math.abs(parsed.data.cantidad),
+      movement_date: parsed.data.fecha_salida,
+      free_days: 1,
+      supplier_id: null,
+      comments: `Devolución de retirada${parsed.data.matricula ? ` — matrícula ${parsed.data.matricula}` : ""} — pta. ${puestaRefDev}`,
+      created_by: user.id,
+    });
+    if (devError) return { error: devError.message };
+    await recalcStorageCostsFrom(supabase, parsed.data.fecha_salida);
+  }
 
   const fechaFinStr = puesta.fecha_fin_plancha as string;
 
@@ -257,6 +281,15 @@ export async function createSalidaParcial(
       .from("puestas_a_disposicion")
       .update({ estado: "finalizada" })
       .eq("id", parsed.data.puesta_id);
+  } else if (esDevolucion) {
+    // La devolución ha vuelto a dejar mercancía pendiente: si la puesta se
+    // había dado por finalizada, hay que reabrirla para que el cliente pueda
+    // retirarla y para que se sigan calculando sus almacenajes.
+    await supabase
+      .from("puestas_a_disposicion")
+      .update({ estado: "abierta" })
+      .eq("id", parsed.data.puesta_id)
+      .eq("estado", "finalizada");
   }
 
   return { data: data as SalidaParcial };

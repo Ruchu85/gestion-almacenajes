@@ -202,7 +202,14 @@ export async function sincronizarPuestaStock(
         cantidad: Number(salida.cantidad),
         esPlancha: true,
       });
-    } else if (salida.tipo === "real" && salida.fecha_salida <= plan.fechaFin) {
+    } else if (
+      salida.tipo === "real" &&
+      // Las salidas NEGATIVAS (devoluciones) no llevan espejo: outbound_movements
+      // exige quantity > 0. Su efecto en el stock se registra como una ENTRADA
+      // al grabarlas, igual que hace una desaplicación.
+      Number(salida.cantidad) > 0 &&
+      salida.fecha_salida <= plan.fechaFin
+    ) {
       deseados.set(salida.id, {
         fecha: salida.fecha_salida,
         cantidad: Number(salida.cantidad),
