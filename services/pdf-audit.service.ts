@@ -265,8 +265,12 @@ export function compareExtractionPasses(
 // CUADRE CONTRA LOS TOTALES DECLARADOS
 // ============================================================
 
-/** Conceptos de total que representan lo retirado en el día. */
-const CONCEPTOS_RETIRADA = /RET\.?\s*D[ÍI]A|RETIRAD|SALIDAS?\s*D[ÍI]A/i;
+/**
+ * Conceptos de total que representan lo retirado. Incluye la fila "Totales" del
+ * "Informe de Salidas a Vendedor", que es la que permite cuadrar ese formato
+ * (y la que delata una línea de devolución perdida).
+ */
+const CONCEPTOS_RETIRADA = /RET\.?\s*D[ÍI]A|RETIRAD|SALIDAS?\s*D[ÍI]A|TOTAL/i;
 
 /**
  * Cuadra la suma de las pesadas extraídas contra el total que el propio
@@ -324,12 +328,17 @@ export function checkPlausibility(
   ids: string[]
 ): Map<string, AuditFinding> {
   const findings = new Map<string, AuditFinding>();
-  if (lines.length < 4) return findings;
 
-  const med = median(lines.map((l) => l.cantidad));
+  // Las devoluciones (negativas) no entran: ni distorsionan la mediana ni tiene
+  // sentido compararlas con ella, y ya van señaladas como línea negativa.
+  const positivas = lines.filter((l) => l.cantidad > 0);
+  if (positivas.length < 4) return findings;
+
+  const med = median(positivas.map((l) => l.cantidad));
   if (med <= 0) return findings;
 
   lines.forEach((line, i) => {
+    if (line.cantidad < 0) return;
     const ratio = line.cantidad / med;
     if (ratio >= 0.25 && ratio <= 2.5) return;
 

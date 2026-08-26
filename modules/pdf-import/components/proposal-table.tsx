@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowRightLeft, CheckCircle2, HelpCircle, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowRightLeft, CheckCircle2, HelpCircle, Undo2, XCircle } from "lucide-react";
 import type { PdfProposalItem, MatchConfidence } from "@/validations/pdf-import.schema";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -48,21 +48,42 @@ const CONFIDENCE_META: Record<
  * los provoca, en vez de en una lista al final de la tabla: así se ve de un
  * vistazo qué filas tienen algo que mirar, y el detalle se abre al pulsar.
  */
+type TonoAviso = "rojo" | "violeta" | "ambar";
+
+const TONO_AVISO: Record<TonoAviso, { boton: string; contador: string; texto: string }> = {
+  rojo: {
+    boton: "bg-red-500 text-white hover:bg-red-600 ring-4 ring-red-500/40 animate-pulse",
+    contador: "bg-red-700",
+    texto: "text-red-700 dark:text-red-300",
+  },
+  violeta: {
+    boton: "bg-violet-500 text-white hover:bg-violet-600 ring-4 ring-violet-500/40",
+    contador: "bg-violet-700",
+    texto: "text-violet-700 dark:text-violet-300",
+  },
+  ambar: {
+    boton: "bg-amber-500 text-white hover:bg-amber-600 ring-2 ring-amber-500/40",
+    contador: "bg-amber-700",
+    texto: "text-amber-800 dark:text-amber-300",
+  },
+};
+
 function RowWarnings({
   warnings,
-  grave,
+  tono,
   numero,
   matricula,
 }: {
   warnings: string[];
-  /** El aviso es de los que no se pueden pasar por alto (duplicado, cifra dudosa). */
-  grave: boolean;
+  tono: TonoAviso;
   numero: number;
   matricula: string;
 }) {
   if (warnings.length === 0) {
     return <span className="sr-only">Sin avisos</span>;
   }
+
+  const estilo = TONO_AVISO[tono];
 
   return (
     <Popover>
@@ -71,18 +92,16 @@ function RowWarnings({
           type="button"
           aria-label={`Ver ${warnings.length} aviso(s) de la fila ${numero}`}
           className={cn(
-            "relative inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors",
-            grave
-              ? "bg-red-500/15 text-red-600 hover:bg-red-500/25 dark:text-red-400 ring-2 ring-red-500/60"
-              : "bg-amber-500/15 text-amber-600 hover:bg-amber-500/25 dark:text-amber-400"
+            "relative inline-flex h-8 w-8 items-center justify-center rounded-full shadow-sm transition-colors",
+            estilo.boton
           )}
         >
-          <AlertTriangle className="h-4 w-4" />
+          <AlertTriangle className="h-5 w-5" />
           {warnings.length > 1 && (
             <span
               className={cn(
-                "absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white",
-                grave ? "bg-red-600" : "bg-amber-600"
+                "absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white ring-2 ring-background",
+                estilo.contador
               )}
             >
               {warnings.length}
@@ -96,13 +115,7 @@ function RowWarnings({
         </p>
         <ul className="space-y-2">
           {warnings.map((w, i) => (
-            <li
-              key={i}
-              className={cn(
-                "flex gap-2 text-xs leading-snug",
-                grave ? "text-red-700 dark:text-red-300" : "text-amber-800 dark:text-amber-300"
-              )}
-            >
+            <li key={i} className={cn("flex gap-2 text-xs leading-snug font-medium", estilo.texto)}>
               <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
               <span>{w}</span>
             </li>
@@ -135,7 +148,9 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
             const isNormal = item.tipo === "normal";
             const hasMatch = !!item.match;
             const normalResolved = isNormal && !!(item.resolvedWarehouseId && item.resolvedProductId);
-            const isSelectable = isNormal ? normalResolved : hasMatch;
+            /** Devolución/abono: el informe la trae en negativo. No se graba desde aquí. */
+            const esDevolucion = item.line.cantidad < 0;
+            const isSelectable = (isNormal ? normalResolved : hasMatch) && !esDevolucion;
             const isEditable = isSelectable;
 
             const meta = CONFIDENCE_META[item.confidence];
@@ -155,14 +170,18 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
               <TableRow
                 key={item.id}
                 className={cn(
-                  !isSelectable && "bg-muted/60 opacity-70",
-                  !isDuplicate && isClean && "bg-green-500/10 dark:bg-green-500/15",
+                  !isSelectable && !esDevolucion && "bg-muted/60 opacity-70",
+                  !isDuplicate && isClean && "bg-green-500/25 dark:bg-green-500/20",
+                  // Devolución: ni error ni salida normal. Color propio para que
+                  // no se confunda con las filas en rojo.
+                  esDevolucion &&
+                    "bg-violet-500/30 dark:bg-violet-500/25 outline outline-2 -outline-offset-2 outline-violet-500",
                   // Duplicado y cifra dudosa mandan sobre cualquier otro estado:
                   // son las dos cosas que el usuario no puede pasar por alto.
                   isDuplicate &&
-                    "bg-red-500/15 dark:bg-red-500/20 outline outline-2 -outline-offset-2 outline-red-500/50",
+                    "bg-red-500/30 dark:bg-red-500/25 outline outline-2 -outline-offset-2 outline-red-500/80",
                   lecturaDudosa &&
-                    "bg-red-500/20 dark:bg-red-500/25 outline outline-2 -outline-offset-2 outline-red-500/70",
+                    "bg-red-500/40 dark:bg-red-500/35 outline outline-[3px] -outline-offset-2 outline-red-500",
                 )}
               >
                 {/* Selección */}
@@ -310,7 +329,12 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
 
                 {/* Tipo / Confianza */}
                 <TableCell>
-                  {isNormal ? (
+                  {esDevolucion ? (
+                    <Badge className="gap-1 border-transparent bg-violet-600 text-white hover:bg-violet-600">
+                      <Undo2 className="h-3 w-3" />
+                      Devolución
+                    </Badge>
+                  ) : isNormal ? (
                     <Badge
                       variant={normalResolved ? "outline" : "destructive"}
                       className={cn("gap-1", normalResolved && "border-brand-500 text-brand-700 dark:text-brand-400")}
@@ -330,7 +354,13 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                 <TableCell className="text-center">
                   <RowWarnings
                     warnings={item.warnings}
-                    grave={lecturaDudosa || isDuplicate}
+                    tono={
+                      lecturaDudosa || isDuplicate
+                        ? "rojo"
+                        : esDevolucion
+                          ? "violeta"
+                          : "ambar"
+                    }
                     numero={index + 1}
                     matricula={item.line.matricula}
                   />

@@ -379,7 +379,7 @@ export function buildProposals(
   lineas: PdfExtractedLine[],
   puestasAbiertas: PuestaSummary[]
 ): PdfProposalItem[] {
-  return lineas.map((line, index) => {
+  const proposals: PdfProposalItem[] = lineas.map((line, index) => {
     const id = `${index}-${line.matricula}-${line.cantidad}`;
     const hasCliente = !!(line.cliente && line.cliente.trim());
 
@@ -519,6 +519,23 @@ export function buildProposals(
       warnings: [...warnings, ...buildWarnings(line, match)],
     };
   });
+
+  // Devoluciones/abonos: el informe las trae en negativo porque la mercancía
+  // vuelve al almacén. Se muestran para que no desaparezcan sin dejar rastro
+  // (antes se descartaban en silencio y el total no cuadraba), pero no se
+  // pueden grabar desde aquí: toda la cadena de salidas parciales, stock y
+  // plancha da por hecho que la cantidad es positiva.
+  for (const proposal of proposals) {
+    if (proposal.line.cantidad < 0) {
+      proposal.warnings.unshift(
+        "Línea NEGATIVA (devolución o abono): la mercancía vuelve al almacén. " +
+          "No se puede grabar desde la importación; anótala a mano en la puesta."
+      );
+      proposal.confidence = "media";
+    }
+  }
+
+  return proposals;
 }
 
 // ============================================================

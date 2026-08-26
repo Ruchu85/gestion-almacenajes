@@ -26,8 +26,12 @@ export const pdfExtractedLineSchema = z.object({
   remolque: z.string().nullable().optional(),
   /** Nº de ticket/pesada, si el documento lo trae (formato "listado de pesadas"). */
   ticket: z.string().nullable().optional(),
-  /** Cantidad de la salida (siempre > 0), ya normalizada a la unidad del sistema. */
-  cantidad: z.number().positive("La cantidad debe ser mayor que 0"),
+  /**
+   * Cantidad de la salida, ya normalizada a la unidad del sistema.
+   * Puede ser NEGATIVA: los informes traen líneas de devolución/abono (albarán
+   * "V…") que restan del total del bloque. Lo único que no tiene sentido es 0.
+   */
+  cantidad: z.number().refine((v) => v !== 0, "La cantidad no puede ser 0"),
   /** Unidad en la que el documento expresa la cantidad ("kg", "tns", …). */
   unidad: z.string().nullable().optional(),
   /**

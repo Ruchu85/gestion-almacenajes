@@ -69,7 +69,10 @@ FORMATO A — "Informe de Salidas a Vendedor"
 Se reconoce porque tiene una tabla de movimientos con una columna "Salidas" y columnas
 "Nombre" y "Contrato".
 ════════════════════════════════════════════════════════════════════════════════
-Extrae ÚNICAMENTE las filas cuya columna "Salidas" tenga un valor mayor que 0.
+Extrae TODAS las filas cuya columna "Salidas" tenga un valor DISTINTO de 0, incluidas las
+NEGATIVAS. Una cantidad negativa (ej. "-13,40") es una devolución o abono: mercancía que vuelve
+al almacén, normalmente con un nº de albarán que empieza por "V" (ej. "VCLA/228"). Cuentan para
+el total del bloque, así que NO se pueden omitir.
 
 - "cliente": el nombre que aparece en la columna "Nombre" de ESA fila (NO el "Propietario" de la
   cabecera). Ejemplo: "DE HEUS NUTRICION ANIMAL".
@@ -87,13 +90,19 @@ Extrae ÚNICAMENTE las filas cuya columna "Salidas" tenga un valor mayor que 0.
 - "ticket": "" (este formato no trae nº de ticket).
 - "cantidad": el valor numérico de la columna "Salidas". Aquí la COMA es el separador DECIMAL
   (ej. "30,08" → 30.08). Devuélvelo como número decimal con punto.
+  CONSERVA EL SIGNO: si la cifra viene con un menos delante ("-13,40"), devuélvela negativa
+  (-13.40). No la conviertas a positiva ni la descartes.
 - "unidad": "tns" (las cantidades de este formato están en toneladas).
 
 Reglas del FORMATO A:
-- Incluye TODAS las filas con "Salidas" > 0, incluso si "Nombre" o "Contrato" están vacíos o son
-  el nombre de la propia empresa. En esos casos devuelve cadena vacía para esos campos.
+- Incluye TODAS las filas con "Salidas" distinto de 0 (positivas Y negativas), incluso si "Nombre"
+  o "Contrato" están vacíos o son el nombre de la propia empresa. En esos casos devuelve cadena
+  vacía para esos campos.
 - Ignora filas de totales, subtotales y existencias.
-- Ignora cualquier fila cuya "Salidas" sea 0 o vacía (esas son entradas, no salidas).
+- Ignora únicamente las filas cuya "Salidas" sea 0 o esté vacía (esas son entradas, no salidas).
+- Comprobación final: la suma de las cantidades que devuelvas, respetando los signos, debe dar
+  exactamente el valor de la fila "Totales" de la columna "Salidas" de ese bloque. Si no cuadra,
+  repasa el bloque: te has dejado alguna fila o has perdido un signo negativo.
 - "resumen_clientes": devuelve una lista VACÍA (este formato no trae bloques de saldos).
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -428,11 +437,12 @@ Localiza la tabla de movimientos de salida del documento:
 
 - Si en cambio el documento es un "Informe de Salidas a Vendedor" (con columnas
   "Nombre", "Contrato" y "Salidas"): extrae una entrada por cada fila cuya
-  columna "Salidas" sea mayor que 0.
+  columna "Salidas" sea DISTINTA de 0, incluidas las NEGATIVAS.
     · "ticket"    = "" (este formato no trae ticket).
     · "matricula" = la matrícula de esa fila.
     · "neto"      = valor de "Salidas". Aquí la COMA es separador DECIMAL:
-                    "30,08" → 30.08.
+                    "30,08" → 30.08. CONSERVA EL SIGNO: "-13,40" → -13.40.
+                    Las negativas son devoluciones y cuentan para el total.
     · "unidad"    = "tns".
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -442,6 +452,9 @@ Rellena "totales" con las cifras de total que el documento imprime de forma
 explícita, una entrada por cada una:
 - "RET. DIA:" → concepto "RET. DIA", con el valor y la mercancía de su bloque.
 - "SALIDAS DIA:" → concepto "SALIDAS DIA".
+- "Totales" (fila final de cada bloque del "Informe de Salidas a Vendedor") →
+  concepto "Totales", tomando el valor de la columna "Salidas" de esa fila y la
+  mercancía de la cabecera del bloque. Hay una por bloque: devuélvelas TODAS.
 - Cualquier otra línea de total de la tabla de movimientos.
 Aplica las MISMAS reglas de separadores que arriba. Si el documento no imprime
 ningún total, devuelve una lista vacía.

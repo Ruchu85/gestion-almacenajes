@@ -3,7 +3,7 @@
 import { useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  FileUp, FileText, Loader2, ScanSearch, X, ArrowLeft, CheckCircle2, TriangleAlert, Info,
+  FileUp, FileText, Loader2, ScanSearch, X, ArrowLeft, CheckCircle2, TriangleAlert, Info, Undo2,
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -34,22 +34,22 @@ const ALERT_STYLES: Record<
   { box: string; icon: typeof TriangleAlert; iconClass: string; text: string }
 > = {
   error: {
-    box: "border-red-500/40 bg-red-50 dark:border-red-500/40 dark:bg-red-950/40",
+    box: "border-2 border-red-600 bg-red-100 dark:border-red-500 dark:bg-red-950/60",
     icon: TriangleAlert,
     iconClass: "text-red-600 dark:text-red-400",
-    text: "text-red-700 dark:text-red-300",
+    text: "text-red-800 dark:text-red-200 font-medium",
   },
   warning: {
-    box: "border-amber-500/40 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-950/40",
+    box: "border-2 border-amber-500 bg-amber-100 dark:border-amber-500 dark:bg-amber-950/60",
     icon: TriangleAlert,
     iconClass: "text-amber-600 dark:text-amber-400",
-    text: "text-amber-800 dark:text-amber-300",
+    text: "text-amber-900 dark:text-amber-200 font-medium",
   },
   info: {
-    box: "border-brand-500/40 bg-brand-50 dark:border-brand-500/40 dark:bg-brand-950/40",
+    box: "border-2 border-brand-500 bg-brand-100 dark:border-brand-500 dark:bg-brand-950/60",
     icon: Info,
     iconClass: "text-brand-600 dark:text-brand-400",
-    text: "text-brand-800 dark:text-brand-300",
+    text: "text-brand-900 dark:text-brand-200",
   },
 };
 
@@ -151,10 +151,11 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
         ...p,
         // Se preseleccionan las filas resueltas sin dudas: puestas con match de
         // confianza alta y salidas directas con almacén y producto identificados.
-        // Si las dos lecturas del PDF discrepan en la cantidad, la fila NUNCA
-        // viene marcada: que sea el usuario quien la valide contra el papel.
+        // NO vienen marcadas: las cifras que las dos lecturas del PDF no leen
+        // igual (las valida el usuario contra el papel) ni las devoluciones en
+        // negativo (no se pueden grabar desde la importación).
         selected:
-          p.verificacion && !p.verificacion.coincide
+          (p.verificacion && !p.verificacion.coincide) || p.line.cantidad < 0
             ? false
             : p.tipo === "normal"
               ? !!(p.resolvedWarehouseId && p.resolvedProductId) && p.warnings.length === 0
@@ -396,18 +397,50 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
           const dudosas = proposals
             .map((p, i) => ({ p, n: i + 1 }))
             .filter(({ p }) => p.verificacion && !p.verificacion.coincide);
+          const devoluciones = proposals
+            .map((p, i) => ({ p, n: i + 1 }))
+            .filter(({ p }) => p.line.cantidad < 0);
           return (
             <div className="space-y-3">
+              {/* Devoluciones: el informe las trae en negativo y no se pueden grabar aquí. */}
+              {devoluciones.length > 0 && (
+                <div className="rounded-lg border-4 border-violet-600 bg-violet-100 dark:bg-violet-950/70 p-4 shadow-lg shadow-violet-500/20">
+                  <div className="flex gap-3">
+                    <Undo2 className="h-7 w-7 shrink-0 text-violet-600 dark:text-violet-400" />
+                    <div className="space-y-2">
+                      <p className="text-base font-extrabold uppercase tracking-wide text-violet-800 dark:text-violet-200">
+                        {devoluciones.length} devolución{devoluciones.length > 1 ? "es" : ""} en el documento
+                      </p>
+                      <p className="text-sm font-medium text-violet-800 dark:text-violet-300">
+                        Estas líneas vienen en <strong>negativo</strong>: la mercancía vuelve al
+                        almacén. Se muestran para que sepas que están, pero{" "}
+                        <strong>no se pueden grabar desde aquí</strong> — regístralas a mano en la
+                        puesta correspondiente.
+                      </p>
+                      <ul className="space-y-1 text-sm font-semibold text-violet-900 dark:text-violet-200">
+                        {devoluciones.map(({ p, n }) => (
+                          <li key={p.id} className="flex flex-wrap items-center gap-x-2">
+                            <span>Fila {n}</span>
+                            <span className="font-mono text-xs">{p.line.matricula}</span>
+                            {p.line.cliente && <span className="text-xs">{p.line.cliente}</span>}
+                            <span className="tabular-nums">{formatNumber(p.line.cantidad)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* Lo más grave primero: cifras que el PDF no ha leído igual dos veces. */}
               {dudosas.length > 0 && (
-                <div className="rounded-lg border-2 border-red-500 bg-red-50 dark:bg-red-950/50 p-4">
+                <div className="rounded-lg border-4 border-red-600 bg-red-100 dark:bg-red-950/70 p-4 shadow-lg shadow-red-500/20">
                   <div className="flex gap-3">
-                    <TriangleAlert className="h-6 w-6 shrink-0 text-red-600 dark:text-red-400" />
+                    <TriangleAlert className="h-7 w-7 shrink-0 text-red-600 dark:text-red-400 animate-pulse" />
                     <div className="space-y-2">
-                      <p className="font-bold text-red-800 dark:text-red-200">
+                      <p className="text-base font-extrabold uppercase tracking-wide text-red-800 dark:text-red-200">
                         Revisa {dudosas.length} cantidad{dudosas.length > 1 ? "es" : ""} antes de grabar
                       </p>
-                      <p className="text-sm text-red-700 dark:text-red-300">
+                      <p className="text-sm font-medium text-red-800 dark:text-red-300">
                         El documento se ha leído dos veces y estas cifras <strong>no han salido
                         iguales</strong>, así que alguna puede estar mal interpretada. Se han dejado{" "}
                         <strong>sin marcar</strong> a propósito: compruébalas en el PDF original y
@@ -443,9 +476,9 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
                 const conAvisos = proposals.filter((p) => p.warnings.length > 0).length;
                 if (conAvisos === 0) return null;
                 return (
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm">
-                    <TriangleAlert className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                    <span className="font-medium text-amber-900 dark:text-amber-200">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border-2 border-amber-500 bg-amber-100 dark:bg-amber-950/60 px-3 py-2 text-sm">
+                    <TriangleAlert className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <span className="font-bold text-amber-900 dark:text-amber-200">
                       {conAvisos} fila{conAvisos > 1 ? "s" : ""} con avisos
                     </span>
                     {duplicadas > 0 && (
@@ -462,10 +495,10 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
               })()}
               {alerts.length > 0 && <ResumenAlerts alerts={alerts} />}
               {unmatchedItems.length > 0 && (
-                <div className="flex gap-3 rounded-lg border border-red-500/40 bg-red-50 dark:border-red-500/40 dark:bg-red-950/40 p-3">
-                  <TriangleAlert className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400 mt-0.5" />
-                  <div className="text-sm text-red-700 dark:text-red-300">
-                    <p className="font-semibold text-red-800 dark:text-red-200">
+                <div className="flex gap-3 rounded-lg border-2 border-red-600 bg-red-100 dark:border-red-500 dark:bg-red-950/60 p-3">
+                  <TriangleAlert className="h-6 w-6 shrink-0 text-red-600 dark:text-red-400 mt-0.5" />
+                  <div className="text-sm text-red-800 dark:text-red-300">
+                    <p className="font-bold text-red-900 dark:text-red-200">
                       {unmatchedItems.length} línea{unmatchedItems.length > 1 ? "s" : ""} del PDF no se pueden procesar
                     </p>
                     <p className="mt-0.5 text-xs text-red-700/90 dark:text-red-300/90">
