@@ -125,6 +125,19 @@ export interface PdfProposalItem {
   /** Producto resuelto desde BD para tipo='normal'. */
   resolvedProductId?: string | null;
   resolvedProductName?: string | null;
+  /**
+   * Solo para tipo='normal': stock físico actual (entradas − salidas, todo el
+   * histórico) del producto resuelto en el almacén resuelto. Null si no se
+   * pudo calcular (falta resolver almacén o producto).
+   */
+  stockDisponible?: number | null;
+  /**
+   * Solo para tipo='normal': la cantidad de la línea supera el stock físico
+   * disponible (incluye el caso de stock 0). No se puede grabar como salida
+   * directa sin stock que descontar; el usuario tiene que resolverlo primero
+   * en el sistema.
+   */
+  stockInsuficiente?: boolean;
 }
 
 /**

@@ -191,6 +191,58 @@ export async function analyzePdfAction(
     }
   }
 
+  // 6.b Comprobar stock físico para las salidas directas resueltas. Que el
+  //     nombre del almacén/producto encaje no basta: si en Nogueira no hay
+  //     stock de DDG DE MAIZ, proponerla como salida directa la daría por
+  //     buena sin poder llegar a grabarse nunca (la BD no admite stock
+  //     negativo). Stock = entradas − salidas de todo el histórico, igual que
+  //     valida MovementsService.create() al dar de alta una salida a mano.
+  const normalesResueltas = proposals.filter(
+    (p) => p.tipo === "normal" && p.resolvedWarehouseId && p.resolvedProductId
+  );
+  if (normalesResueltas.length > 0) {
+    const warehouseIds = [...new Set(normalesResueltas.map((p) => p.resolvedWarehouseId!))];
+    const productIds = [...new Set(normalesResueltas.map((p) => p.resolvedProductId!))];
+
+    const [inboundRes, outboundRes] = await Promise.all([
+      supabase
+        .from("inbound_movements")
+        .select("warehouse_id, product_id, quantity")
+        .in("warehouse_id", warehouseIds)
+        .in("product_id", productIds),
+      supabase
+        .from("outbound_movements")
+        .select("warehouse_id, product_id, quantity")
+        .in("warehouse_id", warehouseIds)
+        .in("product_id", productIds),
+    ]);
+
+    const stockPorPar = new Map<string, number>();
+    const key = (whId: string, prId: string) => `${whId}::${prId}`;
+    for (const m of inboundRes.data ?? []) {
+      const k = key(m.warehouse_id, m.product_id);
+      stockPorPar.set(k, (stockPorPar.get(k) ?? 0) + Number(m.quantity));
+    }
+    for (const m of outboundRes.data ?? []) {
+      const k = key(m.warehouse_id, m.product_id);
+      stockPorPar.set(k, (stockPorPar.get(k) ?? 0) - Number(m.quantity));
+    }
+
+    for (const proposal of normalesResueltas) {
+      const disponible = stockPorPar.get(key(proposal.resolvedWarehouseId!, proposal.resolvedProductId!)) ?? 0;
+      proposal.stockDisponible = disponible;
+
+      if (proposal.line.cantidad > disponible) {
+        proposal.stockInsuficiente = true;
+        proposal.warnings.push(
+          disponible <= 0
+            ? `No hay stock de "${proposal.resolvedProductName}" en ${proposal.resolvedWarehouseName}. No se puede registrar esta salida directa.`
+            : `Solo quedan ${formatNumber(disponible)} de "${proposal.resolvedProductName}" en ${proposal.resolvedWarehouseName}, y la línea pide ${formatNumber(proposal.line.cantidad)}. No se puede registrar esta salida directa.`
+        );
+      }
+    }
+  }
+
   // 7. Detección de duplicados (requiere DB): misma puesta + fecha + matrícula + cantidad
   const puestaIds = [
     ...new Set(proposals.filter((p) => p.match).map((p) => p.match!.puesta_id)),

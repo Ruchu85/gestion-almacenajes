@@ -147,7 +147,10 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
           {items.map((item, index) => {
             const isNormal = item.tipo === "normal";
             const hasMatch = !!item.match;
-            const normalResolved = isNormal && !!(item.resolvedWarehouseId && item.resolvedProductId);
+            /** Salida directa sin stock físico suficiente en el almacén resuelto. */
+            const sinStock = isNormal && !!item.stockInsuficiente;
+            const normalResolved =
+              isNormal && !!(item.resolvedWarehouseId && item.resolvedProductId) && !sinStock;
             /** Devolución: el informe la trae en negativo (anula una retirada). */
             const esDevolucion = item.line.cantidad < 0;
             // Solo se puede grabar la devolución que anula una salida presente en
@@ -188,6 +191,9 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                   // Devolución suelta: hay que ajustarla a mano, va en rojo.
                   esDevolucion && !devolucionGrabable &&
                     "bg-red-500/30 dark:bg-red-500/25 outline outline-2 -outline-offset-2 outline-red-500",
+                  // Sin stock físico para la salida directa: tampoco se puede grabar.
+                  sinStock &&
+                    "bg-red-500/30 dark:bg-red-500/25 outline outline-2 -outline-offset-2 outline-red-500/80",
                   // Duplicado y cifra dudosa mandan sobre cualquier otro estado:
                   // son las dos cosas que el usuario no puede pasar por alto.
                   isDuplicate &&
@@ -252,6 +258,16 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                         </div>
                         <div className="text-xs text-muted-foreground">
                           {item.resolvedProductName} · Salida directa
+                        </div>
+                      </div>
+                    ) : sinStock ? (
+                      <div>
+                        <div className="font-medium leading-tight text-red-700 dark:text-red-400">
+                          {item.resolvedWarehouseName}
+                        </div>
+                        <div className="text-xs text-red-600 dark:text-red-400">
+                          Sin stock de {item.resolvedProductName}
+                          {" "}({formatNumber(item.stockDisponible ?? 0)} disponible)
                         </div>
                       </div>
                     ) : (
