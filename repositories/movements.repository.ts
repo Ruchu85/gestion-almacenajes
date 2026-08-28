@@ -29,7 +29,9 @@ const OUTBOUND_WITH_RELATIONS = `
   *,
   warehouse:warehouses(id, code, name),
   product:products(id, code, name, unit),
-  customer:customers(id, name)
+  customer:customers(id, name),
+  puesta:puestas_a_disposicion(id, numero_contrato),
+  salida_parcial:salidas_parciales(id, matricula)
 `;
 
 export class InboundMovementsRepository extends BaseRepository<

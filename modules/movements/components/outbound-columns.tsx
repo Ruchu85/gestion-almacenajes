@@ -65,7 +65,16 @@ export function getOutboundColumns(
       header: "Matrícula",
       cell: ({ row }) => (
         <span className="font-mono text-sm">
-          {(row.getValue("matricula") as string | null) ?? "-"}
+          {row.original.matricula ?? row.original.salida_parcial?.matricula ?? "-"}
+        </span>
+      ),
+    },
+    {
+      id: "pta_disposicion",
+      header: "Nº pta. a disposición",
+      cell: ({ row }) => (
+        <span className="font-mono text-sm">
+          {row.original.puesta?.numero_contrato ?? "-"}
         </span>
       ),
     },

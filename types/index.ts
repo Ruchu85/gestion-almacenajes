@@ -31,6 +31,10 @@ export type OutboundMovementWithRelations = OutboundMovement & {
   warehouse: Pick<Warehouse, "id" | "code" | "name">;
   product: Pick<Product, "id" | "code" | "name" | "unit">;
   customer: Pick<Customer, "id" | "name"> | null;
+  /** Puesta a disposición que originó la salida (si viene de una). */
+  puesta: Pick<PuestaADisposicion, "id" | "numero_contrato"> | null;
+  /** Salida parcial concreta que refleja este movimiento (si aplica). */
+  salida_parcial: Pick<SalidaParcial, "id" | "matricula"> | null;
 };
 
 export type StorageCostWithRelations = StorageCost & {

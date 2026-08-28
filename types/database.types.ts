@@ -323,6 +323,20 @@ export interface Database {
             isOneToOne: false;
             referencedRelation: "customers";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "outbound_movements_puesta_id_fkey";
+            columns: ["puesta_id"];
+            isOneToOne: false;
+            referencedRelation: "puestas_a_disposicion";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "outbound_movements_salida_parcial_id_fkey";
+            columns: ["salida_parcial_id"];
+            isOneToOne: false;
+            referencedRelation: "salidas_parciales";
+            referencedColumns: ["id"];
           }
         ];
       };

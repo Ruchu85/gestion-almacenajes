@@ -126,7 +126,8 @@ export default function OutboundMovementsPage() {
           m.product.code.toLowerCase().includes(q) ||
           (m.customer?.name ?? "").toLowerCase().includes(q) ||
           (m.comments ?? "").toLowerCase().includes(q) ||
-          (m.matricula ?? "").toLowerCase().includes(q)
+          (m.matricula ?? m.salida_parcial?.matricula ?? "").toLowerCase().includes(q) ||
+          (m.puesta?.numero_contrato ?? "").toLowerCase().includes(q)
       );
     }
     if (filterWarehouse !== "all") data = data.filter((m) => m.warehouse_id === filterWarehouse);
@@ -195,7 +196,8 @@ export default function OutboundMovementsPage() {
       cliente: m.customer?.name ?? "",
       cantidad: Number(m.quantity),
       unidad: m.product.unit,
-      matricula: m.matricula ?? "",
+      matricula: m.matricula ?? m.salida_parcial?.matricula ?? "",
+      pta_disposicion: m.puesta?.numero_contrato ?? "",
       comentarios: m.comments ?? "",
     }));
 
@@ -207,6 +209,7 @@ export default function OutboundMovementsPage() {
     { key: "cantidad" as const, header: "Cantidad" },
     { key: "unidad" as const, header: "Unidad" },
     { key: "matricula" as const, header: "Matrícula" },
+    { key: "pta_disposicion" as const, header: "Nº pta. a disposición" },
     { key: "comentarios" as const, header: "Comentarios" },
   ];
 

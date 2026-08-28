@@ -373,6 +373,7 @@ export async function confirmSalidasNormalesAction(
       free_days: 0,
       customer_id: null,
       comments: `Salida propia${item.matricula ? ` — matrícula: ${item.matricula}` : ""}${item.comentarios ? ` — ${item.comentarios}` : ""} · Importada desde ${item.origen ?? "PDF"}`,
+      matricula: item.matricula ?? null,
       from_puesta: false,
       created_by: user.id,
     });
