@@ -491,11 +491,26 @@ export function buildProposals(
       );
     }
 
+    // El PDF trae el nº de contrato COMPLETO (con línea/versión), no solo el
+    // código base — a diferencia del listado de pesadas (Formato B), que
+    // nunca imprime el sufijo y por eso el cruce por base es allí lo normal.
+    // Aquí sí hay algo con lo que comparar, así que si el emparejamiento ha
+    // tenido que caer al código base es porque el contrato exacto del PDF
+    // ("D02600642_10-1") NO coincide con el de la puesta propuesta
+    // ("D02600642_20-1", por ejemplo) — dos contratos reales y distintos que
+    // solo comparten el número de expediente. Nunca se da por buena en verde
+    // sin que el usuario la revise, tenga o no otras candidatas.
+    const contratoCompletoSinCoincidencia = matchedByBase && lineContrato !== lineBase;
+
     if (ordered.length > 1) {
       warnings.push(
         matchedByBase
           ? `El PDF solo trae el contrato base "${lineBase}" y hay ${ordered.length} puestas abiertas con ese código. Se propone la más antigua con pendiente suficiente; revísala.`
           : "Varias puestas abiertas encajan con esta línea. Revisa la seleccionada."
+      );
+    } else if (contratoCompletoSinCoincidencia) {
+      warnings.push(
+        `El nº de contrato del PDF ("${line.numero_puesta}") no coincide con el de ninguna puesta abierta; se ha emparejado solo por el código base con "${match.numero_contrato}". Verifica que es la puesta correcta.`
       );
     }
 
@@ -507,7 +522,9 @@ export function buildProposals(
     if (seleccionables.length > 1) candidates = seleccionables.map(toRef);
 
     confidence =
-      clienteOk && !conflicto && ordered.length === 1 && matchScore >= 2 ? "alta" : "media";
+      clienteOk && !conflicto && !contratoCompletoSinCoincidencia && ordered.length === 1 && matchScore >= 2
+        ? "alta"
+        : "media";
 
     return {
       id,
