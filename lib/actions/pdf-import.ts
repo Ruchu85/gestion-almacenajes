@@ -25,6 +25,17 @@ import {
 
 const MAX_PDF_BYTES = 15 * 1024 * 1024; // 15 MB
 const GEMINI_MODEL_SALIDAS = "gemini-3.5-flash";
+// La pasada de verificación usa un modelo distinto A PROPÓSITO: gemini-3.5-flash
+// tiene un cupo gratuito muy escaso (20 peticiones/DÍA para todo el proyecto,
+// confirmado en el propio error de cuota de Google), y la doble lectura ya
+// gastaba 2 de esas 20 por cada PDF. Al mover la verificación a 2.5-flash
+// (cupo mucho más holgado) la extracción principal —la que de verdad se puede
+// grabar— deja de competir por ese cupo tan justo con su propio control de
+// calidad. Además lleva thinkingBudget: 0: en pruebas reales fue un 58% más
+// rápida sin perder exactitud: es una relectura mecánica de cifras, no una
+// tarea que necesite razonamiento extendido.
+const GEMINI_MODEL_VERIFICACION = "gemini-2.5-flash";
+const GEMINI_THINKING_VERIFICACION = 0;
 
 // ============================================================
 // ANALIZAR — extrae del PDF y propone (NUNCA graba)
@@ -54,7 +65,7 @@ export async function analyzePdfAction(
   const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
   const [principal, verificacion] = await Promise.allSettled([
     extractSalidasFromPdf(base64, GEMINI_MODEL_SALIDAS),
-    extractPesadasVerification(base64, GEMINI_MODEL_SALIDAS),
+    extractPesadasVerification(base64, GEMINI_MODEL_VERIFICACION, GEMINI_THINKING_VERIFICACION),
   ]);
 
   if (principal.status === "rejected") {

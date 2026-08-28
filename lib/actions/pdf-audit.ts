@@ -35,6 +35,14 @@ import { formatNumber } from "@/utils/format";
 
 const MAX_PDF_BYTES = 15 * 1024 * 1024; // 15 MB
 const GEMINI_MODEL_SALIDAS = "gemini-3.5-flash";
+// Igual que en lib/actions/pdf-import.ts: gemini-3.5-flash tiene un cupo
+// gratuito de solo 20 peticiones/DÍA para todo el proyecto (confirmado en el
+// error de cuota real de Google), y esta auditoría comparte ese cupo con la
+// importación. Mover la verificación a 2.5-flash (cupo mucho más holgado)
+// libera esa presión, y thinkingBudget: 0 la hace ~58% más rápida sin perder
+// exactitud en pruebas reales, al ser una relectura mecánica de cifras.
+const GEMINI_MODEL_VERIFICACION = "gemini-2.5-flash";
+const GEMINI_THINKING_VERIFICACION = 0;
 
 /**
  * Días que se amplía a cada lado la ventana de fechas del PDF al buscar los
@@ -107,7 +115,7 @@ export async function auditPdfAction(formData: FormData): Promise<AuditFileRepor
   // real produciría); la segunda es una relectura enfocada solo en cifras.
   const [principal, verificacion] = await Promise.allSettled([
     extractSalidasFromPdf(base64, GEMINI_MODEL_SALIDAS),
-    extractPesadasVerification(base64, GEMINI_MODEL_SALIDAS),
+    extractPesadasVerification(base64, GEMINI_MODEL_VERIFICACION, GEMINI_THINKING_VERIFICACION),
   ]);
 
   if (principal.status === "rejected") {

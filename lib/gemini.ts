@@ -216,7 +216,11 @@ async function callGemini(
   pdfBase64: string,
   prompt: string,
   responseSchema: unknown,
-  model: string = GEMINI_MODEL
+  model: string = GEMINI_MODEL,
+  // undefined = no tocar el default del modelo (lo que hace hoy en producción).
+  // Un número fija el presupuesto de "thinking" (0 lo desactiva). Parámetro de
+  // medición: ver el experimento en el commit que lo introduce.
+  thinkingBudget?: number
 ): Promise<unknown> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -239,6 +243,7 @@ async function callGemini(
       temperature: 0,
       responseMimeType: "application/json",
       responseSchema,
+      ...(thinkingBudget !== undefined ? { thinkingConfig: { thinkingBudget } } : {}),
     },
   };
 
@@ -358,8 +363,12 @@ function parseGeminiBody(bodyJson: unknown): unknown {
  * Envía un PDF (en base64) a Gemini y devuelve el JSON crudo extraído.
  * Lanza Error con un mensaje legible si la llamada falla.
  */
-export async function extractSalidasFromPdf(pdfBase64: string, model?: string): Promise<unknown> {
-  return callGemini(pdfBase64, EXTRACTION_PROMPT, RESPONSE_SCHEMA, model);
+export async function extractSalidasFromPdf(
+  pdfBase64: string,
+  model?: string,
+  thinkingBudget?: number
+): Promise<unknown> {
+  return callGemini(pdfBase64, EXTRACTION_PROMPT, RESPONSE_SCHEMA, model, thinkingBudget);
 }
 
 // ============================================================
@@ -532,7 +541,8 @@ Devuelve el resultado siguiendo el esquema JSON proporcionado.
  */
 export async function extractPesadasVerification(
   pdfBase64: string,
-  model?: string
+  model?: string,
+  thinkingBudget?: number
 ): Promise<unknown> {
-  return callGemini(pdfBase64, VERIFICATION_PROMPT, VERIFICATION_RESPONSE_SCHEMA, model);
+  return callGemini(pdfBase64, VERIFICATION_PROMPT, VERIFICATION_RESPONSE_SCHEMA, model, thinkingBudget);
 }
