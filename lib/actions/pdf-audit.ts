@@ -42,7 +42,11 @@ const GEMINI_MODEL_SALIDAS = "gemini-3.5-flash";
 // libera esa presión, y thinkingBudget: 0 la hace ~58% más rápida sin perder
 // exactitud en pruebas reales, al ser una relectura mecánica de cifras.
 const GEMINI_MODEL_VERIFICACION = "gemini-2.5-flash";
-const GEMINI_THINKING_VERIFICACION = 0;
+const GEMINI_OPTIONS_VERIFICACION = { thinkingBudget: 0 };
+// Igual que en pdf-import.ts: más margen que el genérico de 60s/3 intentos
+// para la extracción principal, porque un PDF real de varias páginas puede
+// tardar más de 60s en generarse con "thinking" activado por defecto.
+const GEMINI_OPTIONS_EXTRACCION = { fetchTimeoutMs: 100_000, maxAttempts: 2 };
 
 /**
  * Días que se amplía a cada lado la ventana de fechas del PDF al buscar los
@@ -114,8 +118,8 @@ export async function auditPdfAction(formData: FormData): Promise<AuditFileRepor
   // La primera es exactamente la de producción (para auditar lo que el flujo
   // real produciría); la segunda es una relectura enfocada solo en cifras.
   const [principal, verificacion] = await Promise.allSettled([
-    extractSalidasFromPdf(base64, GEMINI_MODEL_SALIDAS),
-    extractPesadasVerification(base64, GEMINI_MODEL_VERIFICACION, GEMINI_THINKING_VERIFICACION),
+    extractSalidasFromPdf(base64, GEMINI_MODEL_SALIDAS, GEMINI_OPTIONS_EXTRACCION),
+    extractPesadasVerification(base64, GEMINI_MODEL_VERIFICACION, GEMINI_OPTIONS_VERIFICACION),
   ]);
 
   if (principal.status === "rejected") {

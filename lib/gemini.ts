@@ -212,16 +212,23 @@ export interface GeminiRawExtraction {
  * Llama a Gemini con un PDF (base64), un prompt y un responseSchema, y
  * devuelve el JSON crudo ya parseado. Centraliza el manejo de errores HTTP.
  */
+export interface GeminiCallOptions {
+  /** undefined = no tocar el default del modelo. 0 desactiva el "thinking". */
+  thinkingBudget?: number;
+  /** Timeout de cada intento individual. Por defecto 60s (ver más abajo). */
+  fetchTimeoutMs?: number;
+  /** Nº de intentos. Por defecto 3. */
+  maxAttempts?: number;
+}
+
 async function callGemini(
   pdfBase64: string,
   prompt: string,
   responseSchema: unknown,
   model: string = GEMINI_MODEL,
-  // undefined = no tocar el default del modelo (lo que hace hoy en producción).
-  // Un número fija el presupuesto de "thinking" (0 lo desactiva). Parámetro de
-  // medición: ver el experimento en el commit que lo introduce.
-  thinkingBudget?: number
+  options: GeminiCallOptions = {}
 ): Promise<unknown> {
+  const { thinkingBudget, fetchTimeoutMs = 60_000, maxAttempts = 3 } = options;
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error(
@@ -251,7 +258,6 @@ async function callGemini(
   // cuota, 503 modelo sobrecargado, o que Gemini se quede sin responder). El
   // resto de errores no se reintentan.
   const RETRYABLE = new Set([429, 503]);
-  const MAX_ATTEMPTS = 3;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   // fetch() no tiene timeout propio: si Gemini se queda sin responder (la
@@ -260,17 +266,22 @@ async function callGemini(
   // actuar. La petición se queda "colgada" hasta que la plataforma la mata a
   // los 5 minutos (el límite duro de Vercel), y el usuario ve el diálogo
   // dando vueltas todo ese tiempo. Por eso cada intento lleva su propio plazo:
-  // pasado, se aborta y se trata igual que un 503 (reintentable).
-  const FETCH_TIMEOUT_MS = 60_000; // 60 s por intento
-  // Techo total del conjunto de reintentos: deja margen de sobra bajo los 300 s
-  // de Vercel, incluso con dos llamadas de este tipo en paralelo (extracción +
-  // verificación) y el resto de la acción (consultas a la base de datos) por
-  // detrás.
-  const TOTAL_BUDGET_MS = 150_000;
+  // pasado, se aborta y se trata igual que un 503 (reintentable). El valor
+  // exacto (fetchTimeoutMs) lo decide quien llama: una extracción sobre un PDF
+  // grande con "thinking" activado necesita más margen que una relectura
+  // rápida y ya recortada.
+  //
+  // Techo total del conjunto de reintentos: deja margen de sobra bajo los
+  // 300 s de Vercel, incluso con dos llamadas de este tipo en paralelo
+  // (extracción + verificación) y el resto de la acción (consultas a la base
+  // de datos) por detrás. Se deriva del propio fetchTimeoutMs en vez de un
+  // número fijo, para que quien pida un timeout más largo no se quede sin
+  // presupuesto para completar sus propios reintentos.
+  const TOTAL_BUDGET_MS = fetchTimeoutMs * maxAttempts + 20_000;
   const startedAt = Date.now();
 
   let response: Response | null = null;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     if (Date.now() - startedAt > TOTAL_BUDGET_MS) {
       throw new Error(
         "Gemini está tardando demasiado en responder. Reinténtalo en unos minutos."
@@ -278,7 +289,7 @@ async function callGemini(
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
     let timedOut = false;
     let bodyJson: unknown;
 
@@ -300,13 +311,13 @@ async function callGemini(
       timedOut = (err as Error).name === "AbortError";
       // Error de red, timeout, o corte a media lectura: reintentar si quedan
       // intentos.
-      if (attempt < MAX_ATTEMPTS) {
+      if (attempt < maxAttempts) {
         await sleep(attempt * 1200);
         continue;
       }
       throw timedOut
         ? new Error(
-            `Gemini no respondió en ${FETCH_TIMEOUT_MS / 1000}s tras ${MAX_ATTEMPTS} intentos. Puede que el PDF sea muy grande o el servicio esté lento; reinténtalo.`
+            `Gemini no respondió en ${fetchTimeoutMs / 1000}s tras ${maxAttempts} intentos. Puede que el PDF sea muy grande o el servicio esté lento; reinténtalo.`
           )
         : new Error(`No se pudo contactar con Gemini: ${(err as Error).message}`);
     } finally {
@@ -318,7 +329,7 @@ async function callGemini(
     }
 
     // Respuesta de error: reintentar solo los transitorios.
-    if (RETRYABLE.has(response.status) && attempt < MAX_ATTEMPTS) {
+    if (RETRYABLE.has(response.status) && attempt < maxAttempts) {
       await sleep(attempt * 1500); // 1.5s, luego 3s
       continue;
     }
@@ -366,9 +377,9 @@ function parseGeminiBody(bodyJson: unknown): unknown {
 export async function extractSalidasFromPdf(
   pdfBase64: string,
   model?: string,
-  thinkingBudget?: number
+  options?: GeminiCallOptions
 ): Promise<unknown> {
-  return callGemini(pdfBase64, EXTRACTION_PROMPT, RESPONSE_SCHEMA, model, thinkingBudget);
+  return callGemini(pdfBase64, EXTRACTION_PROMPT, RESPONSE_SCHEMA, model, options);
 }
 
 // ============================================================
@@ -542,7 +553,7 @@ Devuelve el resultado siguiendo el esquema JSON proporcionado.
 export async function extractPesadasVerification(
   pdfBase64: string,
   model?: string,
-  thinkingBudget?: number
+  options?: GeminiCallOptions
 ): Promise<unknown> {
-  return callGemini(pdfBase64, VERIFICATION_PROMPT, VERIFICATION_RESPONSE_SCHEMA, model, thinkingBudget);
+  return callGemini(pdfBase64, VERIFICATION_PROMPT, VERIFICATION_RESPONSE_SCHEMA, model, options);
 }
