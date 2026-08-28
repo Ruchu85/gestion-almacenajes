@@ -243,29 +243,74 @@ async function callGemini(
   };
 
   // Reintentos con backoff ante errores transitorios (429 saturación de
-  // cuota, 503 modelo sobrecargado). El resto de errores no se reintentan.
+  // cuota, 503 modelo sobrecargado, o que Gemini se quede sin responder). El
+  // resto de errores no se reintentan.
   const RETRYABLE = new Set([429, 503]);
   const MAX_ATTEMPTS = 3;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+  // fetch() no tiene timeout propio: si Gemini se queda sin responder (la
+  // conexión se abre pero nunca llega la respuesta), la promesa no se resuelve
+  // NI se rechaza, así que el bucle de reintentos de abajo nunca llega a
+  // actuar. La petición se queda "colgada" hasta que la plataforma la mata a
+  // los 5 minutos (el límite duro de Vercel), y el usuario ve el diálogo
+  // dando vueltas todo ese tiempo. Por eso cada intento lleva su propio plazo:
+  // pasado, se aborta y se trata igual que un 503 (reintentable).
+  const FETCH_TIMEOUT_MS = 60_000; // 60 s por intento
+  // Techo total del conjunto de reintentos: deja margen de sobra bajo los 300 s
+  // de Vercel, incluso con dos llamadas de este tipo en paralelo (extracción +
+  // verificación) y el resto de la acción (consultas a la base de datos) por
+  // detrás.
+  const TOTAL_BUDGET_MS = 150_000;
+  const startedAt = Date.now();
+
   let response: Response | null = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    if (Date.now() - startedAt > TOTAL_BUDGET_MS) {
+      throw new Error(
+        "Gemini está tardando demasiado en responder. Reinténtalo en unos minutos."
+      );
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    let timedOut = false;
+    let bodyJson: unknown;
+
     try {
       response = await fetch(`${GEMINI_ENDPOINT(model)}?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
+        signal: controller.signal,
       });
+
+      // Se lee el cuerpo bajo el mismo `signal`: si Gemini manda las
+      // cabeceras pero se para a medio enviar el JSON, el timeout corta
+      // también esa espera, no solo la conexión inicial.
+      if (response.ok) {
+        bodyJson = await response.json();
+      }
     } catch (err) {
-      // Error de red: reintentar si quedan intentos.
+      timedOut = (err as Error).name === "AbortError";
+      // Error de red, timeout, o corte a media lectura: reintentar si quedan
+      // intentos.
       if (attempt < MAX_ATTEMPTS) {
         await sleep(attempt * 1200);
         continue;
       }
-      throw new Error(`No se pudo contactar con Gemini: ${(err as Error).message}`);
+      throw timedOut
+        ? new Error(
+            `Gemini no respondió en ${FETCH_TIMEOUT_MS / 1000}s tras ${MAX_ATTEMPTS} intentos. Puede que el PDF sea muy grande o el servicio esté lento; reinténtalo.`
+          )
+        : new Error(`No se pudo contactar con Gemini: ${(err as Error).message}`);
+    } finally {
+      clearTimeout(timeout);
     }
 
-    if (response.ok) break;
+    if (response.ok) {
+      return parseGeminiBody(bodyJson);
+    }
 
     // Respuesta de error: reintentar solo los transitorios.
     if (RETRYABLE.has(response.status) && attempt < MAX_ATTEMPTS) {
@@ -283,11 +328,12 @@ async function callGemini(
     throw new Error(`Gemini devolvió ${response.status}: ${detail.slice(0, 300)}`);
   }
 
-  if (!response) {
-    throw new Error("No se pudo obtener respuesta de Gemini tras varios intentos.");
-  }
+  throw new Error("No se pudo obtener respuesta de Gemini tras varios intentos.");
+}
 
-  const json = (await response.json()) as {
+/** Valida y extrae el JSON de la respuesta ya leída de Gemini. */
+function parseGeminiBody(bodyJson: unknown): unknown {
+  const json = bodyJson as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
     promptFeedback?: { blockReason?: string };
   };
