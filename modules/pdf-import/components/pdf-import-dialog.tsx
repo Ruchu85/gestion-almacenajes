@@ -91,6 +91,13 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  /**
+   * Gemini ha fallado y hay un motor alternativo disponible. No se usa solo:
+   * se ofrece, y solo se lee con él si el usuario pulsa el botón.
+   */
+  const [ofreceMistral, setOfreceMistral] = useState(false);
+  /** El documento en pantalla lo ha leído el motor alternativo. */
+  const [leidoConMistral, setLeidoConMistral] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [proposals, setProposals] = useState<EditableProposal[] | null>(null);
@@ -101,6 +108,8 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
     setFile(null);
     setIsDragging(false);
     setUploadError(null);
+    setOfreceMistral(false);
+    setLeidoConMistral(false);
     setAnalyzing(false);
     setConfirming(false);
     setProposals(null);
@@ -136,18 +145,23 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
   }
 
   // ── Analizar ─────────────────────────────────────────────
-  async function handleAnalyze() {
+  async function handleAnalyze(motor: "gemini" | "mistral" = "gemini") {
     if (!file) return;
     setAnalyzing(true);
     setUploadError(null);
+    setOfreceMistral(false);
     try {
       const formData = new FormData();
       formData.append("file", file);
+      // Solo se manda el motor alternativo cuando el usuario lo ha aceptado.
+      if (motor === "mistral") formData.append("motor", "mistral");
       const res = await analyzePdfAction(formData);
       if (res.error || !res.data) {
         setUploadError(res.error ?? "No se pudo analizar el documento.");
+        setOfreceMistral(!!res.puedeUsarMistral);
         return;
       }
+      setLeidoConMistral(motor === "mistral");
       const editable: EditableProposal[] = res.data.proposals.map((p) => ({
         ...p,
         // Se preseleccionan las filas resueltas sin dudas: puestas con match de
@@ -405,9 +419,53 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
             </div>
 
             {uploadError && (
-              <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-1.5">
-                <X className="h-4 w-4" /> {uploadError}
+              <p className="text-sm text-red-600 dark:text-red-400 flex items-start gap-1.5">
+                <X className="h-4 w-4 shrink-0 mt-0.5" /> <span>{uploadError}</span>
               </p>
+            )}
+
+            {/* Gemini ha fallado. NO se cambia de motor por iniciativa propia:
+                se ofrece y decide el usuario, porque leer con el alternativo
+                deja el documento sin la segunda lectura de verificación. */}
+            {ofreceMistral && (
+              <div className="rounded-lg border-2 border-amber-500 bg-amber-100 dark:bg-amber-950/60 p-3 space-y-2">
+                <div className="flex gap-2">
+                  <TriangleAlert className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                  <div className="text-sm text-amber-900 dark:text-amber-200">
+                    <p className="font-bold">¿Probamos con el motor alternativo?</p>
+                    <p className="mt-1">
+                      Gemini no ha podido leer el documento. Hay un segundo motor de otro
+                      proveedor que puede intentarlo, pero ten en cuenta que{" "}
+                      <strong>sus cantidades no se contrastan con una segunda lectura</strong>,
+                      así que habrá que revisarlas todas contra el papel.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 pl-7">
+                  <Button
+                    size="sm"
+                    onClick={() => handleAnalyze("mistral")}
+                    disabled={analyzing}
+                    className="bg-amber-600 text-white hover:bg-amber-700"
+                  >
+                    {analyzing ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <ScanSearch className="mr-2 h-4 w-4" />
+                    )}
+                    Leer con el motor alternativo
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleAnalyze("gemini")}
+                    disabled={analyzing}
+                  >
+                    <Undo2 className="mr-2 h-4 w-4" />
+                    Reintentar con Gemini
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -430,6 +488,25 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
             .filter(({ p }) => !!p.rebase);
           return (
             <div className="space-y-3">
+              {/* Leído por el motor alternativo: va primero y se queda visible
+                  toda la revisión, porque cambia el nivel de confianza de TODA
+                  la tabla (no hay segunda lectura con la que contrastar). */}
+              {leidoConMistral && (
+                <div className="flex gap-3 rounded-lg border-4 border-amber-500 bg-amber-100 dark:bg-amber-950/70 p-4 shadow-lg shadow-amber-500/20">
+                  <TriangleAlert className="h-7 w-7 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div className="text-sm text-amber-900 dark:text-amber-200">
+                    <p className="text-base font-extrabold uppercase tracking-wide">
+                      Leído con el motor alternativo
+                    </p>
+                    <p className="mt-1 font-medium">
+                      Gemini no respondió, así que este documento lo ha leído el segundo motor
+                      y <strong>no se ha podido hacer la doble lectura</strong>. Ninguna cantidad
+                      viene contrastada: revísalas <strong>todas</strong> contra el papel antes de
+                      grabarlas.
+                    </p>
+                  </div>
+                </div>
+              )}
               {/* Devoluciones: el informe las trae en negativo y no se pueden grabar aquí. */}
               {devoluciones.length > 0 && (
                 <div className="rounded-lg border-4 border-violet-600 bg-violet-100 dark:bg-violet-950/70 p-4 shadow-lg shadow-violet-500/20">
@@ -611,7 +688,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
               <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={analyzing}>
                 Cancelar
               </Button>
-              <Button onClick={handleAnalyze} disabled={!file || analyzing}>
+              <Button onClick={() => handleAnalyze("gemini")} disabled={!file || analyzing}>
                 {analyzing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanSearch className="mr-2 h-4 w-4" />}
                 {analyzing ? "Analizando…" : "Analizar Documento"}
               </Button>

@@ -1,7 +1,8 @@
 "use server";
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { extractSalidasFromPdf, extractPesadasVerification } from "@/lib/gemini";
+import { extractSalidasFromPdf, extractPesadasVerification, type Motor } from "@/lib/gemini";
+import { mistralConfigurado, MISTRAL_MODEL } from "@/lib/mistral";
 import {
   buildProposals,
   buildResumenAlerts,
@@ -34,7 +35,16 @@ const MAX_PDF_BYTES = 15 * 1024 * 1024; // 15 MB
 
 export async function analyzePdfAction(
   formData: FormData
-): Promise<{ data?: PdfAnalysisResult; error?: string }> {
+): Promise<{ data?: PdfAnalysisResult; error?: string; puedeUsarMistral?: boolean }> {
+  // Motor de lectura. Por defecto Gemini SIEMPRE. "mistral" solo llega aquí
+  // cuando el usuario lo ha aceptado a mano en el diálogo tras un fallo.
+  const motor: Motor = formData.get("motor") === "mistral" ? "mistral" : "gemini";
+  /**
+   * Se ofrece reintentar con Mistral cuando ha fallado la IA (no la validación
+   * del archivo), veníamos de Gemini y hay clave configurada. Se devuelve al
+   * cliente para que pinte el botón solo cuando sirva de algo.
+   */
+  const ofrecerMistral = motor === "gemini" && mistralConfigurado();
   // 1. Auth
   const supabase = await createClient();
   const {
@@ -49,26 +59,42 @@ export async function analyzePdfAction(
   if (file.size === 0) return { error: "El PDF está vacío." };
   if (file.size > MAX_PDF_BYTES) return { error: "El PDF supera el tamaño máximo (15 MB)." };
 
-  // 3. Extraer con Gemini — DOS lecturas del mismo documento, en paralelo.
-  //    La segunda usa un prompt distinto y enfocado solo en las cantidades:
-  //    si las dos lecturas no coinciden en una cifra, es que ese número no se
-  //    lee de forma estable y el usuario tiene que mirarlo antes de grabar.
+  // 3. Extraer — DOS lecturas del mismo documento, en paralelo. La segunda usa
+  //    un prompt distinto y enfocado solo en las cantidades: si las dos
+  //    lecturas no coinciden en una cifra, es que ese número no se lee de forma
+  //    estable y el usuario tiene que mirarlo antes de grabar.
+  //
+  //    Con motor 'mistral' la verificación se OMITE: se llega ahí porque Gemini
+  //    no responde, así que la segunda lectura fallaría igual y solo añadiría
+  //    espera. Se degrada al mismo aviso de "cantidades sin contrastar" que ya
+  //    existe para cuando la verificación falla.
   const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
   const [principal, verificacion] = await Promise.allSettled([
-    extractSalidasFromPdf(base64),
-    extractPesadasVerification(base64),
+    extractSalidasFromPdf(base64, motor),
+    motor === "gemini"
+      ? extractPesadasVerification(base64)
+      : Promise.reject(new Error("Verificación omitida al leer con un motor alternativo.")),
   ]);
 
   if (principal.status === "rejected") {
-    return { error: (principal.reason as Error)?.message ?? "No se pudo analizar el PDF." };
+    return {
+      error: (principal.reason as Error)?.message ?? "No se pudo analizar el PDF.",
+      puedeUsarMistral: ofrecerMistral,
+    };
   }
 
   const parsed = pdfExtractionSchema.safeParse(principal.value);
   if (!parsed.success) {
-    return { error: "La IA devolvió los datos en un formato inesperado. Reinténtalo." };
+    return {
+      error: "La IA devolvió los datos en un formato inesperado. Reinténtalo.",
+      puedeUsarMistral: ofrecerMistral,
+    };
   }
   if (parsed.data.lineas.length === 0) {
-    return { error: "No se detectaron salidas/retiradas en el documento." };
+    return {
+      error: "No se detectaron salidas/retiradas en el documento.",
+      puedeUsarMistral: ofrecerMistral,
+    };
   }
 
   // 4. Cargar maestros y puestas abiertas
@@ -136,8 +162,12 @@ export async function analyzePdfAction(
       level: "warning",
       cliente: "",
       message:
-        "No se ha podido hacer la segunda lectura de verificación del PDF, así que las cantidades " +
-        "no se han podido contrastar. Revísalas con más atención de lo habitual.",
+        motor === "mistral"
+          ? `Este documento lo ha leído el motor alternativo (${MISTRAL_MODEL}) porque Gemini no ` +
+            "respondió. Al no haber una segunda lectura con la que contrastar, NINGUNA cantidad " +
+            "está verificada: compruébalas todas contra el papel antes de grabarlas."
+          : "No se ha podido hacer la segunda lectura de verificación del PDF, así que las cantidades " +
+            "no se han podido contrastar. Revísalas con más atención de lo habitual.",
     });
   }
 

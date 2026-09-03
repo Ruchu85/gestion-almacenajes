@@ -1,7 +1,8 @@
 "use server";
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { extractPuestaFromPdf } from "@/lib/gemini";
+import { extractPuestaFromPdf, type Motor } from "@/lib/gemini";
+import { mistralConfigurado } from "@/lib/mistral";
 import {
   buildPuestaProposal,
   type MasterData,
@@ -41,19 +42,27 @@ export interface AnalyzePuestaResult {
 
 async function analyzeBase64(
   supabase: AuthClient,
-  base64: string
-): Promise<{ data?: AnalyzePuestaResult; error?: string }> {
-  // 1. Extraer con Gemini
+  base64: string,
+  motor: Motor = "gemini"
+): Promise<{ data?: AnalyzePuestaResult; error?: string; puedeUsarMistral?: boolean }> {
+  // El motor alternativo solo se ofrece si veníamos de Gemini y hay clave: no
+  // se cambia de proveedor sin que el usuario lo acepte.
+  const ofrecerMistral = motor === "gemini" && mistralConfigurado();
+
+  // 1. Extraer (Gemini por defecto)
   let raw: unknown;
   try {
-    raw = await extractPuestaFromPdf(base64);
+    raw = await extractPuestaFromPdf(base64, motor);
   } catch (err) {
-    return { error: (err as Error).message };
+    return { error: (err as Error).message, puedeUsarMistral: ofrecerMistral };
   }
 
   const parsed = puestaPdfExtractionSchema.safeParse(raw);
   if (!parsed.success) {
-    return { error: "La IA devolvió los datos en un formato inesperado. Reinténtalo." };
+    return {
+      error: "La IA devolvió los datos en un formato inesperado. Reinténtalo.",
+      puedeUsarMistral: ofrecerMistral,
+    };
   }
 
   // 2. Cargar maestros activos
@@ -116,7 +125,7 @@ async function analyzeBase64(
 
 export async function analyzePuestaPdfAction(
   formData: FormData
-): Promise<{ data?: AnalyzePuestaResult; error?: string }> {
+): Promise<{ data?: AnalyzePuestaResult; error?: string; puedeUsarMistral?: boolean }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -130,7 +139,8 @@ export async function analyzePuestaPdfAction(
   if (file.size > MAX_PDF_BYTES) return { error: "El PDF supera el tamaño máximo (15 MB)." };
 
   const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
-  return analyzeBase64(supabase, base64);
+  const motor: Motor = formData.get("motor") === "mistral" ? "mistral" : "gemini";
+  return analyzeBase64(supabase, base64, motor);
 }
 
 // ============================================================
@@ -206,8 +216,9 @@ export async function countPendingPuestaPdfsAction(): Promise<{ count?: number; 
 
 /** Descarga un PDF del bucket por su nombre y lo analiza. */
 export async function analyzePuestaFromStorageAction(
-  name: string
-): Promise<{ data?: AnalyzePuestaResult; error?: string }> {
+  name: string,
+  motor: Motor = "gemini"
+): Promise<{ data?: AnalyzePuestaResult; error?: string; puedeUsarMistral?: boolean }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -228,7 +239,7 @@ export async function analyzePuestaFromStorageAction(
     return { error: `"${name}" supera el tamaño máximo (15 MB).` };
   }
 
-  return analyzeBase64(supabase, buffer.toString("base64"));
+  return analyzeBase64(supabase, buffer.toString("base64"), motor);
 }
 
 /** Carpetas destino válidas dentro del bucket. */

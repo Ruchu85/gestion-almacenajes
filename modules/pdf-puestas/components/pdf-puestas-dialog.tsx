@@ -73,6 +73,10 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  /** Gemini falló y hay motor alternativo: se OFRECE, no se usa solo. */
+  const [ofreceMistral, setOfreceMistral] = useState(false);
+  /** Lo leído en pantalla viene del motor alternativo. */
+  const [leidoConMistral, setLeidoConMistral] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [moving, setMoving] = useState(false);
@@ -104,6 +108,8 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
     setQueue([]);
     setQueueIndex(0);
     setQueueError(null);
+    setOfreceMistral(false);
+    setLeidoConMistral(false);
     setLoadingQueue(false);
     setCustomerSearch("");
   }
@@ -153,18 +159,22 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
   }
 
   // ── Analizar archivo subido ──────────────────────────────
-  async function handleAnalyze() {
+  async function handleAnalyze(motor: "gemini" | "mistral" = "gemini") {
     if (!file) return;
     setAnalyzing(true);
     setUploadError(null);
+    setOfreceMistral(false);
     try {
       const formData = new FormData();
       formData.append("file", file);
+      if (motor === "mistral") formData.append("motor", "mistral");
       const res = await analyzePuestaPdfAction(formData);
       if (res.error || !res.data) {
         setUploadError(res.error ?? "No se pudo analizar el documento.");
+        setOfreceMistral(!!res.puedeUsarMistral);
         return;
       }
+      setLeidoConMistral(motor === "mistral");
       applyResult(res.data);
     } catch (err) {
       setUploadError(`Error inesperado: ${(err as Error).message}`);
@@ -212,17 +222,20 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
   }, [open, autoLoad]);
 
   // ── Analizar un PDF concreto del bucket ──────────────────
-  async function analyzeFromStorage(name: string) {
+  async function analyzeFromStorage(name: string, motor: "gemini" | "mistral" = "gemini") {
     setAnalyzing(true);
     setQueueError(null);
+    setOfreceMistral(false);
     setResult(null);
     setEditable(null);
     try {
-      const res = await analyzePuestaFromStorageAction(name);
+      const res = await analyzePuestaFromStorageAction(name, motor);
       if (res.error || !res.data) {
         setQueueError(res.error ?? "No se pudo analizar el documento.");
+        setOfreceMistral(!!res.puedeUsarMistral);
         return;
       }
+      setLeidoConMistral(motor === "mistral");
       applyResult(res.data);
     } catch (err) {
       setQueueError(`Error inesperado: ${(err as Error).message}`);
@@ -431,6 +444,41 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
               {loadingQueue ? "Buscando PDFs…" : "Leer PDFs de Base de Datos"}
             </Button>
 
+            {ofreceMistral && (
+              <div className="rounded-lg border-2 border-amber-500 bg-amber-100 dark:bg-amber-950/60 p-3 space-y-2">
+                <div className="flex gap-2">
+                  <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                  <div className="text-sm text-amber-900 dark:text-amber-200">
+                    <p className="font-bold">¿Probamos con el motor alternativo?</p>
+                    <p className="mt-1">
+                      Gemini no ha podido leer el documento. Hay un segundo motor de otro
+                      proveedor que puede intentarlo; repasa después los datos extraídos con
+                      atención.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 pl-7">
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      queue.length > 0 && queue[queueIndex]
+                        ? analyzeFromStorage(queue[queueIndex], "mistral")
+                        : handleAnalyze("mistral")
+                    }
+                    disabled={analyzing}
+                    className="bg-amber-600 text-white hover:bg-amber-700"
+                  >
+                    {analyzing ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <ScanSearch className="mr-2 h-4 w-4" />
+                    )}
+                    Leer con el motor alternativo
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {uploadError && (
               <p className="text-sm text-destructive flex items-center gap-1.5">
                 <X className="h-4 w-4" /> {uploadError}
@@ -453,9 +501,22 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
                 Analizando documento…
               </div>
             ) : queueError ? (
-              <div className="flex flex-col items-center gap-2 text-sm text-destructive">
-                <AlertTriangle className="h-6 w-6" />
-                <span>{queueError}</span>
+              <div className="flex flex-col items-center gap-3 text-sm">
+                <div className="flex flex-col items-center gap-2 text-destructive">
+                  <AlertTriangle className="h-6 w-6" />
+                  <span>{queueError}</span>
+                </div>
+                {ofreceMistral && queue[queueIndex] && (
+                  <Button
+                    size="sm"
+                    onClick={() => analyzeFromStorage(queue[queueIndex], "mistral")}
+                    disabled={analyzing}
+                    className="bg-amber-600 text-white hover:bg-amber-700"
+                  >
+                    <ScanSearch className="mr-2 h-4 w-4" />
+                    Leer con el motor alternativo
+                  </Button>
+                )}
               </div>
             ) : null}
           </div>
@@ -464,6 +525,15 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
         {/* ── Vista de propuesta ── */}
         {showProposal && editable && proposal && masters && (
           <div className="space-y-4">
+            {leidoConMistral && (
+              <div className="flex gap-3 rounded-lg border-2 border-amber-500 bg-amber-100 dark:bg-amber-950/60 p-3">
+                <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                  Leído con el <strong>motor alternativo</strong> porque Gemini no respondió.
+                  Repasa con atención todos los datos antes de crear la puesta.
+                </p>
+              </div>
+            )}
             {/* Cabecera de cola */}
             {queueMode && (
               <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400">
@@ -676,7 +746,7 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
               <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={analyzing || loadingQueue}>
                 Cancelar
               </Button>
-              <Button onClick={handleAnalyze} disabled={!file || analyzing || loadingQueue}>
+              <Button onClick={() => handleAnalyze("gemini")} disabled={!file || analyzing || loadingQueue}>
                 {analyzing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanSearch className="mr-2 h-4 w-4" />}
                 {analyzing ? "Analizando…" : "Analizar Documento"}
               </Button>

@@ -1,11 +1,14 @@
 /**
  * Lectura de PDF con IA: prompts, esquemas y la CADENA de proveedores.
  *
- * El proveedor principal es Google Gemini (Generative Language API, REST puro
- * para no añadir dependencias), pero el módulo ya no depende de uno solo: si un
- * modelo falla —cupo diario agotado, 503, o retirada del modelo— se pasa al
- * siguiente, y el último eslabón es otro proveedor distinto (Mistral, en
- * lib/mistral.ts). Ver CADENA_EXTRACCION más abajo.
+ * El proveedor es Google Gemini (Generative Language API, REST puro para no
+ * añadir dependencias), pero no se depende de un solo modelo: si uno falla
+ * —cupo diario agotado, 503, o retirada del modelo— se pasa al siguiente. Ver
+ * CADENA_EXTRACCION más abajo.
+ *
+ * Hay además un motor alternativo de otro proveedor (Mistral, en
+ * lib/mistral.ts) que NO forma parte de esa cadena: solo se usa cuando el
+ * usuario lo acepta expresamente tras un fallo de Gemini. Ver el tipo `Motor`.
  *
  * Usa REST puro (fetch) para no añadir dependencias. Aprovecha la salida
  * estructurada (responseSchema) para que el modelo devuelva JSON validable.
@@ -498,11 +501,17 @@ function parseGeminiBody(bodyJson: unknown): unknown {
  * Envía un PDF (en base64) a Gemini y devuelve el JSON crudo extraído.
  * Lanza Error con un mensaje legible si la llamada falla.
  */
-export async function extractSalidasFromPdf(pdfBase64: string): Promise<unknown> {
-  return ejecutarCadena(CADENA_EXTRACCION, pdfBase64, EXTRACTION_PROMPT, RESPONSE_SCHEMA, {
-    ...GEMINI_OPTIONS_EXTRACCION,
-    etiqueta: "la extracción del PDF",
-  });
+export async function extractSalidasFromPdf(
+  pdfBase64: string,
+  motor: Motor = "gemini"
+): Promise<unknown> {
+  return ejecutarCadena(
+    motor === "mistral" ? CADENA_SOLO_MISTRAL : CADENA_EXTRACCION,
+    pdfBase64,
+    EXTRACTION_PROMPT,
+    RESPONSE_SCHEMA,
+    { ...GEMINI_OPTIONS_EXTRACCION, etiqueta: "la extracción del PDF" }
+  );
 }
 
 // ============================================================
@@ -526,14 +535,16 @@ type Proveedor = { tipo: "gemini"; model: string } | { tipo: "mistral" };
  *    cadena, el día que caiga uno la app sigue funcionando sola.
  *
  * Los dos primeros están verificados contra los PDF reales de producción, con
- * resultado exacto. El tercero y Mistral no: están de red de seguridad, y solo
- * entran en juego cuando los anteriores ya han fallado.
+ * resultado exacto. El tercero no: está de red de seguridad, y solo entra en
+ * juego cuando los anteriores ya han fallado.
+ *
+ * Mistral NO está aquí a propósito: cambiar de proveedor lo decide el usuario
+ * (ver `Motor`).
  */
 export const CADENA_EXTRACCION: Proveedor[] = [
   { tipo: "gemini", model: "gemini-2.5-flash" }, // verificado exacto
   { tipo: "gemini", model: "gemini-3.1-flash-lite" }, // verificado exacto
   { tipo: "gemini", model: "gemini-3.8-flash" }, // sin verificar
-  { tipo: "mistral" }, // sin verificar; se salta si no hay MISTRAL_API_KEY
 ];
 
 /**
@@ -550,8 +561,20 @@ export const CADENA_VERIFICACION: Proveedor[] = [
 export const CADENA_PUESTAS: Proveedor[] = [
   { tipo: "gemini", model: "gemini-2.5-flash" },
   { tipo: "gemini", model: "gemini-3.1-flash-lite" },
-  { tipo: "mistral" },
 ];
+
+/**
+ * Motor de lectura. Mistral NUNCA entra solo: se usa exclusivamente cuando el
+ * usuario lo pide a mano, después de que Gemini haya fallado y el diálogo se lo
+ * haya ofrecido. Decisión del usuario (03/09/2026): el motor por defecto es
+ * Gemini, y cambiar de proveedor es algo que se acepta a conciencia, no un
+ * automatismo silencioso — entre otras cosas porque la segunda lectura de
+ * verificación no puede contrastar lo que lee Mistral.
+ */
+export type Motor = "gemini" | "mistral";
+
+/** Cadena de un solo eslabón para la lectura manual con Mistral. */
+const CADENA_SOLO_MISTRAL: Proveedor[] = [{ tipo: "mistral" }];
 
 interface OpcionesCadena extends GeminiCallOptions {
   /** Cómo nombrar la operación en el mensaje de error final. */
@@ -689,9 +712,12 @@ Devuelve el resultado siguiendo el esquema JSON proporcionado.
  * que el presupuesto de la función y fallaba con el mismo error que las
  * salidas.
  */
-export async function extractPuestaFromPdf(pdfBase64: string): Promise<unknown> {
+export async function extractPuestaFromPdf(
+  pdfBase64: string,
+  motor: Motor = "gemini"
+): Promise<unknown> {
   return ejecutarCadena(
-    CADENA_PUESTAS,
+    motor === "mistral" ? CADENA_SOLO_MISTRAL : CADENA_PUESTAS,
     pdfBase64,
     PUESTA_EXTRACTION_PROMPT,
     PUESTA_RESPONSE_SCHEMA,
