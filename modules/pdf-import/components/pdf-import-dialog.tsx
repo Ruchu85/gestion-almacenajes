@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/utils/format";
 import { analyzePdfAction, confirmSalidasAction, confirmSalidasNormalesAction } from "@/lib/actions/pdf-import";
+import { applyRebases } from "@/services/pdf-import.service";
 import type {
   PdfConfirmItem,
   PdfConfirmNormalItem,
@@ -155,7 +156,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
         // igual (las valida el usuario contra el papel) ni las devoluciones en
         // negativo (no se pueden grabar desde la importación).
         selected:
-          (p.verificacion && !p.verificacion.coincide) || p.line.cantidad < 0
+          (p.verificacion && !p.verificacion.coincide) || p.line.cantidad < 0 || !!p.rebase
             ? false
             : p.tipo === "normal"
               ? !!(p.resolvedWarehouseId && p.resolvedProductId) && p.warnings.length === 0
@@ -187,18 +188,41 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
     updateItem(index, { selected });
   }
 
+  /**
+   * Rehace el cálculo de rebase sobre la lista entera.
+   *
+   * Hace falta porque el rebase es ACUMULATIVO: no depende solo de la fila que
+   * se toca, sino de todas las que van a la misma puesta. Cambiar una cantidad
+   * o mover un camión a otra puesta puede quitar el aviso rojo a una fila
+   * posterior, o ponérselo. `applyRebases` es la misma función que usa el
+   * servidor al analizar, así que las dos cuentas no pueden discrepar.
+   */
+  function withRebases(list: EditableProposal[]): EditableProposal[] {
+    const copia = list.map((it) => ({ ...it, warnings: [...it.warnings] }));
+    applyRebases(copia);
+    return copia;
+  }
+
   function handleEdit(index: number, field: "fecha" | "matricula" | "cantidad", value: string | number) {
     setProposals((prev) =>
       prev
-        ? prev.map((it, i) =>
-            i === index ? { ...it, edited: { ...it.edited, [field]: value } } : it
+        ? withRebases(
+            prev.map((it, i) =>
+              i === index ? { ...it, edited: { ...it.edited, [field]: value } } : it
+            )
           )
         : prev
     );
   }
 
   function handleChoosePuesta(index: number, puestaId: string) {
-    updateItem(index, { chosenPuestaId: puestaId });
+    setProposals((prev) =>
+      prev
+        ? withRebases(
+            prev.map((it, i) => (i === index ? { ...it, chosenPuestaId: puestaId } : it))
+          )
+        : prev
+    );
   }
 
   // ── Confirmar ────────────────────────────────────────────
@@ -400,6 +424,10 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
           const devoluciones = proposals
             .map((p, i) => ({ p, n: i + 1 }))
             .filter(({ p }) => p.line.cantidad < 0);
+          /** Filas que dejan su puesta con pendiente negativo. */
+          const rebasadas = proposals
+            .map((p, i) => ({ p, n: i + 1 }))
+            .filter(({ p }) => !!p.rebase);
           return (
             <div className="space-y-3">
               {/* Devoluciones: el informe las trae en negativo y no se pueden grabar aquí. */}
@@ -445,6 +473,43 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
                           que no se sabe contra qué van: ajusta las salidas de ese cliente a mano.
                         </p>
                       )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* Rebases: el PDF retira más de lo que le queda a la puesta. */}
+              {rebasadas.length > 0 && (
+                <div className="rounded-lg border-4 border-red-600 bg-red-100 dark:bg-red-950/70 p-4 shadow-lg shadow-red-500/20">
+                  <div className="flex gap-3">
+                    <TriangleAlert className="h-7 w-7 shrink-0 text-red-600 dark:text-red-400 animate-pulse" />
+                    <div className="space-y-2">
+                      <p className="text-base font-extrabold uppercase tracking-wide text-red-800 dark:text-red-200">
+                        {rebasadas.length} camión{rebasadas.length > 1 ? "es" : ""} rebasa
+                        {rebasadas.length > 1 ? "n" : ""} su puesta a disposición
+                      </p>
+                      <p className="text-sm font-medium text-red-800 dark:text-red-300">
+                        Al incluir{rebasadas.length > 1 ? "los" : "lo"}, la puesta se queda con{" "}
+                        <strong>cantidad pendiente NEGATIVA</strong>: el PDF retira más de lo que
+                        quedaba. Puede ser que falte una puesta por dar de alta, que el camión vaya
+                        contra otro contrato, o que la cantidad esté mal leída. Se{" "}
+                        {rebasadas.length > 1 ? "han dejado" : "ha dejado"}{" "}
+                        <strong>sin marcar</strong>: revísalo y márcalo tú si la retirada es correcta.
+                      </p>
+                      <ul className="space-y-1 text-sm text-red-800 dark:text-red-200">
+                        {rebasadas.map(({ p, n }) => (
+                          <li key={p.id} className="flex flex-wrap items-center gap-x-2">
+                            <span className="font-semibold">Fila {n}</span>
+                            <span className="font-mono text-xs">{p.line.matricula}</span>
+                            <span>
+                              puesta <strong>{p.rebase!.numero_contrato}</strong>
+                            </span>
+                            <span className="tabular-nums">
+                              quedaría en {formatNumber(p.rebase!.pendienteDespues)}{" "}
+                              {p.rebase!.unit} ({formatNumber(p.rebase!.exceso)} de más)
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   </div>
                 </div>

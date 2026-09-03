@@ -6,8 +6,10 @@ import type {
   PdfResumenCliente,
   PuestaMatchRef,
   MatchConfidence,
+  RebaseInfo,
 } from "@/validations/pdf-import.schema";
 import { formatNumber } from "@/utils/format";
+import { roundQty } from "@/utils/calculations";
 
 // ============================================================
 // NORMALIZADORES
@@ -326,17 +328,95 @@ function toRef(p: PuestaSummary): PuestaMatchRef {
   };
 }
 
-function buildWarnings(line: PdfExtractedLine, ref: PuestaMatchRef | null): string[] {
-  const warnings: string[] = [];
-  if (ref && line.cantidad > ref.cantidad_pendiente) {
-    const exceso = line.cantidad - ref.cantidad_pendiente;
-    warnings.push(
-      `La cantidad (${formatNumber(line.cantidad)}) supera la pendiente (${formatNumber(
-        ref.cantidad_pendiente
-      )} ${ref.unit}) en ${formatNumber(exceso)} ${ref.unit}.`
-    );
+// ============================================================
+// REBASE — la puesta se queda con pendiente NEGATIVO
+// ============================================================
+
+/**
+ * Una fila, reducida a lo que hace falta para saber si rebasa su puesta.
+ * Se define aparte de `PdfProposalItem` para que el cálculo sirva igual en el
+ * servidor (sobre la propuesta recién construida) y en el cliente (sobre la
+ * puesta y la cantidad que el usuario haya podido cambiar a mano).
+ */
+export interface RebaseEntrada {
+  id: string;
+  /** Puesta a la que se imputa la fila. Null = no se imputa a ninguna. */
+  puestaId: string | null;
+  /** Cantidad con su signo: las devoluciones (negativas) devuelven pendiente. */
+  cantidad: number;
+}
+
+/**
+ * Comprueba si las retiradas del PDF dejan alguna puesta con pendiente
+ * NEGATIVO, y señala la fila exacta a partir de la cual se cruza esa raya.
+ *
+ * El aviso que ya existía comparaba cada línea por separado contra el
+ * pendiente, así que solo veía el caso evidente (un camión más grande que todo
+ * lo que queda). El caso real es otro: varios camiones del mismo documento van
+ * a la misma puesta y ninguno se pasa por su cuenta, pero SUMADOS sí. Por eso
+ * aquí se recorre el documento en orden acumulando, igual que se grabaría.
+ *
+ * Se acumulan TODAS las filas imputadas a la puesta, marcadas o no. Hacerlo
+ * depender de las casillas marcadas se muerde la cola: la fila que rebasa se
+ * desmarca por eso mismo, con lo que dejaría de consumir pendiente y dejaría
+ * de estar rebasada. El aviso responde siempre a la misma pregunta —"¿cabe en
+ * la puesta lo que trae este PDF?"— y solo cambia si el usuario reasigna la
+ * fila a otra puesta o corrige la cantidad, que es justo cuando debe cambiar.
+ */
+export function computeRebases(
+  entradas: RebaseEntrada[],
+  puestas: Map<string, Pick<PuestaMatchRef, "cantidad_pendiente" | "unit" | "numero_contrato">>
+): Map<string, RebaseInfo> {
+  const resultado = new Map<string, RebaseInfo>();
+  /** Pendiente que va quedando en cada puesta según se consume el documento. */
+  const pendientePorPuesta = new Map<string, number>();
+
+  for (const entrada of entradas) {
+    if (!entrada.puestaId) continue;
+    const puesta = puestas.get(entrada.puestaId);
+    if (!puesta) continue;
+
+    const antes =
+      pendientePorPuesta.get(entrada.puestaId) ?? Number(puesta.cantidad_pendiente);
+    // roundQty en cada paso: son restas encadenadas sobre decimales y sin
+    // redondear acaban dando -0.00000000004, que se leería como un rebase que
+    // no existe.
+    const despues = roundQty(antes - entrada.cantidad);
+    pendientePorPuesta.set(entrada.puestaId, despues);
+
+    if (despues < 0) {
+      resultado.set(entrada.id, {
+        numero_contrato: puesta.numero_contrato,
+        unit: puesta.unit,
+        pendienteAntes: antes,
+        pendienteDespues: despues,
+        exceso: roundQty(-despues),
+        /** Esta fila es la que cruza a negativo (antes aún quedaba pendiente). */
+        cruzaLaRaya: antes >= 0,
+      });
+    }
   }
-  return warnings;
+
+  return resultado;
+}
+
+/**
+ * Marca con la que se reconoce el aviso de rebase entre el resto, para poder
+ * retirarlo al recalcular sin arrastrar los de la pasada anterior.
+ */
+export const REBASE_PREFIX = "REBASE:";
+
+/** Texto del aviso de rebase, compartido por servidor y cliente. */
+export function rebaseWarning(info: RebaseInfo): string {
+  return (
+    `${REBASE_PREFIX} al incluir este camión la puesta ${info.numero_contrato} se queda con ` +
+    `${formatNumber(info.pendienteDespues)} ${info.unit} pendientes, es decir ` +
+    `${formatNumber(info.exceso)} ${info.unit} POR ENCIMA de lo que quedaba` +
+    (info.cruzaLaRaya
+      ? "."
+      : " (ya venía rebasada por otro camión anterior de este mismo documento).") +
+    " No se marca por defecto: revísalo y márcalo tú si la retirada es correcta."
+  );
 }
 
 /**
@@ -533,7 +613,11 @@ export function buildProposals(
       match,
       candidates,
       confidence,
-      warnings: [...warnings, ...buildWarnings(line, match)],
+      // El aviso de "supera lo pendiente" lo pone applyRebases al final, ya
+      // con la cuenta acumulada del documento entero: mirar cada línea por
+      // separado solo veía el caso del camión más grande que todo el saldo, y
+      // se le escapaba el habitual de varios camiones que sumados se pasan.
+      warnings,
     };
   });
 
@@ -573,7 +657,71 @@ export function buildProposals(
     );
   }
 
+  applyRebases(proposals);
+
   return proposals;
+}
+
+/**
+ * Lo mínimo que necesita una fila para que se le pueda calcular el rebase.
+ * Se expresa así, y no como `PdfProposalItem`, para que valga tanto para la
+ * propuesta del servidor como para la fila editable del diálogo, que además
+ * lleva la puesta elegida y la cantidad corregida por el usuario.
+ */
+export interface RebaseTarget {
+  id: string;
+  tipo: "puesta" | "normal";
+  line: Pick<PdfExtractedLine, "cantidad">;
+  match: PuestaMatchRef | null;
+  candidates: PuestaMatchRef[];
+  warnings: string[];
+  rebase?: RebaseInfo | null;
+  chosenPuestaId?: string | null;
+  edited?: { cantidad: number };
+}
+
+/**
+ * Recalcula el rebase de un conjunto de propuestas y deja cada una con su
+ * `rebase` y su aviso al día.
+ *
+ * Se llama al construir la propuesta y otra vez en el cliente cada vez que el
+ * usuario reasigna una fila a otra puesta o corrige una cantidad: son
+ * precisamente los dos cambios que alteran la cuenta, y un aviso en rojo que
+ * no se entera de la corrección sería peor que no tenerlo.
+ */
+export function applyRebases<T extends RebaseTarget>(proposals: T[]): void {
+  const puestas = new Map<
+    string,
+    Pick<PuestaMatchRef, "cantidad_pendiente" | "unit" | "numero_contrato">
+  >();
+  for (const p of proposals) {
+    for (const ref of [p.match, ...p.candidates]) {
+      if (ref && !puestas.has(ref.puesta_id)) puestas.set(ref.puesta_id, ref);
+    }
+  }
+
+  const rebases = computeRebases(
+    proposals.map((p) => ({
+      id: p.id,
+      puestaId: p.tipo === "puesta" ? (p.chosenPuestaId ?? p.match?.puesta_id ?? null) : null,
+      // La cantidad editada a mano manda sobre la leída del PDF: si el usuario
+      // la corrige, la cuenta del rebase tiene que ir con la cifra que se va a
+      // grabar de verdad.
+      cantidad: p.edited?.cantidad ?? p.line.cantidad,
+    })),
+    puestas
+  );
+
+  for (const proposal of proposals) {
+    // Quitar el aviso de la pasada anterior antes de recalcular, para que
+    // reasignar una fila a una puesta con pendiente de sobra lo borre de
+    // verdad en vez de acumular avisos contradictorios.
+    proposal.warnings = proposal.warnings.filter((w) => !w.startsWith(REBASE_PREFIX));
+
+    const info = rebases.get(proposal.id) ?? null;
+    proposal.rebase = info;
+    if (info) proposal.warnings.unshift(rebaseWarning(info));
+  }
 }
 
 // ============================================================

@@ -176,6 +176,8 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
             );
             /** Las dos lecturas del PDF discrepan en la cantidad de esta fila. */
             const lecturaDudosa = !!item.verificacion && !item.verificacion.coincide;
+            /** Al incluir este camión la puesta se queda con pendiente negativo. */
+            const rebasa = !!item.rebase;
             const isClean = isSelectable && item.warnings.length === 0;
 
             return (
@@ -193,6 +195,10 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                     "bg-red-500/30 dark:bg-red-500/25 outline outline-2 -outline-offset-2 outline-red-500",
                   // Sin stock físico para la salida directa: tampoco se puede grabar.
                   sinStock &&
+                    "bg-red-500/30 dark:bg-red-500/25 outline outline-2 -outline-offset-2 outline-red-500/80",
+                  // Rebase: la puesta se queda en negativo. Se graba solo si el
+                  // usuario lo marca a conciencia, así que va en rojo.
+                  rebasa &&
                     "bg-red-500/30 dark:bg-red-500/25 outline outline-2 -outline-offset-2 outline-red-500/80",
                   // Duplicado y cifra dudosa mandan sobre cualquier otro estado:
                   // son las dos cosas que el usuario no puede pasar por alto.
@@ -304,6 +310,22 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                   ) : (
                     <span className="text-xs text-muted-foreground italic">Sin puesta abierta</span>
                   )}
+
+                  {/* Rebase: el pendiente se queda en negativo al incluir esta
+                      fila. Va aquí, pegado a la puesta afectada, y no solo en
+                      el globo de avisos, porque es la cifra que hay que mirar
+                      antes de decidir si se marca. */}
+                  {rebasa && (
+                    <div className="mt-1 flex items-start gap-1 rounded border border-red-500 bg-red-500/15 px-1.5 py-1 text-[11px] font-semibold text-red-700 dark:text-red-300">
+                      <AlertTriangle className="h-3 w-3 shrink-0 mt-px" />
+                      <span>
+                        REBASA la puesta: quedaría en{" "}
+                        {formatNumber(item.rebase!.pendienteDespues)} {item.rebase!.unit} (
+                        {formatNumber(item.rebase!.exceso)} {item.rebase!.unit} de más)
+                        {!item.rebase!.cruzaLaRaya && " — ya rebasada por un camión anterior"}
+                      </span>
+                    </div>
+                  )}
                 </TableCell>
 
                 {/* Fecha editable */}
@@ -390,7 +412,7 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                   <RowWarnings
                     warnings={item.warnings}
                     tono={
-                      lecturaDudosa || isDuplicate || (esDevolucion && !devolucionGrabable)
+                      lecturaDudosa || isDuplicate || rebasa || (esDevolucion && !devolucionGrabable)
                         ? "rojo"
                         : esDevolucion
                           ? "violeta"

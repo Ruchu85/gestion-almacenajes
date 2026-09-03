@@ -89,6 +89,26 @@ export interface PuestaMatchRef {
 }
 
 /**
+ * La fila deja la puesta con pendiente NEGATIVO, contando las retiradas que
+ * el propio PDF imputa a esa misma puesta antes que ella.
+ */
+export interface RebaseInfo {
+  numero_contrato: string;
+  unit: string;
+  /** Pendiente de la puesta justo antes de aplicar esta fila. */
+  pendienteAntes: number;
+  /** Pendiente que quedaría al aplicarla (siempre negativo). */
+  pendienteDespues: number;
+  /** Cuánto se pasa, en positivo. */
+  exceso: number;
+  /**
+   * `true` si es esta fila la que cruza a negativo; `false` si la puesta ya
+   * venía rebasada por otra fila anterior del mismo documento.
+   */
+  cruzaLaRaya: boolean;
+}
+
+/**
  * Una propuesta de salida lista para revisar y confirmar.
  * tipo='puesta' → se crea una salida parcial vinculada a una puesta a disposición.
  * tipo='normal' → se crea un outbound_movement directo (salida propia sin contrato).
@@ -138,6 +158,12 @@ export interface PdfProposalItem {
    * en el sistema.
    */
   stockInsuficiente?: boolean;
+  /**
+   * Solo para tipo='puesta': al imputar esta fila, la puesta se queda con
+   * pendiente negativo. Null / ausente si cabe sin problema. Nunca se marca
+   * por defecto, pero el usuario puede marcarla si la retirada es correcta.
+   */
+  rebase?: RebaseInfo | null;
 }
 
 /**
