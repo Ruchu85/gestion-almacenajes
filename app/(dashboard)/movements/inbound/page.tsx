@@ -2,7 +2,11 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ArrowDownToLine, Download, ChevronLeft, Search, X } from "lucide-react";
+// El icono Warehouse se aliasa: el nombre choca con el tipo Warehouse de @/types.
+import {
+  Plus, ArrowDownToLine, Download, ChevronLeft, X,
+  Warehouse as WarehouseIcon, Package as PackageIcon, Truck as TruckIcon, Calendar as CalendarIcon,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { InboundMovementsService } from "@/services/movements.service";
 import { WarehousesService } from "@/services/warehouses.service";
@@ -18,9 +22,9 @@ import type { InboundFormValues } from "@/validations/inbound.schema";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
+import { FiltersCard, FilterField } from "@/components/shared/filters-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -293,94 +297,90 @@ export default function InboundMovementsPage() {
         }
       />
 
-      <Card>
-        <CardContent className="pt-4 pb-4">
-          <div className="flex flex-col gap-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por almacén, producto, proveedor o comentarios..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex flex-wrap gap-2 items-center">
-              <Select value={filterWarehouse} onValueChange={setFilterWarehouse}>
-                <SelectTrigger className="w-52">
-                  <SelectValue placeholder="Todos los almacenes" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los almacenes</SelectItem>
-                  {warehouses.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>
-                      {w.code} — {w.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      <FiltersCard
+        searchPlaceholder="Buscar por almacén, producto, proveedor o comentarios..."
+        searchValue={search}
+        onSearchChange={setSearch}
+        actions={
+          hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1.5 text-muted-foreground">
+              <X className="h-3.5 w-3.5" />
+              Limpiar
+            </Button>
+          )
+        }
+        summary={
+          <span className="text-sm text-muted-foreground">
+            {filteredMovements.length} de {movements.length} entradas
+          </span>
+        }
+      >
+        <FilterField icon={WarehouseIcon}>
+          <Select value={filterWarehouse} onValueChange={setFilterWarehouse}>
+            <SelectTrigger>
+              <SelectValue placeholder="Almacén" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los almacenes</SelectItem>
+              {warehouses.map((w) => (
+                <SelectItem key={w.id} value={w.id}>
+                  {w.code} — {w.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
 
-              <Select value={filterProduct} onValueChange={setFilterProduct}>
-                <SelectTrigger className="w-52">
-                  <SelectValue placeholder="Todos los productos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los productos</SelectItem>
-                  {products.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.code} — {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <FilterField icon={PackageIcon}>
+          <Select value={filterProduct} onValueChange={setFilterProduct}>
+            <SelectTrigger>
+              <SelectValue placeholder="Producto" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los productos</SelectItem>
+              {products.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.code} — {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
 
-              <Select value={filterSupplier} onValueChange={setFilterSupplier}>
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Todos los proveedores" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos los proveedores</SelectItem>
-                  {suppliers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <FilterField icon={TruckIcon}>
+          <Select value={filterSupplier} onValueChange={setFilterSupplier}>
+            <SelectTrigger>
+              <SelectValue placeholder="Proveedor" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los proveedores</SelectItem>
+              {suppliers.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
 
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm text-muted-foreground whitespace-nowrap">Desde</span>
-                <Input
-                  type="date"
-                  value={filterDateFrom}
-                  onChange={(e) => setFilterDateFrom(e.target.value)}
-                  className="w-36"
-                />
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm text-muted-foreground whitespace-nowrap">Hasta</span>
-                <Input
-                  type="date"
-                  value={filterDateTo}
-                  onChange={(e) => setFilterDateTo(e.target.value)}
-                  className="w-36"
-                />
-              </div>
+        <FilterField icon={CalendarIcon}>
+          <Input
+            type="date"
+            aria-label="Fecha desde"
+            value={filterDateFrom}
+            onChange={(e) => setFilterDateFrom(e.target.value)}
+          />
+        </FilterField>
 
-              {hasActiveFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters}>
-                  <X className="mr-1 h-3 w-3" />
-                  Limpiar
-                </Button>
-              )}
-
-              <span className="ml-auto text-sm text-muted-foreground">
-                {filteredMovements.length} de {movements.length} entradas
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        <FilterField icon={CalendarIcon}>
+          <Input
+            type="date"
+            aria-label="Fecha hasta"
+            value={filterDateTo}
+            onChange={(e) => setFilterDateTo(e.target.value)}
+          />
+        </FilterField>
+      </FiltersCard>
 
       {!isLoading && movements.length === 0 ? (
         <EmptyState
