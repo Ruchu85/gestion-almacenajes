@@ -62,6 +62,12 @@ export default function PuestasPage() {
   const [filterEstado, setFilterEstado] = useState("all");
   const [filterDateFrom, setFilterDateFrom] = useState("");
   const [filterDateTo, setFilterDateTo] = useState("");
+  /**
+   * Los filtros ya se han leído de la URL. Hasta que sea true no se escribe en
+   * la URL: si no, el primer render (con los filtros en su valor por defecto)
+   * borraría los parámetros justo antes de leerlos.
+   */
+  const [filtrosHidratados, setFiltrosHidratados] = useState(false);
 
   const supabase = useMemo(() => createClient(), []);
   const warehousesService = useMemo(() => new WarehousesService(supabase), [supabase]);
@@ -106,9 +112,56 @@ export default function PuestasPage() {
     const back = urlParams.get("back");
     if (whId) setPresetWarehouseId(whId);
     if (prId) setPresetProductId(prId);
-    if (back) setBackUrl(decodeURIComponent(back));
+    // `URLSearchParams.get()` ya devuelve el valor decodificado: aplicarle
+    // encima decodeURIComponent lo decodificaba DOS veces, y con un `back` que
+    // lleva su propia query string (`/warehouses/x/y?tab=puestas&...`) eso
+    // convertía los %3F/%26 internos en `?` y `&` reales, partiendo la URL.
+    if (back) setBackUrl(back);
     if (whId && prId) { setEditingPuesta(null); setFormOpen(true); }
+
+    // Filtros: se restauran de la URL para que volver del detalle no los pierda.
+    setSearch(urlParams.get("q") ?? "");
+    setFilterWarehouse(urlParams.get("alm") ?? "all");
+    setFilterProduct(urlParams.get("prod") ?? "all");
+    setFilterCustomer(urlParams.get("cli") ?? "all");
+    setFilterEstado(urlParams.get("est") ?? "all");
+    setFilterDateFrom(urlParams.get("desde") ?? "");
+    setFilterDateTo(urlParams.get("hasta") ?? "");
+    setFiltrosHidratados(true);
   }, []);
+
+  /**
+   * Query string que representa los filtros activos. Es lo que se guarda en la
+   * URL y lo que se le pasa al detalle en `?back=`, para poder reconstruir la
+   * lista tal y como estaba.
+   */
+  const filtrosQuery = useMemo(() => {
+    const p = new URLSearchParams();
+    // `back` se arrastra: es el destino del botón "Volver" de ESTA lista cuando
+    // se ha llegado desde el Dashboard o desde el detalle de un almacén. Si al
+    // reescribir la URL se perdiera, tocar un filtro dejaría ese botón sin
+    // destino. (`warehouse_id`/`product_id` no se arrastran a propósito: solo
+    // sirven para abrir el formulario de alta al entrar, y conservarlos lo
+    // reabriría en cada recarga.)
+    if (backUrl) p.set("back", backUrl);
+    if (search.trim()) p.set("q", search);
+    if (filterWarehouse !== "all") p.set("alm", filterWarehouse);
+    if (filterProduct !== "all") p.set("prod", filterProduct);
+    if (filterCustomer !== "all") p.set("cli", filterCustomer);
+    if (filterEstado !== "all") p.set("est", filterEstado);
+    if (filterDateFrom) p.set("desde", filterDateFrom);
+    if (filterDateTo) p.set("hasta", filterDateTo);
+    const qs = p.toString();
+    return qs ? `?${qs}` : "";
+  }, [backUrl, search, filterWarehouse, filterProduct, filterCustomer, filterEstado, filterDateFrom, filterDateTo]);
+
+  // Refleja los filtros en la barra de direcciones. `replaceState` y no `push`
+  // a propósito: cada tecla del buscador no debe dejar una entrada en el
+  // historial, o el botón "atrás" del navegador se volvería inservible.
+  useEffect(() => {
+    if (!filtrosHidratados || typeof window === "undefined") return;
+    window.history.replaceState(null, "", `${window.location.pathname}${filtrosQuery}`);
+  }, [filtrosHidratados, filtrosQuery]);
 
   useEffect(() => {
     if (presetWarehouseId && warehouses.length > 0) {
@@ -243,7 +296,10 @@ export default function PuestasPage() {
   }
 
   function handleView(puesta: PuestaSummary) {
-    router.push(`/puestas/${puesta.puesta_id}`);
+    // Se lleva la lista tal cual está (filtros incluidos) para que el botón
+    // "volver" del detalle la reconstruya en vez de mostrarla en limpio.
+    const volverA = encodeURIComponent(`/puestas${filtrosQuery}`);
+    router.push(`/puestas/${puesta.puesta_id}?back=${volverA}`);
   }
 
   async function handleEdit(puesta: PuestaSummary) {

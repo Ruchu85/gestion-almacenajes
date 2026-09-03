@@ -99,7 +99,11 @@ export default function OutboundMovementsPage() {
     const back = urlParams.get("back");
     if (whId) setPresetWarehouseId(whId);
     if (prId) setPresetProductId(prId);
-    if (back) setBackUrl(decodeURIComponent(back));
+    // `URLSearchParams.get()` ya devuelve el valor decodificado: aplicarle
+    // encima decodeURIComponent lo decodificaba DOS veces, y con un `back` que
+    // lleva su propia query string (`/warehouses/x/y?tab=puestas&...`) eso
+    // convertía los %3F/%26 internos en `?` y `&` reales, partiendo la URL.
+    if (back) setBackUrl(back);
     if (whId && prId) setFormOpen(true);
   }, []);
 

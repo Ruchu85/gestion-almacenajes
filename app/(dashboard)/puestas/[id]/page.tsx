@@ -110,7 +110,11 @@ export default function PuestaDetailPage() {
     const search = typeof window !== "undefined" ? window.location.search : "";
     const params = new URLSearchParams(search);
     const back = params.get("back");
-    if (back) setBackUrl(decodeURIComponent(back));
+    // `URLSearchParams.get()` ya devuelve el valor decodificado: aplicarle
+    // encima decodeURIComponent lo decodificaba DOS veces, y con un `back` que
+    // lleva su propia query string (`/warehouses/x/y?tab=puestas&...`) eso
+    // convertía los %3F/%26 internos en `?` y `&` reales, partiendo la URL.
+    if (back) setBackUrl(back);
     if (params.get("autoSalida") === "1") setSalidaFormOpen(true);
   }, []);
 
