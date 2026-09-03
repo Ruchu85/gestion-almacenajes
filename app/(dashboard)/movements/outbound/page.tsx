@@ -360,6 +360,7 @@ export default function OutboundMovementsPage() {
           columns={columns}
           data={filteredMovements}
           isLoading={isLoading}
+          dense
         />
       )}
 

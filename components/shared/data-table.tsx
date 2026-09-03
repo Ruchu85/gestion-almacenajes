@@ -50,6 +50,14 @@ interface DataTableProps<TData, TValue> {
   isLoading?: boolean;
   actions?: React.ReactNode;
   pageSize?: number;
+  /**
+   * Filas de una sola línea, al estilo del Buscador: menos alto por fila para
+   * que quepan más registros de un vistazo. Es opcional y no por defecto
+   * porque solo tiene sentido cuando las celdas están escritas en una línea
+   * (ver las columnas de Entradas, Salidas y Puestas); en una tabla con
+   * contenido apilado, recortar el alto lo dejaría apretado.
+   */
+  dense?: boolean;
 }
 
 export function DataTable<TData, TValue>({
@@ -60,6 +68,7 @@ export function DataTable<TData, TValue>({
   isLoading = false,
   actions,
   pageSize: defaultPageSize = 10,
+  dense = false,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
@@ -109,7 +118,10 @@ export function DataTable<TData, TValue>({
       )}
 
       <div className="rounded-lg border overflow-hidden">
-        <Table>
+        {/* En modo compacto se recorta el relleno vertical de las celdas (p-4
+            del componente base) sin tocarlo, para no afectar al resto de
+            tablas de la aplicación. */}
+        <Table className={cn(dense && "[&_td]:py-2 [&_td]:px-4")}>
           <TableHeader className="bg-muted/50">
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>

@@ -496,6 +496,7 @@ export default function PuestasPage() {
           columns={columns}
           data={filteredSummaries}
           isLoading={isLoading}
+          dense
         />
       )}
 

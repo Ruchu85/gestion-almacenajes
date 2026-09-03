@@ -33,7 +33,7 @@ export function getPuestaColumns(
       accessorKey: "numero_contrato",
       header: "Contrato",
       cell: ({ row }) => (
-        <span className="font-mono text-sm font-medium">
+        <span className="font-mono text-sm font-medium whitespace-nowrap">
           {row.original.numero_contrato || <span className="text-muted-foreground italic">Sin ref.</span>}
         </span>
       ),
@@ -42,35 +42,46 @@ export function getPuestaColumns(
       accessorKey: "customer_name",
       header: "Cliente",
       cell: ({ row }) => (
-        <span>{row.original.customer_name || <span className="text-muted-foreground">—</span>}</span>
+        <span className="block truncate max-w-[220px]" title={row.original.customer_name ?? undefined}>
+          {row.original.customer_name || <span className="text-muted-foreground">—</span>}
+        </span>
       ),
     },
     {
       accessorKey: "product_name",
       header: "Producto",
+      // Nombre y código EN LÍNEA, no apilados: es lo que duplicaba el alto de
+      // cada fila. Mismo criterio que las filas del Buscador.
       cell: ({ row }) => (
-        <div>
-          <div className="font-medium">{row.original.product_name}</div>
-          <div className="text-xs text-muted-foreground">{row.original.product_code}</div>
+        <div className="flex items-baseline gap-1.5 min-w-0">
+          <span className="font-mono text-xs text-muted-foreground shrink-0">{row.original.product_code}</span>
+          <span className="font-medium truncate">{row.original.product_name}</span>
         </div>
       ),
     },
     {
       accessorKey: "warehouse_name",
       header: "Almacén",
+      cell: ({ row }) => (
+        <span className="block truncate max-w-[200px]" title={row.original.warehouse_name}>
+          {row.original.warehouse_name}
+        </span>
+      ),
     },
     {
       accessorKey: "fecha_puesta",
       header: "Fecha puesta",
-      cell: ({ row }) => formatDate(row.original.fecha_puesta),
+      cell: ({ row }) => (
+        <span className="whitespace-nowrap">{formatDate(row.original.fecha_puesta)}</span>
+      ),
     },
     {
       accessorKey: "dias_plancha",
       header: "Plancha",
       cell: ({ row }) => (
-        <span className="text-sm">
+        <span className="text-sm whitespace-nowrap">
           {row.original.dias_plancha} días
-          <span className="block text-xs text-muted-foreground">
+          <span className="ml-1.5 text-xs text-muted-foreground">
             hasta {formatDate(row.original.fecha_fin_plancha)}
           </span>
         </span>
@@ -82,14 +93,14 @@ export function getPuestaColumns(
       cell: ({ row }) => {
         const isOverflow = row.original.cantidad_pendiente < 0;
         return (
-          <div className="text-right tabular-nums">
-            <div className={`font-medium ${isOverflow ? "text-destructive" : ""}`}>
+          <div className="text-right tabular-nums whitespace-nowrap">
+            <span className={`font-medium ${isOverflow ? "text-destructive" : ""}`}>
               {formatNumber(row.original.cantidad_pendiente)} {row.original.unit}
               {isOverflow && <span className="ml-1 text-xs font-normal">(exceso)</span>}
-            </div>
-            <div className="text-xs text-muted-foreground">
+            </span>
+            <span className="ml-1.5 text-xs text-muted-foreground">
               de {formatNumber(row.original.cantidad_inicial)}
-            </div>
+            </span>
           </div>
         );
       },

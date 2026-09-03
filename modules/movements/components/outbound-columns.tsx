@@ -19,16 +19,18 @@ export function getOutboundColumns(
       accessorKey: "movement_date",
       header: "Fecha",
       cell: ({ row }) => (
-        <span className="font-medium">{formatDate(row.getValue("movement_date"))}</span>
+        <span className="font-medium whitespace-nowrap">{formatDate(row.getValue("movement_date"))}</span>
       ),
     },
     {
       id: "warehouse",
       header: "Almacén",
+      // Código y nombre EN LÍNEA, no apilados: es lo que hacía que cada fila
+      // ocupara el doble de alto. Mismo criterio que las filas del Buscador.
       cell: ({ row }) => (
-        <div>
-          <span className="font-mono text-xs text-muted-foreground">{row.original.warehouse.code}</span>
-          <p className="text-sm font-medium">{row.original.warehouse.name}</p>
+        <div className="flex items-baseline gap-1.5 min-w-0">
+          <span className="font-mono text-xs text-muted-foreground shrink-0">{row.original.warehouse.code}</span>
+          <span className="text-sm font-medium truncate">{row.original.warehouse.name}</span>
         </div>
       ),
     },
@@ -36,9 +38,9 @@ export function getOutboundColumns(
       id: "product",
       header: "Producto",
       cell: ({ row }) => (
-        <div>
-          <span className="font-mono text-xs text-muted-foreground">{row.original.product.code}</span>
-          <p className="text-sm font-medium">{row.original.product.name}</p>
+        <div className="flex items-baseline gap-1.5 min-w-0">
+          <span className="font-mono text-xs text-muted-foreground shrink-0">{row.original.product.code}</span>
+          <span className="text-sm font-medium truncate">{row.original.product.name}</span>
         </div>
       ),
     },
@@ -46,7 +48,7 @@ export function getOutboundColumns(
       id: "customer",
       header: "Cliente",
       cell: ({ row }) => (
-        <span className="text-sm text-muted-foreground">
+        <span className="text-sm text-muted-foreground truncate block max-w-[240px]">
           {row.original.customer?.name ?? "-"}
         </span>
       ),
@@ -55,7 +57,7 @@ export function getOutboundColumns(
       accessorKey: "quantity",
       header: "Cantidad",
       cell: ({ row }) => (
-        <span className="tabular-nums font-medium">
+        <span className="tabular-nums font-medium whitespace-nowrap">
           {formatQuantity(row.getValue("quantity"), row.original.product.unit)}
         </span>
       ),
@@ -82,8 +84,11 @@ export function getOutboundColumns(
       accessorKey: "comments",
       header: "Comentarios",
       cell: ({ row }) => (
-        <span className="text-sm text-muted-foreground">
-          {(row.getValue("comments") as string | null)?.slice(0, 50) ?? "-"}
+        <span
+          className="text-sm text-muted-foreground truncate block max-w-[280px]"
+          title={(row.getValue("comments") as string | null) ?? undefined}
+        >
+          {(row.getValue("comments") as string | null) ?? "-"}
         </span>
       ),
     },

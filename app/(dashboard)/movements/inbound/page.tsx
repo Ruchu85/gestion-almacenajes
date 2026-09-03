@@ -394,6 +394,7 @@ export default function InboundMovementsPage() {
           columns={columns}
           data={filteredMovements}
           isLoading={isLoading}
+          dense
         />
       )}
 
