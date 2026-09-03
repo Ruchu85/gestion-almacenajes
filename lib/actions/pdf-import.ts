@@ -1,14 +1,7 @@
 "use server";
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import {
-  extractSalidasFromPdf,
-  extractPesadasVerification,
-  GEMINI_MODEL_EXTRACCION,
-  GEMINI_MODEL_VERIFICACION,
-  GEMINI_OPTIONS_EXTRACCION,
-  GEMINI_OPTIONS_VERIFICACION,
-} from "@/lib/gemini";
+import { extractSalidasFromPdf, extractPesadasVerification } from "@/lib/gemini";
 import {
   buildProposals,
   buildResumenAlerts,
@@ -62,8 +55,8 @@ export async function analyzePdfAction(
   //    lee de forma estable y el usuario tiene que mirarlo antes de grabar.
   const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
   const [principal, verificacion] = await Promise.allSettled([
-    extractSalidasFromPdf(base64, GEMINI_MODEL_EXTRACCION, GEMINI_OPTIONS_EXTRACCION),
-    extractPesadasVerification(base64, GEMINI_MODEL_VERIFICACION, GEMINI_OPTIONS_VERIFICACION),
+    extractSalidasFromPdf(base64),
+    extractPesadasVerification(base64),
   ]);
 
   if (principal.status === "rejected") {

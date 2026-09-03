@@ -1,5 +1,11 @@
 /**
- * Cliente mínimo para la API de Google Gemini (Generative Language API).
+ * Lectura de PDF con IA: prompts, esquemas y la CADENA de proveedores.
+ *
+ * El proveedor principal es Google Gemini (Generative Language API, REST puro
+ * para no añadir dependencias), pero el módulo ya no depende de uno solo: si un
+ * modelo falla —cupo diario agotado, 503, o retirada del modelo— se pasa al
+ * siguiente, y el último eslabón es otro proveedor distinto (Mistral, en
+ * lib/mistral.ts). Ver CADENA_EXTRACCION más abajo.
  *
  * Usa REST puro (fetch) para no añadir dependencias. Aprovecha la salida
  * estructurada (responseSchema) para que el modelo devuelva JSON validable.
@@ -7,6 +13,8 @@
  * Requiere la variable de entorno GEMINI_API_KEY (clave gratuita de
  * Google AI Studio: https://aistudio.google.com/app/apikey).
  */
+
+import { callMistral, mistralConfigurado, MISTRAL_MODEL } from "@/lib/mistral";
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 const GEMINI_ENDPOINT = (model: string) =>
@@ -490,12 +498,137 @@ function parseGeminiBody(bodyJson: unknown): unknown {
  * Envía un PDF (en base64) a Gemini y devuelve el JSON crudo extraído.
  * Lanza Error con un mensaje legible si la llamada falla.
  */
-export async function extractSalidasFromPdf(
+export async function extractSalidasFromPdf(pdfBase64: string): Promise<unknown> {
+  return ejecutarCadena(CADENA_EXTRACCION, pdfBase64, EXTRACTION_PROMPT, RESPONSE_SCHEMA, {
+    ...GEMINI_OPTIONS_EXTRACCION,
+    etiqueta: "la extracción del PDF",
+  });
+}
+
+// ============================================================
+// CADENA DE RESPALDO ENTRE MODELOS Y PROVEEDORES
+// ============================================================
+
+/** Un eslabón de la cadena: un modelo de Gemini, o Mistral. */
+type Proveedor = { tipo: "gemini"; model: string } | { tipo: "mistral" };
+
+/**
+ * Orden en el que se intenta leer un PDF de salidas.
+ *
+ * La razón de que esto sea una CADENA y no un modelo fijo es el cupo: la capa
+ * gratuita da 20 peticiones al día **por modelo**, no por proyecto. Cada
+ * eslabón aporta su propio cupo, así que el techo diario sube de 20 PDF a 60
+ * sin pagar nada. De paso cubre otras dos cosas:
+ *  · los 503 puntuales ("modelo sobrecargado"), que son frecuentes;
+ *  · la retirada de un modelo. `gemini-2.5-flash` sigue GA en el changelog
+ *    oficial, pero las páginas de ciclo de vida apuntan al 16/10/2026 como
+ *    fecha más temprana, y `gemini-2.5-flash-lite` ya responde 404. Con la
+ *    cadena, el día que caiga uno la app sigue funcionando sola.
+ *
+ * Los dos primeros están verificados contra los PDF reales de producción, con
+ * resultado exacto. El tercero y Mistral no: están de red de seguridad, y solo
+ * entran en juego cuando los anteriores ya han fallado.
+ */
+export const CADENA_EXTRACCION: Proveedor[] = [
+  { tipo: "gemini", model: "gemini-2.5-flash" }, // verificado exacto
+  { tipo: "gemini", model: "gemini-3.1-flash-lite" }, // verificado exacto
+  { tipo: "gemini", model: "gemini-3.8-flash" }, // sin verificar
+  { tipo: "mistral" }, // sin verificar; se salta si no hay MISTRAL_API_KEY
+];
+
+/**
+ * La verificación es un control de calidad opcional: si falla, la importación
+ * sigue con un aviso. Por eso su cadena es corta — no merece gastar
+ * presupuesto ni cupo de más en algo que no bloquea.
+ */
+export const CADENA_VERIFICACION: Proveedor[] = [
+  { tipo: "gemini", model: "gemini-3.1-flash-lite" },
+  { tipo: "gemini", model: "gemini-2.5-flash" },
+];
+
+/** Cadena del PDF de "Aplicación" (puestas a disposición). */
+export const CADENA_PUESTAS: Proveedor[] = [
+  { tipo: "gemini", model: "gemini-2.5-flash" },
+  { tipo: "gemini", model: "gemini-3.1-flash-lite" },
+  { tipo: "mistral" },
+];
+
+interface OpcionesCadena extends GeminiCallOptions {
+  /** Cómo nombrar la operación en el mensaje de error final. */
+  etiqueta: string;
+}
+
+/**
+ * Recorre la cadena hasta que un proveedor responde, o hasta que se agota el
+ * presupuesto.
+ *
+ * El presupuesto es de la CADENA ENTERA, no de cada intento: lo que manda es
+ * que todo quepa en el `maxDuration` de la función. A cada eslabón se le da lo
+ * que queda hasta el plazo, y no se empieza ninguno que no quepa. Esto encaja
+ * especialmente bien con el fallo más habitual —el 429 por cupo agotado, que
+ * responde en ~100 ms—: cuando el primero está sin cupo, el segundo se
+ * encuentra el presupuesto casi intacto.
+ */
+async function ejecutarCadena(
+  cadena: Proveedor[],
   pdfBase64: string,
-  model?: string,
-  options?: GeminiCallOptions
+  prompt: string,
+  responseSchema: unknown,
+  opciones: OpcionesCadena
 ): Promise<unknown> {
-  return callGemini(pdfBase64, EXTRACTION_PROMPT, RESPONSE_SCHEMA, model, options);
+  // Presupuesto de la CADENA ENTERA (no de cada eslabón), para que todo quepa
+  // en el maxDuration de la función aunque se recorra entera.
+  const { etiqueta, totalBudgetMs = 45_000, ...restoGemini } = opciones;
+  const deadline = Date.now() + totalBudgetMs;
+  const restante = () => Math.max(0, deadline - Date.now());
+
+  /** Proveedores que ni siquiera se han podido intentar, para el diagnóstico. */
+  const saltados: string[] = [];
+  const fallos: string[] = [];
+
+  for (const proveedor of cadena) {
+    if (proveedor.tipo === "mistral" && !mistralConfigurado()) {
+      saltados.push("Mistral (sin MISTRAL_API_KEY)");
+      continue;
+    }
+    if (restante() < MIN_ATTEMPT_MS) {
+      saltados.push(proveedor.tipo === "gemini" ? proveedor.model : "Mistral");
+      continue;
+    }
+
+    const nombre = proveedor.tipo === "gemini" ? proveedor.model : `Mistral (${MISTRAL_MODEL})`;
+    try {
+      if (proveedor.tipo === "gemini") {
+        return await callGemini(pdfBase64, prompt, responseSchema, proveedor.model, {
+          ...restoGemini,
+          totalBudgetMs: restante(),
+          // UN SOLO intento por modelo: la redundancia la da la cadena, y
+          // cambiar de modelo es estrictamente mejor que repetir con el mismo.
+          // Reintentar aquí era además contraproducente: ante un 429 por cupo
+          // diario —el fallo más habitual— se gastaban tres peticiones inútiles
+          // (el cupo no se recupera en segundos) antes de pasar al siguiente.
+          maxAttempts: 1,
+          // Tope por intento para que un modelo colgado no se coma el
+          // presupuesto de toda la cadena. Una extracción legítima tarda
+          // 3-22 s, así que 25 s no corta ninguna buena.
+          fetchTimeoutMs: Math.min(restoGemini.fetchTimeoutMs ?? 25_000, 25_000),
+        });
+      }
+      return await callMistral(pdfBase64, prompt, responseSchema, {
+        totalBudgetMs: restante(),
+      });
+    } catch (err) {
+      // Cualquier fallo de un proveedor pasa al siguiente: los motivos típicos
+      // (cupo agotado, modelo sobrecargado, modelo retirado, respuesta ilegible)
+      // son todos específicos de ESE proveedor, y el siguiente puede resolverlo.
+      fallos.push(`${nombre}: ${(err as Error).message}`);
+    }
+  }
+
+  const detalle = [...fallos, ...saltados.map((s) => `${s}: no intentado`)].join(" | ");
+  throw new Error(
+    `No se pudo completar ${etiqueta}: han fallado todos los modelos disponibles. ${detalle}`
+  );
 }
 
 // ============================================================
@@ -556,12 +689,14 @@ Devuelve el resultado siguiendo el esquema JSON proporcionado.
  * que el presupuesto de la función y fallaba con el mismo error que las
  * salidas.
  */
-export async function extractPuestaFromPdf(
-  pdfBase64: string,
-  model?: string,
-  options: GeminiCallOptions = { thinkingBudget: 0, totalBudgetMs: 40_000 }
-): Promise<unknown> {
-  return callGemini(pdfBase64, PUESTA_EXTRACTION_PROMPT, PUESTA_RESPONSE_SCHEMA, model, options);
+export async function extractPuestaFromPdf(pdfBase64: string): Promise<unknown> {
+  return ejecutarCadena(
+    CADENA_PUESTAS,
+    pdfBase64,
+    PUESTA_EXTRACTION_PROMPT,
+    PUESTA_RESPONSE_SCHEMA,
+    { thinkingBudget: 0, totalBudgetMs: 40_000, fetchTimeoutMs: 35_000, etiqueta: "la lectura de la puesta a disposición" }
+  );
 }
 
 // ============================================================
@@ -676,10 +811,12 @@ Devuelve el resultado siguiendo el esquema JSON proporcionado.
  * lee de forma estable. Usa un prompt distinto a propósito, para que las dos
  * lecturas sean lo más independientes posible.
  */
-export async function extractPesadasVerification(
-  pdfBase64: string,
-  model?: string,
-  options?: GeminiCallOptions
-): Promise<unknown> {
-  return callGemini(pdfBase64, VERIFICATION_PROMPT, VERIFICATION_RESPONSE_SCHEMA, model, options);
+export async function extractPesadasVerification(pdfBase64: string): Promise<unknown> {
+  return ejecutarCadena(
+    CADENA_VERIFICACION,
+    pdfBase64,
+    VERIFICATION_PROMPT,
+    VERIFICATION_RESPONSE_SCHEMA,
+    { ...GEMINI_OPTIONS_VERIFICACION, etiqueta: "la segunda lectura de verificación" }
+  );
 }

@@ -13,14 +13,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
-import {
-  extractSalidasFromPdf,
-  extractPesadasVerification,
-  GEMINI_MODEL_EXTRACCION,
-  GEMINI_MODEL_VERIFICACION,
-  GEMINI_OPTIONS_EXTRACCION,
-  GEMINI_OPTIONS_VERIFICACION,
-} from "@/lib/gemini";
+import { extractSalidasFromPdf, extractPesadasVerification } from "@/lib/gemini";
 import { filterByText, normalizeLineUnits } from "@/services/pdf-import.service";
 import {
   checkPlausibility,
@@ -116,8 +109,8 @@ export async function auditPdfAction(formData: FormData): Promise<AuditFileRepor
   // La primera es exactamente la de producción (para auditar lo que el flujo
   // real produciría); la segunda es una relectura enfocada solo en cifras.
   const [principal, verificacion] = await Promise.allSettled([
-    extractSalidasFromPdf(base64, GEMINI_MODEL_EXTRACCION, GEMINI_OPTIONS_EXTRACCION),
-    extractPesadasVerification(base64, GEMINI_MODEL_VERIFICACION, GEMINI_OPTIONS_VERIFICACION),
+    extractSalidasFromPdf(base64),
+    extractPesadasVerification(base64),
   ]);
 
   if (principal.status === "rejected") {
