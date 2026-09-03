@@ -215,11 +215,101 @@ export interface GeminiRawExtraction {
 export interface GeminiCallOptions {
   /** undefined = no tocar el default del modelo. 0 desactiva el "thinking". */
   thinkingBudget?: number;
-  /** Timeout de cada intento individual. Por defecto 60s (ver más abajo). */
+  /**
+   * Presupuesto TOTAL de reloj para la llamada entera, reintentos y esperas
+   * incluidos. Es el único número que de verdad importa: la función que
+   * envuelve esta llamada tiene un límite de duración en la plataforma
+   * (ver `maxDuration`), y pasarse de ahí no da un error legible sino que
+   * mata el proceso y deja al usuario mirando un diálogo colgado.
+   */
+  totalBudgetMs?: number;
+  /** Techo del timeout de un intento individual. Se recorta al tiempo que quede. */
   fetchTimeoutMs?: number;
-  /** Nº de intentos. Por defecto 3. */
+  /** Nº máximo de intentos. Por defecto 3. */
   maxAttempts?: number;
 }
+
+/**
+ * Por debajo de esto no merece la pena lanzar otro intento: no daría tiempo
+ * ni a que Gemini empiece a responder, y se consumiría el poco margen que
+ * queda para devolver un error legible.
+ */
+const MIN_ATTEMPT_MS = 8_000;
+
+// ============================================================
+// PRESETS DE LLAMADA — un solo sitio donde ajustarlos
+// ============================================================
+//
+// El modelo y el "thinking" de la extracción principal son la diferencia
+// entre que esto funcione y que no. Medido sobre los PDF reales de
+// producción (informe de 4 páginas / 27 retiradas, y listado de pesadas de
+// 2 páginas):
+//
+//   gemini-3.5-flash + thinking por defecto → 135 s y 19 s  ← lo que había
+//   gemini-2.5-flash + thinkingBudget 0     →  13 s y  3 s
+//
+// Con idéntico resultado: mismas 27 filas, mismas matrículas y contratos, y
+// suma exacta contra los "Totales" impresos en el documento, estable en
+// varias repeticiones. Los 135 s no cabían en NINGÚN presupuesto razonable
+// de función serverless, así que la extracción se cortaba a medias y el
+// usuario veía el diálogo colgado o un error de Gemini.
+//
+// Leer una tabla ya impresa es transcripción, no razonamiento: el "thinking"
+// aquí no compraba exactitud, solo tiempo. Como efecto secundario se sale
+// del cupo gratuito de 3.5-flash (20 peticiones/DÍA para todo el proyecto),
+// que era otra fuente de errores intermitentes al agotarse.
+
+/** Modelo de la extracción principal (salidas y auditoría). */
+export const GEMINI_MODEL_EXTRACCION = "gemini-2.5-flash";
+
+/**
+ * Modelo de la segunda lectura de verificación. DISTINTO al de la extracción,
+ * y esto no es un detalle: la capa gratuita limita a 20 peticiones por DÍA
+ * **por modelo** (quotaId `GenerateRequestsPerDayPerProjectPerModel-FreeTier`,
+ * comprobado en el error real de Google). Como cada PDF gasta dos peticiones,
+ * poner las dos en el mismo modelo dejaría el sistema en 10 PDF al día;
+ * repartidas, cada una tiene su propio cupo de 20 y el techo lo marca la
+ * extracción: 20 PDF al día.
+ *
+ * `gemini-3.1-flash-lite` con thinking desactivado hace esta relectura en
+ * 7-10 s y clavó las 27 pesadas y la suma exacta del PDF real en las tres
+ * pruebas. Ojo al elegir alternativas: `gemini-2.5-flash-lite` responde 404
+ * ("no longer available") y `gemini-3.5-flash-lite` responde 400.
+ */
+export const GEMINI_MODEL_VERIFICACION = "gemini-3.1-flash-lite";
+
+/**
+ * Presupuestos pensados para caber, con las dos llamadas en paralelo y las
+ * consultas a la base de datos por detrás, dentro del `maxDuration` de 60 s
+ * de la función (ver app/(dashboard)/layout.tsx).
+ */
+export const GEMINI_OPTIONS_EXTRACCION: GeminiCallOptions = {
+  thinkingBudget: 0,
+  // Lo medido sobre los PDF reales es 3-22 s. El presupuesto deja margen de
+  // sobra para eso y, aun agotándolo entero, quedan ~20 s de los 60 de la
+  // función para las consultas a la base de datos y para devolver la
+  // respuesta (o un error legible) en vez de morir a medias.
+  totalBudgetMs: 40_000,
+  fetchTimeoutMs: 35_000,
+  maxAttempts: 3,
+};
+
+/**
+ * La verificación es una relectura mecánica de cifras (7-10 s medidos). Que
+ * falle no impide importar: se degrada a un aviso ("no se han podido
+ * contrastar las cantidades"), así que su presupuesto es ajustado a
+ * propósito. Corre en paralelo con la extracción, de modo que no alarga el
+ * total mientras se mantenga por debajo del presupuesto de aquella.
+ */
+export const GEMINI_OPTIONS_VERIFICACION: GeminiCallOptions = {
+  thinkingBudget: 0,
+  // 7-10 s en caliente, pero la primera llamada del día al modelo se ha visto
+  // llegar a 23 s. El margen cubre ese arranque en frío sin descartar por
+  // impaciencia una verificación que iba a llegar bien.
+  totalBudgetMs: 35_000,
+  fetchTimeoutMs: 30_000,
+  maxAttempts: 2,
+};
 
 async function callGemini(
   pdfBase64: string,
@@ -228,7 +318,12 @@ async function callGemini(
   model: string = GEMINI_MODEL,
   options: GeminiCallOptions = {}
 ): Promise<unknown> {
-  const { thinkingBudget, fetchTimeoutMs = 60_000, maxAttempts = 3 } = options;
+  const {
+    thinkingBudget,
+    totalBudgetMs = 45_000,
+    fetchTimeoutMs = totalBudgetMs,
+    maxAttempts = 3,
+  } = options;
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error(
@@ -262,34 +357,37 @@ async function callGemini(
 
   // fetch() no tiene timeout propio: si Gemini se queda sin responder (la
   // conexión se abre pero nunca llega la respuesta), la promesa no se resuelve
-  // NI se rechaza, así que el bucle de reintentos de abajo nunca llega a
-  // actuar. La petición se queda "colgada" hasta que la plataforma la mata a
-  // los 5 minutos (el límite duro de Vercel), y el usuario ve el diálogo
-  // dando vueltas todo ese tiempo. Por eso cada intento lleva su propio plazo:
-  // pasado, se aborta y se trata igual que un 503 (reintentable). El valor
-  // exacto (fetchTimeoutMs) lo decide quien llama: una extracción sobre un PDF
-  // grande con "thinking" activado necesita más margen que una relectura
-  // rápida y ya recortada.
+  // NI se rechaza. Por eso cada intento se aborta a su plazo.
   //
-  // Techo total del conjunto de reintentos: deja margen de sobra bajo los
-  // 300 s de Vercel, incluso con dos llamadas de este tipo en paralelo
-  // (extracción + verificación) y el resto de la acción (consultas a la base
-  // de datos) por detrás. Se deriva del propio fetchTimeoutMs en vez de un
-  // número fijo, para que quien pida un timeout más largo no se quede sin
-  // presupuesto para completar sus propios reintentos.
-  const TOTAL_BUDGET_MS = fetchTimeoutMs * maxAttempts + 20_000;
-  const startedAt = Date.now();
+  // El plazo NO es fijo: se calcula sobre un DEADLINE absoluto común a toda la
+  // llamada. La versión anterior derivaba el techo total del propio
+  // fetchTimeoutMs (`fetchTimeoutMs * maxAttempts + 20s`), con lo que la
+  // comprobación no podía saltar nunca —el presupuesto siempre daba de sobra
+  // para todos los intentos que el bucle iba a hacer— y dos intentos de 100 s
+  // se comían 200 s dentro de una función que la plataforma corta mucho antes.
+  // Ahora manda el reloj: cada intento recibe lo que queda hasta el deadline y
+  // no se empieza ninguno que no quepa, así que el peor caso es siempre un
+  // error legible dentro del presupuesto, nunca un proceso muerto a medias.
+  const deadline = Date.now() + totalBudgetMs;
+  /** Tiempo restante, o 0 si ya se agotó. */
+  const restante = () => Math.max(0, deadline - Date.now());
 
   let response: Response | null = null;
+  let ultimoFalloTransitorio = false;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (Date.now() - startedAt > TOTAL_BUDGET_MS) {
+    // Un intento solo se lanza si le queda margen real para completarse.
+    const margen = restante();
+    if (margen < MIN_ATTEMPT_MS) {
       throw new Error(
-        "Gemini está tardando demasiado en responder. Reinténtalo en unos minutos."
+        ultimoFalloTransitorio
+          ? "Gemini está saturado ahora mismo y no ha respondido a tiempo. Espera un momento y reinténtalo."
+          : `Gemini no respondió en ${Math.round(totalBudgetMs / 1000)}s. Puede que el servicio esté lento o el PDF sea muy grande; reinténtalo.`
       );
     }
 
+    const attemptTimeoutMs = Math.min(fetchTimeoutMs, margen);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
+    const timeout = setTimeout(() => controller.abort(), attemptTimeoutMs);
     let timedOut = false;
     let bodyJson: unknown;
 
@@ -309,15 +407,18 @@ async function callGemini(
       }
     } catch (err) {
       timedOut = (err as Error).name === "AbortError";
-      // Error de red, timeout, o corte a media lectura: reintentar si quedan
-      // intentos.
-      if (attempt < maxAttempts) {
-        await sleep(attempt * 1200);
+      // Un timeout que se ha comido todo el presupuesto no se reintenta: si el
+      // modelo ha necesitado más de lo que quedaba, repetir la misma petición
+      // solo sirve para agotar el margen y acabar igual, pero más tarde. Los
+      // fallos de red rápidos sí merecen otro intento.
+      const puedeReintentar = attempt < maxAttempts && restante() >= MIN_ATTEMPT_MS;
+      if (puedeReintentar) {
+        await sleep(Math.min(attempt * 1200, restante()));
         continue;
       }
       throw timedOut
         ? new Error(
-            `Gemini no respondió en ${fetchTimeoutMs / 1000}s tras ${maxAttempts} intentos. Puede que el PDF sea muy grande o el servicio esté lento; reinténtalo.`
+            `Gemini no respondió en ${Math.round(totalBudgetMs / 1000)}s. Puede que el PDF sea muy grande o el servicio esté lento; reinténtalo.`
           )
         : new Error(`No se pudo contactar con Gemini: ${(err as Error).message}`);
     } finally {
@@ -328,15 +429,30 @@ async function callGemini(
       return parseGeminiBody(bodyJson);
     }
 
-    // Respuesta de error: reintentar solo los transitorios.
-    if (RETRYABLE.has(response.status) && attempt < maxAttempts) {
-      await sleep(attempt * 1500); // 1.5s, luego 3s
-      continue;
+    // Respuesta de error: reintentar solo los transitorios, y solo si queda
+    // presupuesto para que el reintento llegue a completarse.
+    if (RETRYABLE.has(response.status)) {
+      ultimoFalloTransitorio = true;
+      const espera = Math.min(attempt * 1500, restante()); // 1.5s, luego 3s
+      if (attempt < maxAttempts && restante() - espera >= MIN_ATTEMPT_MS) {
+        await sleep(espera);
+        continue;
+      }
     }
 
     const detail = await response.text().catch(() => "");
     if (response.status === 429) {
-      throw new Error("Gemini está saturado por límite de peticiones. Espera unos segundos y reinténtalo.");
+      // El 429 de la capa gratuita cubre dos casos muy distintos: demasiadas
+      // peticiones seguidas (se pasa en segundos) y cupo DIARIO agotado (no se
+      // arregla esperando un rato). Como el mensaje de Google distingue el
+      // segundo con "per day", se refleja aquí para no mandar al usuario a
+      // reintentar en bucle algo que no va a funcionar hasta mañana.
+      const cupoDiario = /per\s*day|daily/i.test(detail);
+      throw new Error(
+        cupoDiario
+          ? "Se ha agotado el cupo diario gratuito de Gemini. No se podrán analizar más PDF hasta que se renueve (a medianoche, hora del Pacífico)."
+          : "Gemini está recibiendo demasiadas peticiones seguidas. Espera unos segundos y reinténtalo."
+      );
     }
     if (response.status === 503) {
       throw new Error("El modelo de Gemini está sobrecargado ahora mismo. Espera un momento y vuelve a intentarlo.");
@@ -433,9 +549,19 @@ Devuelve el resultado siguiendo el esquema JSON proporcionado.
 
 /**
  * Envía un PDF de "Aplicación" a Gemini y devuelve el JSON crudo de la puesta.
+ *
+ * Va con `thinkingBudget: 0` por defecto: es leer ocho campos etiquetados de
+ * un formulario de una página, no una tarea que necesite razonamiento. Con el
+ * "thinking" por defecto activado, este documento trivial llegaba a tardar más
+ * que el presupuesto de la función y fallaba con el mismo error que las
+ * salidas.
  */
-export async function extractPuestaFromPdf(pdfBase64: string): Promise<unknown> {
-  return callGemini(pdfBase64, PUESTA_EXTRACTION_PROMPT, PUESTA_RESPONSE_SCHEMA);
+export async function extractPuestaFromPdf(
+  pdfBase64: string,
+  model?: string,
+  options: GeminiCallOptions = { thinkingBudget: 0, totalBudgetMs: 40_000 }
+): Promise<unknown> {
+  return callGemini(pdfBase64, PUESTA_EXTRACTION_PROMPT, PUESTA_RESPONSE_SCHEMA, model, options);
 }
 
 // ============================================================

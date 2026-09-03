@@ -6,6 +6,20 @@ import { Header } from "@/components/layout/header";
 import { ENV_COOKIE, getEnvModeFromValue } from "@/lib/env-mode";
 import { FlaskConical } from "lucide-react";
 
+/**
+ * Duración máxima de las funciones de todo el área privada.
+ *
+ * Los diálogos de "Subir Salidas Puerto (PDF)", "Subir Pta a Disposición
+ * (PDF)" y "Revisar Salidas Puerto (PDF)" viven en la barra lateral, así que
+ * sus Server Actions se ejecutan bajo la ruta en la que esté el usuario:
+ * cualquier página del dashboard. Sin esto valía el valor por defecto de la
+ * plataforma (60 s), muy por debajo de lo que las llamadas a Gemini creían
+ * tener presupuestado, y la función se moría a media extracción — de ahí el
+ * diálogo colgado sin error claro. Ahora el límite es explícito, y los
+ * presupuestos de lib/gemini.ts están calculados para caber dentro.
+ */
+export const maxDuration = 60;
+
 export default async function DashboardLayout({
   children,
 }: {

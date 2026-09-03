@@ -13,7 +13,14 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
-import { extractSalidasFromPdf, extractPesadasVerification } from "@/lib/gemini";
+import {
+  extractSalidasFromPdf,
+  extractPesadasVerification,
+  GEMINI_MODEL_EXTRACCION,
+  GEMINI_MODEL_VERIFICACION,
+  GEMINI_OPTIONS_EXTRACCION,
+  GEMINI_OPTIONS_VERIFICACION,
+} from "@/lib/gemini";
 import { filterByText, normalizeLineUnits } from "@/services/pdf-import.service";
 import {
   checkPlausibility,
@@ -34,19 +41,10 @@ import {
 import { formatNumber } from "@/utils/format";
 
 const MAX_PDF_BYTES = 15 * 1024 * 1024; // 15 MB
-const GEMINI_MODEL_SALIDAS = "gemini-3.5-flash";
-// Igual que en lib/actions/pdf-import.ts: gemini-3.5-flash tiene un cupo
-// gratuito de solo 20 peticiones/DÍA para todo el proyecto (confirmado en el
-// error de cuota real de Google), y esta auditoría comparte ese cupo con la
-// importación. Mover la verificación a 2.5-flash (cupo mucho más holgado)
-// libera esa presión, y thinkingBudget: 0 la hace ~58% más rápida sin perder
-// exactitud en pruebas reales, al ser una relectura mecánica de cifras.
-const GEMINI_MODEL_VERIFICACION = "gemini-2.5-flash";
-const GEMINI_OPTIONS_VERIFICACION = { thinkingBudget: 0 };
-// Igual que en pdf-import.ts: más margen que el genérico de 60s/3 intentos
-// para la extracción principal, porque un PDF real de varias páginas puede
-// tardar más de 60s en generarse con "thinking" activado por defecto.
-const GEMINI_OPTIONS_EXTRACCION = { fetchTimeoutMs: 100_000, maxAttempts: 2 };
+
+// Modelos y presupuestos viven en lib/gemini.ts, compartidos con la
+// importación (lib/actions/pdf-import.ts) para que las dos rutas no puedan
+// divergir.
 
 /**
  * Días que se amplía a cada lado la ventana de fechas del PDF al buscar los
@@ -118,7 +116,7 @@ export async function auditPdfAction(formData: FormData): Promise<AuditFileRepor
   // La primera es exactamente la de producción (para auditar lo que el flujo
   // real produciría); la segunda es una relectura enfocada solo en cifras.
   const [principal, verificacion] = await Promise.allSettled([
-    extractSalidasFromPdf(base64, GEMINI_MODEL_SALIDAS, GEMINI_OPTIONS_EXTRACCION),
+    extractSalidasFromPdf(base64, GEMINI_MODEL_EXTRACCION, GEMINI_OPTIONS_EXTRACCION),
     extractPesadasVerification(base64, GEMINI_MODEL_VERIFICACION, GEMINI_OPTIONS_VERIFICACION),
   ]);
 
