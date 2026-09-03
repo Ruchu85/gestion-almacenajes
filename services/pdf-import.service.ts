@@ -65,8 +65,29 @@ const LEGAL_SUFFIXES = new Set([
   "SA", "SAU", "SL", "SLU", "SLL", "SAL", "SCOOP", "SC", "CB", "SCA", "SLNE",
 ]);
 
+/**
+ * Formas jurídicas escritas con PALABRAS, no con siglas. Los informes de puerto
+ * recortan el nombre a 20 caracteres y abrevian a su manera, así que la misma
+ * empresa llega escrita de formas muy distintas:
+ *   "DELAGRO SOCIEDAD CO"  (PDF, recortado)  ⇄  "DELAGRO, SDAD. COOP."  (sistema)
+ *   "AIRA, S.C.G."         (PDF)             ⇄  "AIRA SDAD. COOP GALLEGA"
+ * Ninguna de esas palabras distingue a una empresa de otra, así que se tratan
+ * como ruido y la comparación se queda con lo que de verdad identifica
+ * ("DELAGRO", "AIRA"). Sin esto las dos parejas de arriba puntuaban 0.
+ */
+const LEGAL_WORDS = new Set([
+  "SOCIEDAD", "SDAD", "SOC", "COOPERATIVA", "COOP", "CO", "COOPERATIVAS",
+  "LIMITADA", "ANONIMA", "CIA", "COMPANIA", "HERMANOS", "HNOS",
+]);
+
 /** Tokens sin valor discriminante al comparar nombres de empresa/almacén. */
-const NOISE_TOKENS = new Set([...LEGAL_SUFFIXES, "S", "A", "L", "U", "DE", "DEL", "LA", "EL", "Y"]);
+const NOISE_TOKENS = new Set([
+  ...LEGAL_SUFFIXES,
+  ...LEGAL_WORDS,
+  // Letras sueltas: restos de una forma jurídica con puntos ("S.C.G." → S C G).
+  "S", "A", "L", "U", "C", "B", "G",
+  "DE", "DEL", "LA", "EL", "Y",
+]);
 
 /**
  * Letras sueltas en las que se descompone una forma jurídica al quitarle los
@@ -101,6 +122,31 @@ function clienteTokens(value: string | null | undefined): string[] {
 const MIN_PREFIX_LEN = 3;
 
 /**
+ * Longitud mínima para fiarse de un nombre que, quitada la forma jurídica, se
+ * queda en UNA sola palabra. "DELAGRO" o "AIRA" identifican de sobra; algo de
+ * dos o tres letras, no.
+ */
+const MIN_TOKEN_UNICO = 4;
+
+/**
+ * ¿Da este conjunto de tokens para intentar la comparación por subconjunto?
+ *
+ * La regla era "al menos 2 tokens", pensada para que dos empresas que solo
+ * comparten una palabra genérica no se confundan. Pero deja fuera a las que se
+ * llaman con UNA sola palabra distintiva más su forma jurídica ("DELAGRO,
+ * SDAD. COOP.", "AIRA, S.C.G."): al quitar el ruido queda un único token y
+ * nunca podían puntuar, así que el informe de puerto no encontraba su puesta.
+ * Con un token largo el riesgo de falso positivo es bajo, y si aun así encaja
+ * con varias puestas el flujo ya lo resuelve enseñándolas todas para que elija
+ * el usuario.
+ */
+function tokensSuficientes(tokens: Set<string>): boolean {
+  if (tokens.size >= 2) return true;
+  const unico = [...tokens][0];
+  return !!unico && unico.length >= MIN_TOKEN_UNICO;
+}
+
+/**
  * Fuerza de la coincidencia entre el nombre de cliente del PDF y el del
  * sistema. Los informes de almacén recortan los nombres (a 20 caracteres en el
  * listado de pesadas) y añaden u omiten preposiciones y formas jurídicas, así
@@ -108,8 +154,9 @@ const MIN_PREFIX_LEN = 3;
  *
  *  - 4 → nombres idénticos una vez normalizados.
  *  - 3 → mismos tokens significativos: "PIENSOS DEL SIL S.A" ⇄ "PIENSOS SIL, S.L.".
- *  - 2 → los tokens de uno son un subconjunto de los del otro (≥2 tokens):
- *        "DE HEUS NUTRICION A" ⊂ "DE HEUS NUTRICION ANIMAL, S.A.U".
+ *  - 2 → los tokens de uno son un subconjunto de los del otro:
+ *        "DE HEUS NUTRICION A" ⊂ "DE HEUS NUTRICION ANIMAL, S.A.U", o
+ *        "AIRA" ⊂ "AIRA SDAD. COOP GALLEGA" (ver tokensSuficientes).
  *  - 1 → coincidencia débil: contención literal, o tokens truncados que son
  *        prefijo de los del otro nombre.
  *  - 0 → sin relación.
@@ -130,14 +177,14 @@ export function clienteMatchScore(
     if (ta.size === tb.size && [...ta].every((t) => tb.has(t))) return 3;
 
     const [small, big] = ta.size <= tb.size ? [ta, tb] : [tb, ta];
-    if (small.size >= 2 && [...small].every((t) => big.has(t))) return 2;
+    if (tokensSuficientes(small) && [...small].every((t) => big.has(t))) return 2;
 
     // Nombre recortado por el informe: cada token del corto es el principio de
     // alguno del largo ("DE HEUS NUTRICION AN" ⊂ "DE HEUS NUTRICION ANIMAL").
     const prefixOk = [...small].every((t) =>
       [...big].some((o) => o === t || (t.length >= MIN_PREFIX_LEN && o.startsWith(t)))
     );
-    if (small.size >= 2 && prefixOk) return 1;
+    if (tokensSuficientes(small) && prefixOk) return 1;
   }
 
   if (na.length >= 4 && nb.includes(na)) return 1;
@@ -542,6 +589,40 @@ export function buildProposals(
       }
     }
 
+    /**
+     * Ni el contrato ni el nombre han dado con nada. Antes se abandonaba aquí,
+     * y es justo el caso del "LISTADO DE PESADAS" (Formato B): la referencia
+     * que imprime ("CONT.CLI.-31607") es del almacén portuario, no el nº de
+     * puesta de la aplicación, y el destinatario llega recortado a 20
+     * caracteres y con la razón social abreviada a su manera.
+     *
+     * Queda un camino que el documento sí resuelve sin ambigüedad: la
+     * mercancía es de ESE producto y está en ESE almacén, así que la retirada
+     * solo puede salir de una puesta abierta de ese producto en ese almacén.
+     * Se ofrecen todas las que encajen para que el usuario elija (o se propone
+     * la única que haya). Nunca se da por buena sola: no se ha llegado a
+     * identificar al cliente, así que la valida siempre una persona.
+     */
+    let soloPorAlmacenProducto = false;
+    if (pool.length === 0) {
+      const porAlmacenProducto = puestasAbiertas
+        .filter((p) => productoMatches(p.product_name, line.producto))
+        .filter((p) => filterByText([p], line.almacen, (x) => x.warehouse_name).length > 0);
+
+      if (porAlmacenProducto.length > 0) {
+        soloPorAlmacenProducto = true;
+        clienteOk = false;
+        pool = porAlmacenProducto;
+        warnings.push(
+          `No se ha identificado a "${line.cliente}" entre los clientes con puesta abierta, y el nº de ` +
+            `referencia del documento ("${line.numero_puesta || "sin referencia"}") no es un contrato de la ` +
+            `aplicación. Se proponen las ${porAlmacenProducto.length === 1 ? "" : `${porAlmacenProducto.length} `}` +
+            `puestas abiertas de ${line.producto || "ese producto"} en ${line.almacen || "ese almacén"}: ` +
+            `elige la que corresponda antes de grabar.`
+        );
+      }
+    }
+
     if (pool.length === 0) {
       warnings.push("No se encontró ninguna puesta abierta para este cliente / contrato.");
       return {
@@ -555,9 +636,47 @@ export function buildProposals(
       };
     }
 
-    // Afinar por almacén y por producto (solo si el filtro deja candidatas).
-    pool = refine(pool, filterByText(pool, line.almacen, (p) => p.warehouse_name));
-    pool = refine(pool, pool.filter((p) => productoMatches(p.product_name, line.producto)));
+    // ── Producto: restricción DURA ─────────────────────────────
+    // De una puesta de CEBADA no puede salir una retirada de MAÍZ. Esto era un
+    // filtro blando (si no dejaba candidatas se ignoraba) y bastaba con que el
+    // cliente coincidiera para proponer la puesta de otro producto. Solo se
+    // aplica cuando el documento dice qué producto es; si no lo dice, no hay
+    // nada que comprobar.
+    if (line.producto) {
+      const mismoProducto = pool.filter((p) => productoMatches(p.product_name, line.producto));
+      if (mismoProducto.length === 0) {
+        warnings.push(
+          `Se ha localizado al cliente, pero ninguna de sus puestas abiertas es de "${line.producto}" ` +
+            `(la candidata más cercana es de "${pool[0].product_name}"). No se propone ninguna: revísalo.`
+        );
+        return {
+          id,
+          tipo: "puesta" as const,
+          line,
+          match: null,
+          candidates: [],
+          confidence: "nula" as MatchConfidence,
+          warnings,
+        };
+      }
+      pool = mismoProducto;
+    }
+
+    // ── Almacén: filtro blando ─────────────────────────────────
+    // El informe lo escribe a su manera ("PEREZ TORRES MARITIMA, S.L. - A
+    // CORUÑA" frente a "… - CORUÑA" en la aplicación), así que no se descarta
+    // una candidata por no encajar; pero si NINGUNA encaja se avisa y la fila
+    // deja de poder darse por buena sola.
+    const mismoAlmacen = filterByText(pool, line.almacen, (p) => p.warehouse_name);
+    const almacenOk = !line.almacen || mismoAlmacen.length > 0;
+    if (mismoAlmacen.length > 0) {
+      pool = mismoAlmacen;
+    } else if (line.almacen) {
+      warnings.push(
+        `El almacén del documento ("${line.almacen}") no coincide con el de ninguna de las puestas ` +
+          `candidatas. Comprueba que es la puesta correcta antes de grabar.`
+      );
+    }
 
     // ── 3. Desempate FIFO ──────────────────────────────────────
     const ordered = sortFifo(pool, line.cantidad);
@@ -602,7 +721,13 @@ export function buildProposals(
     if (seleccionables.length > 1) candidates = seleccionables.map(toRef);
 
     confidence =
-      clienteOk && !conflicto && !contratoCompletoSinCoincidencia && ordered.length === 1 && matchScore >= 2
+      clienteOk &&
+      almacenOk &&
+      !conflicto &&
+      !soloPorAlmacenProducto &&
+      !contratoCompletoSinCoincidencia &&
+      ordered.length === 1 &&
+      matchScore >= 2
         ? "alta"
         : "media";
 
