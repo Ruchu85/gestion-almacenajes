@@ -2,21 +2,21 @@
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { extractSalidasFromPdf, extractPesadasVerification, type Motor } from "@/lib/gemini";
-import { mistralConfigurado, MISTRAL_MODEL } from "@/lib/mistral";
+import { estadoMotorAlternativo, MISTRAL_MODEL, type EstadoMotorAlternativo } from "@/lib/mistral";
 import {
   buildProposals,
   buildResumenAlerts,
   filterByText,
   normalizeLineUnits,
 } from "@/services/pdf-import.service";
-import { compareExtractionPasses } from "@/services/pdf-audit.service";
+import { compareExtractionPasses, pesadasUtiles } from "@/services/pdf-audit.service";
 import { pdfVerificacionSchema } from "@/validations/pdf-audit.schema";
 import { formatNumber } from "@/utils/format";
 import { PuestasService } from "@/services/puestas.service";
 import { createSalidaParcial } from "@/app/(dashboard)/puestas/actions";
 import { upsertMatricula } from "@/lib/actions/matriculas";
 import {
-  pdfExtractionSchema,
+  parsePdfExtraction,
   pdfConfirmSchema,
   pdfConfirmNormalesSchema,
   type PdfAnalysisResult,
@@ -35,16 +35,18 @@ const MAX_PDF_BYTES = 15 * 1024 * 1024; // 15 MB
 
 export async function analyzePdfAction(
   formData: FormData
-): Promise<{ data?: PdfAnalysisResult; error?: string; puedeUsarMistral?: boolean }> {
+): Promise<{ data?: PdfAnalysisResult; error?: string; motorAlternativo?: EstadoMotorAlternativo }> {
   // Motor de lectura. Por defecto Gemini SIEMPRE. "mistral" solo llega aquí
   // cuando el usuario lo ha aceptado a mano en el diálogo tras un fallo.
   const motor: Motor = formData.get("motor") === "mistral" ? "mistral" : "gemini";
   /**
-   * Se ofrece reintentar con Mistral cuando ha fallado la IA (no la validación
-   * del archivo), veníamos de Gemini y hay clave configurada. Se devuelve al
-   * cliente para que pinte el botón solo cuando sirva de algo.
+   * Qué se le puede ofrecer al usuario si falla la IA. Se acompaña SOLO a los
+   * errores de la IA, no a los de validación del archivo: cambiar de motor no
+   * arregla un PDF de 20 MB. Cuando no hay motor alternativo configurado se
+   * dice explícitamente, para que "no sale el botón" nunca vuelva a ser un
+   * silencio sin explicación.
    */
-  const ofrecerMistral = motor === "gemini" && mistralConfigurado();
+  const motorAlternativo = estadoMotorAlternativo(motor);
   // 1. Auth
   const supabase = await createClient();
   const {
@@ -79,22 +81,16 @@ export async function analyzePdfAction(
   if (principal.status === "rejected") {
     return {
       error: (principal.reason as Error)?.message ?? "No se pudo analizar el PDF.",
-      puedeUsarMistral: ofrecerMistral,
+      motorAlternativo,
     };
   }
 
-  const parsed = pdfExtractionSchema.safeParse(principal.value);
-  if (!parsed.success) {
-    return {
-      error: "La IA devolvió los datos en un formato inesperado. Reinténtalo.",
-      puedeUsarMistral: ofrecerMistral,
-    };
-  }
-  if (parsed.data.lineas.length === 0) {
-    return {
-      error: "No se detectaron salidas/retiradas en el documento.",
-      puedeUsarMistral: ofrecerMistral,
-    };
+  // Lectura TOLERANTE: descarta fila a fila lo que no es una salida grabable en
+  // vez de tirar el documento entero. Ver parsePdfExtraction para el porqué (un
+  // bloque de entradas coló 69 filas basura y se perdieron 18 buenas).
+  const parsed = parsePdfExtraction(principal.value);
+  if (!parsed.ok) {
+    return { error: parsed.error, motorAlternativo };
   }
 
   // 4. Cargar maestros y puestas abiertas
@@ -113,13 +109,13 @@ export async function analyzePdfAction(
 
   // 5. Normalizar unidades (p. ej. el listado de pesadas viene en kg y el
   //    sistema gestiona el producto en TNS) y construir propuestas.
-  const lineas = normalizeLineUnits(parsed.data.lineas, products);
+  const lineas = normalizeLineUnits(parsed.lineas, products);
   const proposals = buildProposals(lineas, abiertas);
 
   // 5.b Contrastar con el resumen de saldos del informe (KG RETIRADOS por
   //     cliente de la primera página): todo cliente que retira debe tener una
   //     puesta abierta a su nombre, y los kilos deben cuadrar con las pesadas.
-  const alerts = buildResumenAlerts(parsed.data.resumen_clientes, proposals, abiertas, products);
+  const alerts = buildResumenAlerts(parsed.resumen_clientes, proposals, abiertas, products);
 
   // 5.c Cruzar la segunda lectura contra la principal. Las discrepancias se
   //     cuelgan de la propia fila para que salten a la vista en el diálogo.
@@ -131,7 +127,15 @@ export async function analyzePdfAction(
   if (verificado?.success) {
     // buildProposals genera el id de cada fila con esta misma fórmula.
     const ids = lineas.map((l, i) => `${i}-${l.matricula}-${l.cantidad}`);
-    const comparacion = compareExtractionPasses(lineas, ids, verificado.data.pesadas);
+    const comparacion = compareExtractionPasses(
+      lineas,
+      ids,
+      // La segunda lectura pasa por el MISMO filtro que la principal: si el
+      // documento trae un bloque de entradas, también puede colárselas, y sin
+      // esto aparecerían como decenas de "pesadas que la principal no ha
+      // listado" — un aviso rojo alarmante y falso.
+      pesadasUtiles(verificado.data.pesadas)
+    );
 
     for (const proposal of proposals) {
       const check = comparacion.byLineId.get(proposal.id);
@@ -293,7 +297,7 @@ export async function analyzePdfAction(
     }
   }
 
-  return { data: { proposals, alerts } };
+  return { data: { proposals, alerts, descartadas: parsed.descartadas } };
 }
 
 // ============================================================

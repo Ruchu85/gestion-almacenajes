@@ -24,6 +24,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import type { EstadoMotorAlternativo } from "@/lib/mistral";
 import { formatDate } from "@/utils/format";
 import {
   analyzePuestaPdfAction,
@@ -74,7 +75,9 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
   const [isDragging, setIsDragging] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   /** Gemini falló y hay motor alternativo: se OFRECE, no se usa solo. */
-  const [ofreceMistral, setOfreceMistral] = useState(false);
+  const [motorAlt, setMotorAlt] = useState<EstadoMotorAlternativo>("no_aplica");
+  /** Hay motor alternativo y merece la pena ofrecerlo. */
+  const ofreceMistral = motorAlt === "disponible";
   /** Lo leído en pantalla viene del motor alternativo. */
   const [leidoConMistral, setLeidoConMistral] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -108,7 +111,7 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
     setQueue([]);
     setQueueIndex(0);
     setQueueError(null);
-    setOfreceMistral(false);
+    setMotorAlt("no_aplica");
     setLeidoConMistral(false);
     setLoadingQueue(false);
     setCustomerSearch("");
@@ -163,7 +166,7 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
     if (!file) return;
     setAnalyzing(true);
     setUploadError(null);
-    setOfreceMistral(false);
+    setMotorAlt("no_aplica");
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -171,7 +174,7 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
       const res = await analyzePuestaPdfAction(formData);
       if (res.error || !res.data) {
         setUploadError(res.error ?? "No se pudo analizar el documento.");
-        setOfreceMistral(!!res.puedeUsarMistral);
+        setMotorAlt(res.motorAlternativo ?? "no_aplica");
         return;
       }
       setLeidoConMistral(motor === "mistral");
@@ -225,14 +228,14 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
   async function analyzeFromStorage(name: string, motor: "gemini" | "mistral" = "gemini") {
     setAnalyzing(true);
     setQueueError(null);
-    setOfreceMistral(false);
+    setMotorAlt("no_aplica");
     setResult(null);
     setEditable(null);
     try {
       const res = await analyzePuestaFromStorageAction(name, motor);
       if (res.error || !res.data) {
         setQueueError(res.error ?? "No se pudo analizar el documento.");
-        setOfreceMistral(!!res.puedeUsarMistral);
+        setMotorAlt(res.motorAlternativo ?? "no_aplica");
         return;
       }
       setLeidoConMistral(motor === "mistral");
@@ -444,6 +447,15 @@ export function PdfPuestasDialog({ open, onOpenChange, autoLoad = false }: PdfPu
               {loadingQueue ? "Buscando PDFs…" : "Leer PDFs de Base de Datos"}
             </Button>
 
+            {/* No hay motor alternativo configurado en el servidor. Se dice,
+                en vez de no enseñar nada: si no, "no me sale la opción de
+                Mistral" es indistinguible de que el botón esté roto. */}
+            {motorAlt === "sin_configurar" && (
+              <p className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300">
+                El motor alternativo de lectura no está disponible: falta configurar su clave
+                (<span className="font-mono">MISTRAL_API_KEY</span>) en el servidor.
+              </p>
+            )}
             {ofreceMistral && (
               <div className="rounded-lg border-2 border-amber-500 bg-amber-100 dark:bg-amber-950/60 p-3 space-y-2">
                 <div className="flex gap-2">

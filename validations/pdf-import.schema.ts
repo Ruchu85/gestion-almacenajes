@@ -20,8 +20,18 @@ export const pdfExtractedLineSchema = z.object({
   producto: z.string().nullable().optional(),
   /** Fecha de la salida en formato YYYY-MM-DD. */
   fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha inválida"),
-  /** Matrícula del camión (cabeza tractora). */
-  matricula: z.string().min(1, "Matrícula vacía"),
+  /**
+   * Matrícula del camión (cabeza tractora).
+   *
+   * NO se exige aquí a propósito. Antes era `min(1)` y bastaba con que la IA
+   * devolviera una fila sin matrícula para que `safeParse` tumbara el
+   * documento ENTERO — y con él las decenas de filas buenas — con un
+   * "formato inesperado" que no decía nada. Una fila sin matrícula no es un
+   * problema de formato sino de contenido (casi siempre una fila de ENTRADA
+   * colada como salida), así que se filtra en `parsePdfExtraction`, que la
+   * descarta una a una y deja constancia para el usuario.
+   */
+  matricula: z.string().default(""),
   /** Matrícula del remolque, si el documento la trae (formato "listado de pesadas"). */
   remolque: z.string().nullable().optional(),
   /** Nº de ticket/pesada, si el documento lo trae (formato "listado de pesadas"). */
@@ -29,9 +39,11 @@ export const pdfExtractedLineSchema = z.object({
   /**
    * Cantidad de la salida, ya normalizada a la unidad del sistema.
    * Puede ser NEGATIVA: los informes traen líneas de devolución/abono (albarán
-   * "V…") que restan del total del bloque. Lo único que no tiene sentido es 0.
+   * "V…") que restan del total del bloque. Lo único que no tiene sentido es 0,
+   * pero eso tampoco se rechaza aquí (mismo motivo que en `matricula`): lo
+   * filtra `parsePdfExtraction` fila a fila.
    */
-  cantidad: z.number().refine((v) => v !== 0, "La cantidad no puede ser 0"),
+  cantidad: z.number(),
   /** Unidad en la que el documento expresa la cantidad ("kg", "tns", …). */
   unidad: z.string().nullable().optional(),
   /**
@@ -70,6 +82,145 @@ export const pdfExtractionSchema = z.object({
 export type PdfExtractedLine = z.infer<typeof pdfExtractedLineSchema>;
 export type PdfResumenCliente = z.infer<typeof pdfResumenClienteSchema>;
 export type PdfExtraction = z.infer<typeof pdfExtractionSchema>;
+
+// ============================================================
+// LECTURA TOLERANTE DE LO QUE DEVUELVE LA IA
+// ============================================================
+
+/**
+ * Una fila que la IA devolvió pero que NO es una salida grabable, con el
+ * motivo. Se cuenta y se enseña al usuario: descartar filas en silencio en una
+ * app que mueve cantidades es justo lo que no se puede hacer.
+ */
+export interface PdfLineaDescartada {
+  motivo: "sin_matricula" | "cantidad_cero" | "campos_invalidos";
+  /** Lo poco que se sabe de la fila, para poder localizarla en el papel. */
+  descripcion: string;
+  /** Cantidad que traía, si se pudo leer. Para poder cuadrar contra el PDF. */
+  cantidad: number | null;
+}
+
+/** Resultado de leer la respuesta cruda de la IA. */
+export type PdfExtractionParse =
+  | {
+      ok: true;
+      lineas: PdfExtractedLine[];
+      resumen_clientes: PdfResumenCliente[];
+      descartadas: PdfLineaDescartada[];
+    }
+  | { ok: false; error: string };
+
+/** Envoltorio mínimo: lo único que de verdad tiene que traer la respuesta. */
+const pdfExtractionEnvelopeSchema = z.object({
+  lineas: z.array(z.unknown()),
+  resumen_clientes: z.array(z.unknown()).optional().default([]),
+});
+
+/** Texto corto que identifica una fila descartada en el informe. */
+function describirFila(raw: unknown): string {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  const partes = [o.fecha, o.cliente, o.numero_puesta, o.matricula, o.ticket]
+    .map((v) => (typeof v === "string" ? v.trim() : ""))
+    .filter(Boolean);
+  return partes.length > 0 ? partes.join(" · ").slice(0, 120) : "fila sin datos identificables";
+}
+
+/**
+ * Convierte la respuesta cruda de la IA en líneas utilizables, DESCARTANDO fila
+ * a fila lo que no sirve en vez de rechazar el documento entero.
+ *
+ * El porqué, con un caso real: el informe del 03/09/2026 traía un bloque de 69
+ * filas que eran todas ENTRADAS de mercancía (columna "Salidas" a 0,00). La IA
+ * las devolvió como salidas, tomando el valor de la columna "Entradas" y sin
+ * matrícula. Con la validación anterior —un `safeParse` de todo el objeto— esas
+ * 69 filas malas tiraban también las 18 buenas, que estaban perfectas y
+ * cuadraban al céntimo con los totales impresos, y el usuario solo veía "La IA
+ * devolvió los datos en un formato inesperado".
+ *
+ * Reglas de descarte (deliberadamente pocas y explicables):
+ *  · la fila no encaja en el esquema             → `campos_invalidos`
+ *  · cantidad 0                                  → `cantidad_cero`
+ *  · sin matrícula NI ticket                     → `sin_matricula`
+ * Esa última es la red de seguridad contra las filas de entrada: en los cuatro
+ * informes reales revisados, TODA salida trae matrícula (Formato A) o nº de
+ * ticket (Formato B), y ninguna fila de entrada trae ninguna de las dos cosas.
+ */
+export function parsePdfExtraction(raw: unknown): PdfExtractionParse {
+  const envelope = pdfExtractionEnvelopeSchema.safeParse(raw);
+  if (!envelope.success) {
+    return {
+      ok: false,
+      error:
+        "La IA no devolvió la lista de salidas esperada (falta el campo 'lineas' o no es una lista).",
+    };
+  }
+
+  const lineas: PdfExtractedLine[] = [];
+  const descartadas: PdfLineaDescartada[] = [];
+
+  for (const item of envelope.data.lineas) {
+    const fila = pdfExtractedLineSchema.safeParse(item);
+    if (!fila.success) {
+      const cantidad = (item as { cantidad?: unknown })?.cantidad;
+      descartadas.push({
+        motivo: "campos_invalidos",
+        descripcion: `${describirFila(item)} (${fila.error.issues[0]?.message ?? "datos ilegibles"})`,
+        cantidad: typeof cantidad === "number" ? cantidad : null,
+      });
+      continue;
+    }
+    const linea = fila.data;
+    if (linea.cantidad === 0) {
+      descartadas.push({
+        motivo: "cantidad_cero",
+        descripcion: describirFila(item),
+        cantidad: 0,
+      });
+      continue;
+    }
+    if (!linea.matricula.trim() && !(linea.ticket ?? "").trim()) {
+      descartadas.push({
+        motivo: "sin_matricula",
+        descripcion: describirFila(item),
+        cantidad: linea.cantidad,
+      });
+      continue;
+    }
+    lineas.push(linea);
+  }
+
+  // El resumen de saldos es un control cruzado, no un dato que se grabe: si una
+  // de sus filas viene mal, se ignora esa fila y ya. Nunca debe tumbar nada.
+  const resumen_clientes: PdfResumenCliente[] = [];
+  for (const item of envelope.data.resumen_clientes) {
+    const fila = pdfResumenClienteSchema.safeParse(item);
+    if (fila.success) resumen_clientes.push(fila.data);
+  }
+
+  if (lineas.length === 0) {
+    return {
+      ok: false,
+      error:
+        descartadas.length > 0
+          ? `No se ha encontrado ninguna salida grabable en el documento. La IA devolvió ${descartadas.length} ${descartadas.length === 1 ? "fila" : "filas"}, pero ninguna es una salida válida (${resumirMotivos(descartadas)}). Si el informe SÍ tiene salidas, reinténtalo o prueba con el motor alternativo.`
+          : "No se detectaron salidas/retiradas en el documento.",
+    };
+  }
+
+  return { ok: true, lineas, resumen_clientes, descartadas };
+}
+
+/** "69 sin matrícula, 2 con datos ilegibles" — para el mensaje de error. */
+export function resumirMotivos(descartadas: PdfLineaDescartada[]): string {
+  const etiquetas: Record<PdfLineaDescartada["motivo"], string> = {
+    sin_matricula: "sin matrícula ni ticket",
+    cantidad_cero: "con cantidad 0",
+    campos_invalidos: "con datos ilegibles",
+  };
+  const cuenta = new Map<PdfLineaDescartada["motivo"], number>();
+  for (const d of descartadas) cuenta.set(d.motivo, (cuenta.get(d.motivo) ?? 0) + 1);
+  return [...cuenta.entries()].map(([motivo, n]) => `${n} ${etiquetas[motivo]}`).join(", ");
+}
 
 // ============================================================
 // PROPUESTA (resultado del cruce con puestas abiertas)
@@ -185,6 +336,12 @@ export interface PdfResumenAlert {
 export interface PdfAnalysisResult {
   proposals: PdfProposalItem[];
   alerts: PdfResumenAlert[];
+  /**
+   * Filas que la IA devolvió y que se han descartado por no ser salidas
+   * grabables. Se enseñan en el diálogo: el usuario tiene que poder comprobar
+   * contra el papel que no se ha caído nada que sí importaba.
+   */
+  descartadas: PdfLineaDescartada[];
 }
 
 // ============================================================

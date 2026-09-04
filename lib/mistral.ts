@@ -41,6 +41,24 @@ export function mistralConfigurado(): boolean {
   return !!process.env.MISTRAL_API_KEY;
 }
 
+/**
+ * Qué puede ofrecer el diálogo cuando la lectura con Gemini falla.
+ *
+ *  · "disponible"     → hay motor alternativo: se ofrece el botón.
+ *  · "sin_configurar" → NO hay `MISTRAL_API_KEY` en el servidor. Se le dice al
+ *                       usuario, en vez de no enseñar nada. Antes este caso era
+ *                       indistinguible de un fallo del propio botón: el usuario
+ *                       reportó "tampoco me sale la opción de Mistral" sin que
+ *                       hubiera forma de saber desde la app si era eso o un bug.
+ *  · "no_aplica"      → ya se estaba leyendo con el motor alternativo.
+ */
+export type EstadoMotorAlternativo = "disponible" | "sin_configurar" | "no_aplica";
+
+export function estadoMotorAlternativo(motor: string): EstadoMotorAlternativo {
+  if (motor !== "gemini") return "no_aplica";
+  return mistralConfigurado() ? "disponible" : "sin_configurar";
+}
+
 export interface MistralCallOptions {
   /** Presupuesto total de reloj para la llamada, igual que en lib/gemini.ts. */
   totalBudgetMs?: number;

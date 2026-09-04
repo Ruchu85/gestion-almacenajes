@@ -169,6 +169,10 @@ export async function analyzeExcelAction(
     data: {
       proposals,
       alerts,
+      // El motor de Excel es determinista: no hay una IA que pueda devolver
+      // filas que haya que descartar. El campo existe por compartir tipo con
+      // el análisis de PDF.
+      descartadas: [],
       sourceInfo: {
         almacenDetectado: parsed.almacenDetectado,
         productoDetectado: parsed.productoDetectado,

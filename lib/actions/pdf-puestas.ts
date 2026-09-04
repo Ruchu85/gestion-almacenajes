@@ -2,7 +2,7 @@
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { extractPuestaFromPdf, type Motor } from "@/lib/gemini";
-import { mistralConfigurado } from "@/lib/mistral";
+import { estadoMotorAlternativo, type EstadoMotorAlternativo } from "@/lib/mistral";
 import {
   buildPuestaProposal,
   type MasterData,
@@ -44,24 +44,28 @@ async function analyzeBase64(
   supabase: AuthClient,
   base64: string,
   motor: Motor = "gemini"
-): Promise<{ data?: AnalyzePuestaResult; error?: string; puedeUsarMistral?: boolean }> {
+): Promise<{ data?: AnalyzePuestaResult; error?: string; motorAlternativo?: EstadoMotorAlternativo }> {
   // El motor alternativo solo se ofrece si veníamos de Gemini y hay clave: no
-  // se cambia de proveedor sin que el usuario lo acepte.
-  const ofrecerMistral = motor === "gemini" && mistralConfigurado();
+  // se cambia de proveedor sin que el usuario lo acepte. Si no hay clave se
+  // devuelve "sin_configurar" para poder decírselo, en vez de callar.
+  const motorAlternativo = estadoMotorAlternativo(motor);
 
   // 1. Extraer (Gemini por defecto)
   let raw: unknown;
   try {
     raw = await extractPuestaFromPdf(base64, motor);
   } catch (err) {
-    return { error: (err as Error).message, puedeUsarMistral: ofrecerMistral };
+    return { error: (err as Error).message, motorAlternativo };
   }
 
   const parsed = puestaPdfExtractionSchema.safeParse(raw);
   if (!parsed.success) {
     return {
-      error: "La IA devolvió los datos en un formato inesperado. Reinténtalo.",
-      puedeUsarMistral: ofrecerMistral,
+      error:
+        "La IA no devolvió los datos de la puesta en el formato esperado " +
+        `(${parsed.error.issues.map((i) => i.path.join(".") || "documento").join(", ")}). ` +
+        "Reinténtalo o prueba con el motor alternativo.",
+      motorAlternativo,
     };
   }
 
@@ -125,7 +129,7 @@ async function analyzeBase64(
 
 export async function analyzePuestaPdfAction(
   formData: FormData
-): Promise<{ data?: AnalyzePuestaResult; error?: string; puedeUsarMistral?: boolean }> {
+): Promise<{ data?: AnalyzePuestaResult; error?: string; motorAlternativo?: EstadoMotorAlternativo }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -218,7 +222,7 @@ export async function countPendingPuestaPdfsAction(): Promise<{ count?: number; 
 export async function analyzePuestaFromStorageAction(
   name: string,
   motor: Motor = "gemini"
-): Promise<{ data?: AnalyzePuestaResult; error?: string; puedeUsarMistral?: boolean }> {
+): Promise<{ data?: AnalyzePuestaResult; error?: string; motorAlternativo?: EstadoMotorAlternativo }> {
   const supabase = await createClient();
   const {
     data: { user },

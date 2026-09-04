@@ -23,8 +23,14 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 const GEMINI_ENDPOINT = (model: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
-/** Esquema de respuesta (subconjunto OpenAPI que entiende Gemini). */
-const RESPONSE_SCHEMA = {
+/**
+ * Esquema de respuesta (subconjunto OpenAPI que entiende Gemini).
+ *
+ * Se exporta —igual que EXTRACTION_PROMPT— para poder lanzar el prompt contra
+ * la API real desde un script suelto y comparar modelos sin arrancar la app.
+ * Es la única forma de verificar un cambio de prompt con los PDF de verdad.
+ */
+export const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
     lineas: {
@@ -68,7 +74,7 @@ const RESPONSE_SCHEMA = {
   required: ["lineas", "resumen_clientes"],
 } as const;
 
-const EXTRACTION_PROMPT = `
+export const EXTRACTION_PROMPT = `
 Eres un asistente experto en leer informes logísticos de almacenaje de mercancías en español.
 
 El PDF adjunto es un informe de SALIDAS / RETIRADAS de mercancía de un almacén portuario.
@@ -80,6 +86,30 @@ FORMATO A — "Informe de Salidas a Vendedor"
 Se reconoce porque tiene una tabla de movimientos con una columna "Salidas" y columnas
 "Nombre" y "Contrato".
 ════════════════════════════════════════════════════════════════════════════════
+
+⚠️ LO PRIMERO Y MÁS IMPORTANTE — DE QUÉ COLUMNA SALE "cantidad"
+Cada fila termina SIEMPRE con TRES cifras, y siempre en este orden:
+
+        ...  |  Entradas  |  Salidas  |  Existencias
+
+"cantidad" se toma SIEMPRE de la columna "Salidas" (la de EN MEDIO de las tres).
+NUNCA de "Entradas" (la primera) y NUNCA de "Existencias" (la última, que es un saldo
+acumulado que va creciendo o decreciendo fila a fila).
+
+Una fila con "Entradas" = 23,54 y "Salidas" = 0,00 es una ENTRADA de mercancía, no una
+salida: NO la extraigas, ni con el valor de "Entradas" ni con ningún otro. Devolver una
+entrada como si fuera una salida es el error más grave que puedes cometer aquí.
+
+Cómo reconocer una fila de ENTRADA de un vistazo: no tiene matrícula, no tiene nº de
+albarán y no tiene contrato — entre el nombre y las cifras no hay nada —, y el nombre de
+la columna "Nombre" es el del propio "Propietario" de la cabecera.
+
+Un informe trae VARIOS bloques (cada uno con su "Nº Derecho" y su "Mercancía"), y hay
+bloques que son ENTERAMENTE de entradas: todas sus filas llevan "Salidas" = 0,00 y su
+fila "Totales" muestra 0,00 en la columna "Salidas". De un bloque así NO devuelvas
+NINGUNA línea, aunque ocupe varias páginas y tenga decenas de filas. Es normal y correcto
+que un bloque entero del documento no aporte ni una sola línea.
+
 Extrae TODAS las filas cuya columna "Salidas" tenga un valor DISTINTO de 0, incluidas las
 NEGATIVAS. Una cantidad negativa (ej. "-13,40") es una devolución o abono: mercancía que vuelve
 al almacén, normalmente con un nº de albarán que empieza por "V" (ej. "VCLA/228"). Cuentan para
@@ -110,10 +140,14 @@ Reglas del FORMATO A:
   o "Contrato" están vacíos o son el nombre de la propia empresa. En esos casos devuelve cadena
   vacía para esos campos.
 - Ignora filas de totales, subtotales y existencias.
-- Ignora únicamente las filas cuya "Salidas" sea 0 o esté vacía (esas son entradas, no salidas).
-- Comprobación final: la suma de las cantidades que devuelvas, respetando los signos, debe dar
-  exactamente el valor de la fila "Totales" de la columna "Salidas" de ese bloque. Si no cuadra,
-  repasa el bloque: te has dejado alguna fila o has perdido un signo negativo.
+- Ignora las filas cuya "Salidas" sea 0 o esté vacía (esas son entradas, no salidas).
+- Toda fila que devuelvas tiene que llevar matrícula. Si una fila que ibas a devolver no tiene
+  matrícula, es que es una entrada y la estás leyendo mal: no la devuelvas.
+- Comprobación final, bloque por bloque: la suma de las cantidades que devuelvas de un bloque,
+  respetando los signos, debe dar exactamente el valor de la fila "Totales" de la columna
+  "Salidas" de ese bloque (la SEGUNDA de las dos cifras que trae esa fila). Si te sale de más,
+  estás metiendo filas de entrada; si te sale de menos, te has dejado alguna fila o has perdido
+  un signo negativo. Si ese total es 0,00, el bloque no aporta ninguna línea.
 - "resumen_clientes": devuelve una lista VACÍA (este formato no trae bloques de saldos).
 
 ════════════════════════════════════════════════════════════════════════════════
@@ -270,24 +304,15 @@ const MIN_ATTEMPT_MS = 8_000;
 // del cupo gratuito de 3.5-flash (20 peticiones/DÍA para todo el proyecto),
 // que era otra fuente de errores intermitentes al agotarse.
 
-/** Modelo de la extracción principal (salidas y auditoría). */
-export const GEMINI_MODEL_EXTRACCION = "gemini-2.5-flash";
-
-/**
- * Modelo de la segunda lectura de verificación. DISTINTO al de la extracción,
- * y esto no es un detalle: la capa gratuita limita a 20 peticiones por DÍA
- * **por modelo** (quotaId `GenerateRequestsPerDayPerProjectPerModel-FreeTier`,
- * comprobado en el error real de Google). Como cada PDF gasta dos peticiones,
- * poner las dos en el mismo modelo dejaría el sistema en 10 PDF al día;
- * repartidas, cada una tiene su propio cupo de 20 y el techo lo marca la
- * extracción: 20 PDF al día.
- *
- * `gemini-3.1-flash-lite` con thinking desactivado hace esta relectura en
- * 7-10 s y clavó las 27 pesadas y la suma exacta del PDF real en las tres
- * pruebas. Ojo al elegir alternativas: `gemini-2.5-flash-lite` responde 404
- * ("no longer available") y `gemini-3.5-flash-lite` responde 400.
- */
-export const GEMINI_MODEL_VERIFICACION = "gemini-3.1-flash-lite";
+// Los modelos concretos ya NO viven aquí como constantes sueltas: son CADENAS
+// (CADENA_EXTRACCION / CADENA_VERIFICACION, más abajo), porque el modelo bueno
+// para un documento no siempre es el mismo y el cupo gratuito es por modelo.
+// Lo que sí manda desde aquí es el orden: extracción y verificación empiezan
+// por modelos DISTINTOS, y eso no es un detalle. La capa gratuita limita a 20
+// peticiones por DÍA **por modelo** (quotaId
+// `GenerateRequestsPerDayPerProjectPerModel-FreeTier`, comprobado en el error
+// real de Google), y cada PDF gasta dos peticiones: si las dos salieran del
+// mismo modelo el techo sería de 10 PDF al día en vez de 20.
 
 /**
  * Presupuestos pensados para caber, con las dos llamadas en paralelo y las
@@ -296,12 +321,14 @@ export const GEMINI_MODEL_VERIFICACION = "gemini-3.1-flash-lite";
  */
 export const GEMINI_OPTIONS_EXTRACCION: GeminiCallOptions = {
   thinkingBudget: 0,
-  // Lo medido sobre los PDF reales es 3-22 s. El presupuesto deja margen de
-  // sobra para eso y, aun agotándolo entero, quedan ~20 s de los 60 de la
-  // función para las consultas a la base de datos y para devolver la
-  // respuesta (o un error legible) en vez de morir a medias.
-  totalBudgetMs: 40_000,
-  fetchTimeoutMs: 35_000,
+  // Lo medido sobre los PDF reales del usuario es 7-33 s: 7-13 s con el
+  // primer eslabón de la cadena (flash-lite) y hasta 33 s con 2.5-flash sobre
+  // el informe más grande. El presupuesto tiene que cubrir el caso lento sin
+  // salirse del `maxDuration` de 60 s de la función: 44 s de cadena + ~4 s de
+  // consultas a la base de datos deja margen para devolver la respuesta (o un
+  // error legible) en vez de morir a medias.
+  totalBudgetMs: 44_000,
+  fetchTimeoutMs: 33_000,
   maxAttempts: 3,
 };
 
@@ -542,9 +569,16 @@ type Proveedor = { tipo: "gemini"; model: string } | { tipo: "mistral" };
  * (ver `Motor`).
  */
 export const CADENA_EXTRACCION: Proveedor[] = [
-  { tipo: "gemini", model: "gemini-2.5-flash" }, // verificado exacto
-  { tipo: "gemini", model: "gemini-3.1-flash-lite" }, // verificado exacto
-  { tipo: "gemini", model: "gemini-3.8-flash" }, // sin verificar
+  // Primero flash-lite, y esto se midió, no se supuso (04/09/2026, sobre los
+  // cuatro informes reales del usuario). Sobre el informe del 03/09 —el que
+  // traía un bloque de 69 filas de ENTRADAS— flash-lite devolvió las 18
+  // salidas y NADA más, en 13 s; 2.5-flash devolvió las 18 buenas MÁS las 69
+  // filas de entrada, y tardó 32 s en hacerlo. En los otros tres informes
+  // flash-lite acertó igual de exacto (totales impresos al céntimo, incluida
+  // la devolución negativa del 25/08) en 7-13 s.
+  { tipo: "gemini", model: "gemini-3.1-flash-lite" }, // verificado exacto en 4 informes reales
+  { tipo: "gemini", model: "gemini-2.5-flash" }, // verificado exacto, pero más lento y más ruidoso
+  { tipo: "gemini", model: "gemini-3.8-flash" }, // sin verificar: red de seguridad
 ];
 
 /**
@@ -553,8 +587,10 @@ export const CADENA_EXTRACCION: Proveedor[] = [
  * presupuesto ni cupo de más en algo que no bloquea.
  */
 export const CADENA_VERIFICACION: Proveedor[] = [
-  { tipo: "gemini", model: "gemini-3.1-flash-lite" },
+  // Empieza por un modelo DISTINTO al de la extracción a propósito: son cupos
+  // separados (20/día cada uno) y así el techo sigue siendo 20 PDF al día.
   { tipo: "gemini", model: "gemini-2.5-flash" },
+  { tipo: "gemini", model: "gemini-3.1-flash-lite" },
 ];
 
 /** Cadena del PDF de "Aplicación" (puestas a disposición). */
@@ -632,9 +668,14 @@ async function ejecutarCadena(
           // (el cupo no se recupera en segundos) antes de pasar al siguiente.
           maxAttempts: 1,
           // Tope por intento para que un modelo colgado no se coma el
-          // presupuesto de toda la cadena. Una extracción legítima tarda
-          // 3-22 s, así que 25 s no corta ninguna buena.
-          fetchTimeoutMs: Math.min(restoGemini.fetchTimeoutMs ?? 25_000, 25_000),
+          // presupuesto de toda la cadena, pero sin cortar una extracción que
+          // iba a llegar bien: el informe grande del 03/09 tardó 33 s con
+          // 2.5-flash, así que el tope anterior de 25 s lo habría abortado
+          // justo cuando estaba a punto de responder. El tope real lo pone
+          // ahora el preset de cada flujo (fetchTimeoutMs), y este `min` solo
+          // impide que un eslabón se quede con TODO el presupuesto de la
+          // cadena y deje sin turno a los siguientes.
+          fetchTimeoutMs: Math.min(restoGemini.fetchTimeoutMs ?? 25_000, Math.round(totalBudgetMs * 0.75)),
         });
       }
       return await callMistral(pdfBase64, prompt, responseSchema, {
@@ -797,6 +838,13 @@ Localiza la tabla de movimientos de salida del documento:
                     "30,08" → 30.08. CONSERVA EL SIGNO: "-13,40" → -13.40.
                     Las negativas son devoluciones y cuentan para el total.
     · "unidad"    = "tns".
+  ATENCIÓN a las tres cifras del final de cada fila, que van SIEMPRE en este
+  orden: "Entradas", "Salidas", "Existencias". "neto" es la de EN MEDIO.
+  Una fila con Entradas = 23,54 y Salidas = 0,00 es una ENTRADA de mercancía:
+  NO la extraigas. Hay bloques enteros, de varias páginas, que son solo
+  entradas (su fila "Totales" pone 0,00 en la columna "Salidas"): de esos no
+  sale ninguna entrada de "pesadas". Las filas de entrada se reconocen porque
+  no tienen matrícula, ni albarán, ni contrato.
 
 ════════════════════════════════════════════════════════════════════════════════
 TOTALES DECLARADOS

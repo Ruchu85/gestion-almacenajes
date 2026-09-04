@@ -21,6 +21,25 @@ export function normMatricula(value: string | null | undefined): string {
   return value.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
+/**
+ * Se queda solo con las pesadas que de verdad son retiradas.
+ *
+ * Es el equivalente, para la segunda lectura, del filtro que `parsePdfExtraction`
+ * aplica a la principal: un "Informe de Salidas a Vendedor" puede traer bloques
+ * enteros de ENTRADAS de mercancía (columna "Salidas" a 0,00), y el modelo a
+ * veces los devuelve tomando la cifra de la columna equivocada. Esas filas no
+ * llevan ni matrícula ni ticket, así que se reconocen igual aquí.
+ *
+ * Importa filtrarlas: si se cuelan, no cruzan con ninguna línea de la lectura
+ * principal y salen como "pesadas que la principal no ha listado", que es un
+ * aviso grave y en este caso falso. También descuadrarían `reconcileTotals`.
+ */
+export function pesadasUtiles(pesadas: PesadaVerificacion[]): PesadaVerificacion[] {
+  return pesadas.filter(
+    (p) => p.neto !== 0 && (normMatricula(p.matricula) !== "" || normTicket(p.ticket) !== "")
+  );
+}
+
 /** Nº de ticket comparable: sin ceros a la izquierda ni separadores. */
 export function normTicket(value: string | null | undefined): string {
   if (!value) return "";

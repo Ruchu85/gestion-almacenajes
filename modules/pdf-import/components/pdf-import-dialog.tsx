@@ -11,12 +11,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import type { EstadoMotorAlternativo } from "@/lib/mistral";
 import { formatNumber } from "@/utils/format";
 import { analyzePdfAction, confirmSalidasAction, confirmSalidasNormalesAction } from "@/lib/actions/pdf-import";
 import { applyRebases } from "@/services/pdf-import.service";
+import { resumirMotivos } from "@/validations/pdf-import.schema";
 import type {
   PdfConfirmItem,
   PdfConfirmNormalItem,
+  PdfLineaDescartada,
   PdfResumenAlert,
   PuestaMatchRef,
 } from "@/validations/pdf-import.schema";
@@ -95,25 +98,35 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
    * Gemini ha fallado y hay un motor alternativo disponible. No se usa solo:
    * se ofrece, y solo se lee con él si el usuario pulsa el botón.
    */
-  const [ofreceMistral, setOfreceMistral] = useState(false);
+  const [motorAlt, setMotorAlt] = useState<EstadoMotorAlternativo>("no_aplica");
+  /** Hay motor alternativo y merece la pena ofrecerlo. */
+  const ofreceMistral = motorAlt === "disponible";
   /** El documento en pantalla lo ha leído el motor alternativo. */
   const [leidoConMistral, setLeidoConMistral] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [proposals, setProposals] = useState<EditableProposal[] | null>(null);
   const [alerts, setAlerts] = useState<PdfResumenAlert[]>([]);
+  /**
+   * Filas que la IA devolvió y el servidor descartó por no ser salidas (casi
+   * siempre filas de ENTRADA de un bloque cuya columna "Salidas" está a 0). Se
+   * enseñan: el usuario tiene que poder comprobar contra el papel que no se ha
+   * quedado fuera nada que sí era una retirada.
+   */
+  const [descartadas, setDescartadas] = useState<PdfLineaDescartada[]>([]);
 
   // ── Reset al cerrar ──────────────────────────────────────
   function reset() {
     setFile(null);
     setIsDragging(false);
     setUploadError(null);
-    setOfreceMistral(false);
+    setMotorAlt("no_aplica");
     setLeidoConMistral(false);
     setAnalyzing(false);
     setConfirming(false);
     setProposals(null);
     setAlerts([]);
+    setDescartadas([]);
   }
 
   function handleOpenChange(next: boolean) {
@@ -149,7 +162,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
     if (!file) return;
     setAnalyzing(true);
     setUploadError(null);
-    setOfreceMistral(false);
+    setMotorAlt("no_aplica");
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -158,7 +171,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
       const res = await analyzePdfAction(formData);
       if (res.error || !res.data) {
         setUploadError(res.error ?? "No se pudo analizar el documento.");
-        setOfreceMistral(!!res.puedeUsarMistral);
+        setMotorAlt(res.motorAlternativo ?? "no_aplica");
         return;
       }
       setLeidoConMistral(motor === "mistral");
@@ -184,6 +197,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
       }));
       setProposals(editable);
       setAlerts(res.data.alerts);
+      setDescartadas(res.data.descartadas);
     } catch (err) {
       setUploadError(`Error inesperado: ${(err as Error).message}`);
     } finally {
@@ -427,6 +441,15 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
             {/* Gemini ha fallado. NO se cambia de motor por iniciativa propia:
                 se ofrece y decide el usuario, porque leer con el alternativo
                 deja el documento sin la segunda lectura de verificación. */}
+            {/* No hay motor alternativo configurado en el servidor. Se dice,
+                en vez de no enseñar nada: si no, "no me sale la opción de
+                Mistral" es indistinguible de que el botón esté roto. */}
+            {motorAlt === "sin_configurar" && (
+              <p className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300">
+                El motor alternativo de lectura no está disponible: falta configurar su clave
+                (<span className="font-mono">MISTRAL_API_KEY</span>) en el servidor.
+              </p>
+            )}
             {ofreceMistral && (
               <div className="rounded-lg border-2 border-amber-500 bg-amber-100 dark:bg-amber-950/60 p-3 space-y-2">
                 <div className="flex gap-2">
@@ -506,6 +529,40 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
                     </p>
                   </div>
                 </div>
+              )}
+              {/* Filas que la IA devolvió y NO se han traído a la tabla. Se
+                  listan a propósito: en un sistema que mueve toneladas, un
+                  descarte silencioso es peor que un aviso de más. El caso
+                  normal es un bloque de ENTRADAS del informe (columna "Salidas"
+                  a 0,00), que no aporta ninguna retirada. */}
+              {descartadas.length > 0 && (
+                <details className="rounded-lg border-2 border-slate-400 bg-slate-100 dark:border-slate-600 dark:bg-slate-900/70 p-3">
+                  <summary className="cursor-pointer text-sm font-bold text-slate-800 dark:text-slate-200">
+                    {descartadas.length} fila{descartadas.length > 1 ? "s" : ""} del documento
+                    descartada{descartadas.length > 1 ? "s" : ""} por no ser una salida
+                    <span className="ml-1 font-medium text-slate-600 dark:text-slate-400">
+                      — {resumirMotivos(descartadas)}. Haz clic para verlas.
+                    </span>
+                  </summary>
+                  <p className="mt-2 text-xs font-medium text-slate-700 dark:text-slate-300">
+                    Suelen ser las filas de <strong>entrada</strong> de mercancía del informe (las
+                    que llevan 0,00 en la columna &quot;Salidas&quot;), que no generan ninguna
+                    retirada. Si reconoces aquí una salida de verdad, <strong>no la grabes desde
+                    aquí</strong>: métela a mano o vuelve a analizar el documento.
+                  </p>
+                  <ul className="mt-2 max-h-40 space-y-0.5 overflow-y-auto text-xs text-slate-700 dark:text-slate-300">
+                    {descartadas.map((d, i) => (
+                      <li key={i} className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="font-mono">{d.descripcion}</span>
+                        {d.cantidad !== null && (
+                          <span className="tabular-nums font-semibold">
+                            {formatNumber(d.cantidad)}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               )}
               {/* Devoluciones: el informe las trae en negativo y no se pueden grabar aquí. */}
               {devoluciones.length > 0 && (
@@ -697,7 +754,7 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
             <>
               <Button
                 variant="outline"
-                onClick={() => { setProposals(null); setAlerts([]); }}
+                onClick={() => { setProposals(null); setAlerts([]); setDescartadas([]); }}
                 disabled={confirming}
               >
                 <ArrowLeft className="mr-2 h-4 w-4" /> Volver

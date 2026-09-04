@@ -21,10 +21,11 @@ import {
   extractMatriculaFromComment,
   extractTicketFromComment,
   findDigitSuspicions,
+  pesadasUtiles,
   reconcileLines,
   reconcileTotals,
 } from "@/services/pdf-audit.service";
-import { pdfExtractionSchema } from "@/validations/pdf-import.schema";
+import { parsePdfExtraction } from "@/validations/pdf-import.schema";
 import {
   pdfVerificacionSchema,
   type AuditFileReport,
@@ -117,12 +118,12 @@ export async function auditPdfAction(formData: FormData): Promise<AuditFileRepor
     return fail(fileName, (principal.reason as Error)?.message ?? "No se pudo analizar el PDF.");
   }
 
-  const parsed = pdfExtractionSchema.safeParse(principal.value);
-  if (!parsed.success) {
-    return fail(fileName, "La IA devolvió los datos en un formato inesperado. Reinténtalo.");
-  }
-  if (parsed.data.lineas.length === 0) {
-    return fail(fileName, "No se detectaron salidas/retiradas en el documento.");
+  // Mismo criterio que la importación: se descarta fila a fila lo que no es una
+  // salida (bloques de entradas, cantidades a 0) en vez de tirar el documento
+  // entero. Ver parsePdfExtraction.
+  const parsed = parsePdfExtraction(principal.value);
+  if (!parsed.ok) {
+    return fail(fileName, parsed.error);
   }
 
   const findings: AuditFinding[] = [];
@@ -133,7 +134,16 @@ export async function auditPdfAction(formData: FormData): Promise<AuditFileRepor
     pesadasVerificacion = pdfVerificacionSchema.safeParse(verificacion.value);
   }
   const verificacionData =
-    pesadasVerificacion?.success === true ? pesadasVerificacion.data : { pesadas: [], totales: [] };
+    pesadasVerificacion?.success === true
+      ? {
+          // Mismo filtro que en la lectura principal: fuera las filas que no
+          // son retiradas (bloques de entradas coladas por el modelo), que si
+          // no descuadran el cruce de totales y aparecen como pesadas
+          // "no listadas" que en realidad no existen. Ver pesadasUtiles.
+          pesadas: pesadasUtiles(pesadasVerificacion.data.pesadas),
+          totales: pesadasVerificacion.data.totales,
+        }
+      : { pesadas: [], totales: [] };
 
   if (verificacion.status === "rejected" || pesadasVerificacion?.success === false) {
     findings.push({
@@ -153,7 +163,7 @@ export async function auditPdfAction(formData: FormData): Promise<AuditFileRepor
   const warehouses = warehousesRes.data ?? [];
   const products = productsRes.data ?? [];
 
-  const lineas = normalizeLineUnits(parsed.data.lineas, products);
+  const lineas = normalizeLineUnits(parsed.lineas, products);
   const ids = lineas.map((l, i) => `${i}-${l.ticket ?? l.matricula}-${l.cantidad}`);
 
   // ── 5. Almacén y ventana de fechas del documento ────────────
