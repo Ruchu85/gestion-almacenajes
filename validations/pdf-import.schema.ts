@@ -315,6 +315,15 @@ export interface PdfProposalItem {
    * por defecto, pero el usuario puede marcarla si la retirada es correcta.
    */
   rebase?: RebaseInfo | null;
+  /**
+   * Ya existe en la base de datos una salida idéntica (misma puesta, fecha,
+   * matrícula y cantidad). Además del aviso, se usa para EXCLUIR la fila del
+   * acumulado de rebases: lo que ya está grabado ya está restado de
+   * `cantidad_pendiente`, y volver a contarlo dispara avisos de rebase
+   * fantasma. Es el mismo motivo por el que no cuentan las filas fuera del
+   * rango de fechas elegido.
+   */
+  duplicado?: boolean;
 }
 
 /**

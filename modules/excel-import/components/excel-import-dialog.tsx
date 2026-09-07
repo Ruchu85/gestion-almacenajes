@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { formatNumber } from "@/utils/format";
 import { analyzeExcelAction, updateExcelWatermarkAction } from "@/lib/actions/excel-import";
 import { confirmSalidasAction, confirmSalidasNormalesAction } from "@/lib/actions/pdf-import";
+import { aplicarRebasesDelTramo } from "@/services/pdf-import.service";
 import type {
   PdfConfirmItem,
   PdfConfirmNormalItem,
@@ -117,10 +118,16 @@ export function ExcelImportDialog({ open, onOpenChange }: ExcelImportDialogProps
       }
       const editable: EditableProposal[] = res.data.proposals.map((p) => ({
         ...p,
+        // Nunca se preselecciona lo que exige criterio humano: una fila que
+        // rebasa la puesta va en rojo y sin marcar, aunque el cruce con la
+        // puesta sea de confianza alta. (Antes se colaba marcada: el aviso
+        // salía, pero la casilla venía puesta.)
         selected:
-          p.tipo === "normal"
-            ? !!(p.resolvedWarehouseId && p.resolvedProductId) && p.warnings.length === 0
-            : p.confidence === "alta",
+          p.rebase || p.duplicado
+            ? false
+            : p.tipo === "normal"
+              ? !!(p.resolvedWarehouseId && p.resolvedProductId) && p.warnings.length === 0
+              : p.confidence === "alta",
         chosenPuestaId: p.match?.puesta_id ?? null,
         edited: {
           fecha: p.line.fecha,
@@ -145,14 +152,42 @@ export function ExcelImportDialog({ open, onOpenChange }: ExcelImportDialogProps
     }
   }
 
-  // ── Filtro de fechas (solo visual: no hace falta re-analizar) ──
-  const visibleProposals = useMemo(() => {
-    if (!proposals) return [];
+  // ── Rango de fechas elegido, en ISO ──────────────────────
+  const rangoISO = useMemo(() => {
     const desde = range?.from ? localDateToISO(range.from) : null;
     const hasta = range?.to ? localDateToISO(range.to) : desde;
-    if (!desde) return proposals;
-    return proposals.filter((p) => p.line.fecha >= desde && (!hasta || p.line.fecha <= hasta));
-  }, [proposals, range]);
+    return { desde, hasta };
+  }, [range]);
+
+  /**
+   * Propuestas con el aviso de rebase al día para el rango elegido.
+   *
+   * El rango NO es solo un filtro visual: manda en la cuenta del rebase. El
+   * Excel es el registro acumulativo del barco entero y las filas de días ya
+   * importados están grabadas, con su consumo ya restado del pendiente de la
+   * puesta. Contarlas otra vez daba avisos de rebase de cientos de toneladas
+   * sobre puestas que ni se acercaban a agotarse.
+   *
+   * Se calcula en un memo, y no en cada handler, porque depende de tres cosas a
+   * la vez —el rango, las cantidades editadas y la puesta elegida— y así
+   * ninguna de ellas puede olvidarse de recalcular.
+   */
+  const proposalsConRebase = useMemo(() => {
+    if (!proposals) return null;
+    const copia = proposals.map((it) => ({ ...it, warnings: [...it.warnings] }));
+    aplicarRebasesDelTramo(copia, rangoISO.desde, rangoISO.hasta);
+    return copia;
+  }, [proposals, rangoISO]);
+
+  // ── Filtro de fechas (visual: no hace falta re-analizar) ──
+  const visibleProposals = useMemo(() => {
+    if (!proposalsConRebase) return [];
+    const { desde, hasta } = rangoISO;
+    if (!desde) return proposalsConRebase;
+    return proposalsConRebase.filter(
+      (p) => p.line.fecha >= desde && (!hasta || p.line.fecha <= hasta)
+    );
+  }, [proposalsConRebase, rangoISO]);
 
   // ── Edición de la tabla (por id estable, no por índice: la tabla
   //    puede mostrar un subconjunto filtrado por fecha) ──────────

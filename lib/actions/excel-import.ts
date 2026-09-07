@@ -2,7 +2,12 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { parseSalidasExcel } from "@/lib/excel-salidas";
-import { buildProposals, filterByText, normalizeLineUnits } from "@/services/pdf-import.service";
+import {
+  aplicarRebasesDelTramo,
+  buildProposals,
+  filterByText,
+  normalizeLineUnits,
+} from "@/services/pdf-import.service";
 import { PuestasService } from "@/services/puestas.service";
 import { updateWatermarkSchema, type ExcelAnalysisResult } from "@/validations/excel-import.schema";
 import type { PdfResumenAlert } from "@/validations/pdf-import.schema";
@@ -131,6 +136,10 @@ export async function analyzeExcelAction(
           Math.abs(Number(s.cantidad) - proposal.line.cantidad) < 0.01
       );
       if (dup) {
+        // Bandera estructurada además del aviso: esta fila queda FUERA del
+        // acumulado de rebases (ver el bloque 10). Lo ya grabado ya está
+        // restado del pendiente.
+        proposal.duplicado = true;
         proposal.warnings.push("Ya existe una salida idéntica registrada para esta puesta.");
       }
     }
@@ -164,6 +173,18 @@ export async function analyzeExcelAction(
       suggestedFechaDesde = parsed.fechaMax;
     }
   }
+
+  // 10. Rebases, ahora que ya se sabe qué tramo se va a importar de verdad.
+  //
+  //     buildProposals ya los calculó, pero sobre el libro ENTERO, y en un
+  //     Excel eso está mal: es un registro acumulativo del barco (el de VERTOM
+  //     RITA traía 59 viajes del 03/08 al 04/09) y en cada sesión solo se sube
+  //     el tramo nuevo. Contar los viajes de días ya importados los cuenta dos
+  //     veces —su consumo ya está restado de `cantidad_pendiente`— y salían
+  //     avisos de rebase de cientos de toneladas sobre puestas que ni se
+  //     acercaban a agotarse. Se recalcula con el mismo criterio que aplicará
+  //     el diálogo cuando el usuario mueva el rango de fechas.
+  aplicarRebasesDelTramo(proposals, suggestedFechaDesde, parsed.fechaMax);
 
   return {
     data: {

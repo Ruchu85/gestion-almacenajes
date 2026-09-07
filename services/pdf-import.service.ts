@@ -805,16 +805,40 @@ export interface RebaseTarget {
   edited?: { cantidad: number };
 }
 
+export interface ApplyRebasesOptions<T> {
+  /**
+   * Filas que de verdad se van a grabar y que, por tanto, consumen pendiente.
+   * Por defecto cuentan TODAS, que es lo correcto para un PDF: es el informe de
+   * un día y ninguna de sus filas está grabada todavía.
+   *
+   * El Excel es otra cosa y por eso existe esta opción. Es un registro
+   * ACUMULATIVO del barco entero (el de VERTOM RITA traía 59 viajes, del
+   * 03/08 al 04/09) del que en cada sesión solo se importa el tramo nuevo. Las
+   * filas de días anteriores YA están grabadas, así que su consumo YA está
+   * restado de `cantidad_pendiente`: volver a contarlas aquí es contarlas dos
+   * veces, y el aviso de rebase se dispara con cifras enormes que no existen.
+   *
+   * Ojo: esto NO es "las filas marcadas". Que la cuenta dependa de las
+   * casillas se muerde la cola —la fila que rebasa se desmarca por eso mismo,
+   * dejaría de consumir y dejaría de estar rebasada—. Es "las filas que están
+   * sobre la mesa y todavía no están en la base de datos".
+   */
+  cuenta?: (proposal: T) => boolean;
+}
+
 /**
  * Recalcula el rebase de un conjunto de propuestas y deja cada una con su
  * `rebase` y su aviso al día.
  *
  * Se llama al construir la propuesta y otra vez en el cliente cada vez que el
- * usuario reasigna una fila a otra puesta o corrige una cantidad: son
- * precisamente los dos cambios que alteran la cuenta, y un aviso en rojo que
- * no se entera de la corrección sería peor que no tenerlo.
+ * usuario reasigna una fila a otra puesta, corrige una cantidad o cambia el
+ * rango de fechas: son precisamente los cambios que alteran la cuenta, y un
+ * aviso en rojo que no se entera de la corrección sería peor que no tenerlo.
  */
-export function applyRebases<T extends RebaseTarget>(proposals: T[]): void {
+export function applyRebases<T extends RebaseTarget>(
+  proposals: T[],
+  { cuenta }: ApplyRebasesOptions<T> = {}
+): void {
   const puestas = new Map<
     string,
     Pick<PuestaMatchRef, "cantidad_pendiente" | "unit" | "numero_contrato">
@@ -825,13 +849,18 @@ export function applyRebases<T extends RebaseTarget>(proposals: T[]): void {
     }
   }
 
+  const entraEnLaCuenta = (p: T) => (cuenta ? cuenta(p) : true);
+
   const rebases = computeRebases(
     proposals.map((p) => ({
       id: p.id,
-      puestaId: p.tipo === "puesta" ? (p.chosenPuestaId ?? p.match?.puesta_id ?? null) : null,
-      // La cantidad editada a mano manda sobre la leída del PDF: si el usuario
-      // la corrige, la cuenta del rebase tiene que ir con la cifra que se va a
-      // grabar de verdad.
+      puestaId:
+        p.tipo === "puesta" && entraEnLaCuenta(p)
+          ? (p.chosenPuestaId ?? p.match?.puesta_id ?? null)
+          : null,
+      // La cantidad editada a mano manda sobre la leída del documento: si el
+      // usuario la corrige, la cuenta del rebase tiene que ir con la cifra que
+      // se va a grabar de verdad.
       cantidad: p.edited?.cantidad ?? p.line.cantidad,
     })),
     puestas
@@ -847,6 +876,28 @@ export function applyRebases<T extends RebaseTarget>(proposals: T[]): void {
     proposal.rebase = info;
     if (info) proposal.warnings.unshift(rebaseWarning(info));
   }
+}
+
+/**
+ * Variante de `applyRebases` para el flujo de Excel: cuenta SOLO las filas del
+ * tramo de fechas que se va a importar y que no están ya grabadas.
+ *
+ * Existe aparte porque es una regla propia del Excel. Un PDF es el informe de
+ * un día y todas sus filas son nuevas, así que allí cuentan todas. El Excel es
+ * el registro acumulativo del barco entero y en cada sesión solo se sube el
+ * tramo posterior al watermark: las filas anteriores ya están en la base de
+ * datos y su consumo ya está restado de `cantidad_pendiente`.
+ *
+ * La usan el servidor al analizar y el diálogo cada vez que el usuario mueve el
+ * rango de fechas, para que las dos cuentas no puedan discrepar.
+ */
+export function aplicarRebasesDelTramo<
+  T extends RebaseTarget & { line: { fecha: string }; duplicado?: boolean },
+>(proposals: T[], desde: string | null, hasta: string | null): void {
+  applyRebases(proposals, {
+    cuenta: (p) =>
+      !p.duplicado && (!desde || p.line.fecha >= desde) && (!hasta || p.line.fecha <= hasta),
+  });
 }
 
 // ============================================================
