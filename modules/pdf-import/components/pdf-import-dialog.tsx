@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import type { EstadoMotorAlternativo } from "@/lib/mistral";
 import { formatNumber } from "@/utils/format";
 import { analyzePdfAction, confirmSalidasAction, confirmSalidasNormalesAction } from "@/lib/actions/pdf-import";
-import { applyRebases } from "@/services/pdf-import.service";
+import { applyRebases, buildSplitProposal, idsParaQuitarPartida } from "@/services/pdf-import.service";
 import { resumirMotivos } from "@/validations/pdf-import.schema";
 import type {
   PdfConfirmItem,
@@ -253,6 +253,39 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
     );
   }
 
+  /**
+   * "Partir": inserta una fila idéntica justo debajo de la original, apuntando
+   * a otra puesta del mismo cliente por defecto. El reparto de cantidad entre
+   * las dos lo hace el usuario a mano — es lo único que de verdad requiere su
+   * criterio, así que no se adivina.
+   */
+  const splitCounterRef = useRef(0);
+  function handleSplit(index: number) {
+    setProposals((prev) => {
+      if (!prev) return prev;
+      const original = prev[index];
+      splitCounterRef.current += 1;
+      const nueva = buildSplitProposal(original, `${original.id}::split-${splitCounterRef.current}`);
+      const copia = [...prev];
+      copia.splice(index + 1, 0, nueva);
+      return withRebases(copia);
+    });
+  }
+
+  /**
+   * Quita una fila generada por "Partir". La fila original nunca se toca
+   * aquí. Si a su vez se había partido ESA fila (partir dos veces), sus
+   * propias particiones se van con ella — ver idsParaQuitarPartida.
+   */
+  function handleRemoveSplit(index: number) {
+    setProposals((prev) => {
+      if (!prev) return prev;
+      const aQuitar = idsParaQuitarPartida(prev, prev[index].id);
+      const copia = prev.filter((p) => !aQuitar.has(p.id));
+      return withRebases(copia);
+    });
+  }
+
   // ── Confirmar ────────────────────────────────────────────
   function resolveRef(item: EditableProposal): PuestaMatchRef | null {
     const all = [item.match, ...item.candidates].filter(Boolean) as PuestaMatchRef[];
@@ -269,6 +302,9 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
         `${formatNumber(p.line.cantidad_origen)} ${p.line.unidad_origen ?? ""} en el PDF`.trim()
       );
     }
+    // Deja constancia en el propio movimiento de que esta fila es la mitad
+    // (o el tercio, etc.) de un camión que se repartió entre varias puestas.
+    if (p.partidaDeId) parts.push("Partida de otra línea del mismo documento");
     return parts;
   }
 
@@ -733,6 +769,8 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
                   onToggle={handleToggle}
                   onEdit={handleEdit}
                   onChoosePuesta={handleChoosePuesta}
+                  onSplit={handleSplit}
+                  onRemoveSplit={handleRemoveSplit}
                 />
               </div>
             </div>

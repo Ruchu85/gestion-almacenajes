@@ -1,6 +1,8 @@
 "use client";
 
-import { AlertTriangle, ArrowRightLeft, CheckCircle2, HelpCircle, Undo2, XCircle } from "lucide-react";
+import {
+  AlertTriangle, ArrowRightLeft, CheckCircle2, HelpCircle, Scissors, Trash2, Undo2, XCircle,
+} from "lucide-react";
 import type { PdfProposalItem, MatchConfidence } from "@/validations/pdf-import.schema";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,6 +27,15 @@ export interface EditableProposal extends PdfProposalItem {
     matricula: string;
     cantidad: number;
   };
+  /**
+   * Id de la fila de la que esta se partió (ver "Partir" más abajo y
+   * `buildSplitProposal` en `services/pdf-import.service.ts`). Solo la llevan
+   * las filas generadas por ese botón — las que vienen del documento no la
+   * tienen. Sirve para (1) marcarla visualmente distinta y (2) permitir
+   * borrarla: una fila del documento no se borra, solo se desmarca, pero una
+   * fila partida sí, porque no representa nada que el documento trajera.
+   */
+  partidaDeId?: string | null;
 }
 
 interface ProposalTableProps {
@@ -32,6 +43,14 @@ interface ProposalTableProps {
   onToggle: (index: number, selected: boolean) => void;
   onEdit: (index: number, field: "fecha" | "matricula" | "cantidad", value: string | number) => void;
   onChoosePuesta: (index: number, puestaId: string) => void;
+  /**
+   * "Partir": genera una fila idéntica a la de `index`, para repartir la
+   * cantidad de ese camión entre dos puestas del mismo cliente (p. ej.
+   * cuando rebasa la puesta propuesta y el resto cabe en otra).
+   */
+  onSplit: (index: number) => void;
+  /** Quita una fila generada por "Partir". No aplica a filas del documento. */
+  onRemoveSplit: (index: number) => void;
 }
 
 const CONFIDENCE_META: Record<
@@ -126,7 +145,9 @@ function RowWarnings({
   );
 }
 
-export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: ProposalTableProps) {
+export function ProposalTable({
+  items, onToggle, onEdit, onChoosePuesta, onSplit, onRemoveSplit,
+}: ProposalTableProps) {
   return (
     <div className="rounded-md border">
       <Table>
@@ -179,6 +200,18 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
             /** Al incluir este camión la puesta se queda con pendiente negativo. */
             const rebasa = !!item.rebase;
             const isClean = isSelectable && item.warnings.length === 0;
+            /** Fila generada por "Partir" (no viene del documento). */
+            const esPartida = !!item.partidaDeId;
+            /** Nº de la fila de la que se partió, para el rótulo "Partida de fila N". */
+            const origenNumero = item.partidaDeId
+              ? items.findIndex((x) => x.id === item.partidaDeId) + 1
+              : null;
+            /**
+             * "Partir" solo tiene sentido con una puesta ya identificada, y no
+             * en una devolución: esa anula una retirada concreta del mismo
+             * documento, no se reparte entre puestas.
+             */
+            const puedePartir = item.tipo === "puesta" && hasMatch && !esDevolucion;
 
             return (
               <TableRow
@@ -186,6 +219,13 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                 className={cn(
                   !isSelectable && !esDevolucion && "bg-muted/60 opacity-70",
                   !isDuplicate && isClean && "bg-green-500/25 dark:bg-green-500/20",
+                  // Partida: nunca en verde plano aunque no tenga ningún aviso
+                  // — es una fila que el usuario acaba de generar a mano y
+                  // tiene que revisar (puesta elegida, reparto de cantidad).
+                  // El trazo discontinuo la distingue de los estados de error
+                  // de abajo, que la pisan si además coinciden con alguno.
+                  esPartida &&
+                    "bg-brand-500/10 dark:bg-brand-500/15 outline outline-2 outline-dashed -outline-offset-2 outline-brand-500/50",
                   // Devolución que se puede grabar: color propio, para que no se
                   // confunda con un error.
                   esDevolucion && devolucionGrabable &&
@@ -238,6 +278,12 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                     </>
                   ) : (
                     <>
+                      {esPartida && (
+                        <div className="mb-0.5 inline-flex items-center gap-1 rounded bg-brand-500/15 px-1 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-700 dark:text-brand-300">
+                          <Scissors className="h-2.5 w-2.5" />
+                          Partida de fila {origenNumero}
+                        </div>
+                      )}
                       <div className="font-medium leading-tight">{item.line.cliente}</div>
                       <div className="text-xs text-muted-foreground">
                         {item.line.numero_puesta ? `Nº ${item.line.numero_puesta}` : "Sin contrato"}
@@ -325,6 +371,50 @@ export function ProposalTable({ items, onToggle, onEdit, onChoosePuesta }: Propo
                         {!item.rebase!.cruzaLaRaya && " — ya rebasada por un camión anterior"}
                       </span>
                     </div>
+                  )}
+
+                  {/* Partir: genera una fila idéntica para repartir la
+                      cantidad de este camión con otra puesta del mismo
+                      cliente. Sobre todo pensado para cuando rebasa (arriba),
+                      pero se ofrece en cualquier fila resuelta: a veces hace
+                      falta repartir aunque no se haya llegado a rebasar. */}
+                  {(puedePartir || esPartida) && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      {puedePartir && (
+                        <button
+                          type="button"
+                          onClick={() => onSplit(index)}
+                          title="Genera una fila idéntica para repartir esta cantidad con otra puesta del mismo cliente"
+                          className="inline-flex items-center gap-1 rounded border border-brand-300 bg-brand-50 px-1.5 py-0.5 text-[11px] font-semibold text-brand-700 hover:bg-brand-100 dark:border-brand-700 dark:bg-brand-950/40 dark:text-brand-300 dark:hover:bg-brand-900/40"
+                        >
+                          <Scissors className="h-3 w-3" />
+                          Partir
+                        </button>
+                      )}
+                      {esPartida && (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveSplit(index)}
+                          title="Quita esta fila partida (la fila original no se toca)"
+                          className="inline-flex items-center gap-1 rounded border border-red-300 bg-red-50 px-1.5 py-0.5 text-[11px] font-semibold text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-900/40"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          Quitar
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {/* Recordatorio en el momento en que hace falta: al partir
+                      un camión que rebasa, las DOS cantidades hay que
+                      cuadrarlas a mano. La acumulación de rebases ignora la
+                      casilla de selección a propósito (ver comentario en
+                      aplicarRebasesDelTramo): desmarcar la fila vieja sin
+                      bajar también su cantidad no libera el pendiente. */}
+                  {rebasa && (puedePartir || esPartida) && (
+                    <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+                      Al partir, ajusta la cantidad de las dos filas para que sumen lo mismo que
+                      el camión original — desmarcar sola una no basta, sigue contando.
+                    </p>
                   )}
                 </TableCell>
 

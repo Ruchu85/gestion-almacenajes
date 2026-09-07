@@ -518,6 +518,7 @@ export function buildProposals(
         line,
         match: null,
         candidates: [],
+        puestasClienteAbiertas: [],
         confidence: "nula" as MatchConfidence,
         warnings: [],
       };
@@ -631,6 +632,7 @@ export function buildProposals(
         line,
         match: null,
         candidates: [],
+        puestasClienteAbiertas: [],
         confidence: "nula" as MatchConfidence,
         warnings,
       };
@@ -655,6 +657,7 @@ export function buildProposals(
           line,
           match: null,
           candidates: [],
+          puestasClienteAbiertas: [],
           confidence: "nula" as MatchConfidence,
           warnings,
         };
@@ -731,12 +734,25 @@ export function buildProposals(
         ? "alta"
         : "media";
 
+    // Puestas del mismo cliente, almacén y producto que la propuesta, para el
+    // selector de la función "Partir" (ver el campo en el tipo). Se filtra por
+    // `match.customer_name`/`warehouse_name` — ya EXACTOS, salidos de la propia
+    // BD — y no por `line.cliente`/`line.almacen` (el texto crudo del
+    // documento, que es justo lo que ya se tuvo que interpretar arriba).
+    const puestasClienteAbiertas = puestasAbiertas
+      .filter((p) => p.customer_name === match!.customer_name)
+      .filter((p) => p.warehouse_name === ordered[0].warehouse_name)
+      .filter((p) => !line.producto || productoMatches(p.product_name, line.producto))
+      .sort((a, b) => a.fecha_puesta.localeCompare(b.fecha_puesta))
+      .map(toRef);
+
     return {
       id,
       tipo: "puesta" as const,
       line,
       match,
       candidates,
+      puestasClienteAbiertas,
       confidence,
       // El aviso de "supera lo pendiente" lo pone applyRebases al final, ya
       // con la cuenta acumulada del documento entero: mirar cada línea por
@@ -898,6 +914,121 @@ export function aplicarRebasesDelTramo<
     cuenta: (p) =>
       !p.duplicado && (!desde || p.line.fecha >= desde) && (!hasta || p.line.fecha <= hasta),
   });
+}
+
+// ============================================================
+// PARTIR UN CAMIÓN ENTRE VARIAS PUESTAS
+// ============================================================
+
+/**
+ * Lo que hace falta de una fila para poder partirla. Se expresa aparte de
+ * `PdfProposalItem`, igual que `RebaseTarget`, para que sirva tanto para la
+ * propuesta del servidor como para la fila editable del diálogo (que además
+ * lleva `selected` y `edited`).
+ */
+export interface SplitSource {
+  id: string;
+  tipo: "puesta" | "normal";
+  match: PuestaMatchRef | null;
+  candidates: PuestaMatchRef[];
+  puestasClienteAbiertas: PuestaMatchRef[];
+  confidence: MatchConfidence;
+  chosenPuestaId?: string | null;
+  edited?: { fecha: string; matricula: string; cantidad: number };
+  selected?: boolean;
+  /** Id de la fila de la que se partió, si esta misma es una fila partida. */
+  partidaDeId?: string | null;
+}
+
+/**
+ * Construye la fila nueva que resulta de "partir" `original`: misma línea del
+ * documento, pero apuntando a OTRA puesta del mismo cliente/almacén/producto.
+ *
+ * Por qué hace falta esto y no basta con duplicar la fila a mano en el
+ * diálogo: la puesta a la que puede ir la parte nueva no es cualquiera — tiene
+ * que ser una de `puestasClienteAbiertas` (mismo cliente, almacén y producto,
+ * calculado por `buildProposals` porque necesita las puestas abiertas de la
+ * BD, que el cliente no tiene). Aquí solo se decide CUÁL de esas se propone
+ * por defecto y se limpia el estado que no debe heredarse (rebase, avisos,
+ * verificación, selección): son cosas que dependían del contexto de la fila
+ * ORIGINAL y hay que recalcularlas para la nueva.
+ *
+ * No decide sola la cantidad de cada mitad: se copia la misma cantidad que
+ * tenía la fila original y el usuario reparte a mano entre las dos — es la
+ * única parte que de verdad requiere criterio humano (cuánto va a cada
+ * puesta), así que no se adivina.
+ *
+ * `T` es un genérico y no `PdfProposalItem`/`EditableProposal` directamente
+ * porque este módulo es puro (sin UI) y lo importan tanto el server action
+ * como los dos diálogos (PDF y Excel): no puede depender del tipo de estado
+ * de React que vive en `proposal-table.tsx`.
+ */
+export function buildSplitProposal<T extends SplitSource>(original: T, newId: string): T {
+  const puestaActualId = original.chosenPuestaId ?? original.match?.puesta_id ?? null;
+  // Se propone por defecto la primera puesta del cliente que NO sea la que ya
+  // usa la fila original: es lo que de verdad tiene sentido partir. Si el
+  // cliente solo tiene esa puesta abierta, no hay otra a la que ofrecer y se
+  // mantiene la misma — el usuario sigue pudiendo ajustar cantidad/matrícula,
+  // aunque no tenga dónde repartir.
+  const otraPuesta =
+    original.puestasClienteAbiertas.find((p) => p.puesta_id !== puestaActualId) ?? null;
+
+  return {
+    ...original,
+    id: newId,
+    match: otraPuesta ?? original.match,
+    // El selector de puesta de la tabla ya sabe pintar un <Select> en cuanto
+    // `candidates.length > 1`: reutilizar ese mecanismo evita tocar el
+    // componente de tabla para esto.
+    candidates: original.puestasClienteAbiertas,
+    chosenPuestaId: otraPuesta?.puesta_id ?? puestaActualId,
+    // Fuerza "media" aunque la original fuera "alta": es una fila generada a
+    // mano, sin la lectura del documento detrás, así que pide revisión igual
+    // que cualquier cruce ambiguo.
+    confidence: "media" as MatchConfidence,
+    // Nunca se marca sola: es una fila nueva, sin verificar, y el usuario
+    // tiene que decidir a conciencia la puesta y repartir la cantidad.
+    selected: false,
+    rebase: null,
+    verificacion: null,
+    warnings: [],
+    partidaDeId: original.id,
+  } as T;
+}
+
+/**
+ * Ids a quitar al eliminar una fila partida: la propia fila MÁS, en cascada,
+ * cualquier otra fila partida DE ELLA.
+ *
+ * Hace falta la cascada porque se puede partir una fila que ya es a su vez el
+ * resultado de otra partición ("partir dos veces", cubierto en las pruebas).
+ * Si se borrara solo la fila de en medio, la de más abajo se quedaría
+ * apuntando (`partidaDeId`) a un id que ya no existe en la lista — el rótulo
+ * "Partida de fila N" de la tabla no encontraría esa fila (`findIndex`
+ * devolvería -1) y mostraría "fila 0". Al desaparecer la partición
+ * intermedia, lo coherente es que desaparezcan también las que partían de
+ * ella: fueron una subdivisión de una decisión que se está deshaciendo.
+ */
+export function idsParaQuitarPartida<T extends { id: string; partidaDeId?: string | null }>(
+  proposals: T[],
+  idFilaAQuitar: string
+): Set<string> {
+  const aQuitar = new Set<string>([idFilaAQuitar]);
+  // Puntos fijos: cada vuelta puede añadir hijos de lo ya marcado en la
+  // vuelta anterior, así que se repite hasta que una pasada entera no añada
+  // nada más. Con las decenas de filas que trae un documento real, esto es
+  // instantáneo; no hace falta nada más sofisticado que un bucle simple.
+  let cambiado = true;
+  while (cambiado) {
+    cambiado = false;
+    for (const p of proposals) {
+      if (p.partidaDeId && aQuitar.has(p.partidaDeId) && !aQuitar.has(p.id)) {
+        aQuitar.add(p.id);
+        cambiado = true;
+      }
+    }
+  }
+  return aQuitar;
 }
 
 // ============================================================

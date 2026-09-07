@@ -16,7 +16,11 @@ import { cn } from "@/lib/utils";
 import { formatNumber } from "@/utils/format";
 import { analyzeExcelAction, updateExcelWatermarkAction } from "@/lib/actions/excel-import";
 import { confirmSalidasAction, confirmSalidasNormalesAction } from "@/lib/actions/pdf-import";
-import { aplicarRebasesDelTramo } from "@/services/pdf-import.service";
+import {
+  aplicarRebasesDelTramo,
+  buildSplitProposal,
+  idsParaQuitarPartida,
+} from "@/services/pdf-import.service";
 import type {
   PdfConfirmItem,
   PdfConfirmNormalItem,
@@ -210,6 +214,42 @@ export function ExcelImportDialog({ open, onOpenChange }: ExcelImportDialogProps
     updateItemById(visibleProposals[index].id, { chosenPuestaId: puestaId });
   }
 
+  /**
+   * "Partir": inserta una fila idéntica justo debajo de la original, apuntando
+   * a otra puesta del mismo cliente por defecto. Se inserta en `proposals`
+   * (el estado real, no `visibleProposals`, que es una copia derivada con el
+   * rebase recalculado en el memo de más arriba) para que ese memo la recoja
+   * sola en el siguiente render.
+   */
+  const splitCounterRef = useRef(0);
+  function handleSplit(index: number) {
+    const original = visibleProposals[index];
+    splitCounterRef.current += 1;
+    const nueva = buildSplitProposal(original, `${original.id}::split-${splitCounterRef.current}`);
+    setProposals((prev) => {
+      if (!prev) return prev;
+      const i = prev.findIndex((p) => p.id === original.id);
+      if (i < 0) return prev;
+      const copia = [...prev];
+      copia.splice(i + 1, 0, nueva);
+      return copia;
+    });
+  }
+
+  /**
+   * Quita una fila generada por "Partir". La fila original nunca se toca
+   * aquí. Si a su vez se había partido ESA fila (partir dos veces), sus
+   * propias particiones se van con ella — ver idsParaQuitarPartida.
+   */
+  function handleRemoveSplit(index: number) {
+    const item = visibleProposals[index];
+    setProposals((prev) => {
+      if (!prev) return prev;
+      const aQuitar = idsParaQuitarPartida(prev, item.id);
+      return prev.filter((p) => !aQuitar.has(p.id));
+    });
+  }
+
   // ── Confirmar ────────────────────────────────────────────
   function resolveRef(item: EditableProposal): PuestaMatchRef | null {
     const all = [item.match, ...item.candidates].filter(Boolean) as PuestaMatchRef[];
@@ -224,6 +264,9 @@ export function ExcelImportDialog({ open, onOpenChange }: ExcelImportDialogProps
         `${formatNumber(p.line.cantidad_origen)} ${p.line.unidad_origen ?? ""} en el Excel`.trim()
       );
     }
+    // Deja constancia en el propio movimiento de que esta fila es la mitad
+    // (o el tercio, etc.) de un camión que se repartió entre varias puestas.
+    if (p.partidaDeId) parts.push("Partida de otra línea del mismo documento");
     return parts;
   }
 
@@ -454,6 +497,8 @@ export function ExcelImportDialog({ open, onOpenChange }: ExcelImportDialogProps
                 onToggle={handleToggle}
                 onEdit={handleEdit}
                 onChoosePuesta={handleChoosePuesta}
+                onSplit={handleSplit}
+                onRemoveSplit={handleRemoveSplit}
               />
             </div>
           </div>

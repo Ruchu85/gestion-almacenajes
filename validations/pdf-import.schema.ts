@@ -274,6 +274,22 @@ export interface PdfProposalItem {
   match: PuestaMatchRef | null;
   /** Otras puestas candidatas cuando hay ambigüedad. */
   candidates: PuestaMatchRef[];
+  /**
+   * Todas las puestas ABIERTAS del mismo cliente, mismo almacén y mismo
+   * producto que la propuesta principal (incluida ella misma), ordenadas de
+   * más antigua a más reciente. Solo se rellena para tipo='puesta' con match
+   * resuelto — sin cliente identificado no hay "puestas del cliente" de las
+   * que fiarse. Vacío también si esa es la única puesta abierta del cliente
+   * en ese almacén y producto.
+   *
+   * Existe para la función "Partir": cuando un camión rebasa la puesta
+   * propuesta (o por cualquier otro motivo hay que repartirlo), esta lista
+   * es de donde sale el selector de la fila nueva. No se limita a las
+   * `candidates` de arriba porque esas solo se rellenan cuando el cruce fue
+   * AMBIGUO — el caso normal (un cliente, una puesta clara) las deja vacías,
+   * y aun así puede haber otras puestas del mismo cliente a las que partir.
+   */
+  puestasClienteAbiertas: PuestaMatchRef[];
   confidence: MatchConfidence;
   /** Avisos no bloqueantes (supera pendiente, duplicado, etc.). */
   warnings: string[];
