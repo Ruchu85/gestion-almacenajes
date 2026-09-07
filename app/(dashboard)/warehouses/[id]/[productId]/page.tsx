@@ -53,7 +53,7 @@ import { MatriculaInput } from "@/components/shared/matricula-input";
 import { getMatriculas, upsertMatricula } from "@/lib/actions/matriculas";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { formatCurrency, formatDate, formatQuantity } from "@/utils/format";
+import { formatCurrency, formatCurrencyLong, formatDate, formatQuantity } from "@/utils/format";
 import { toast } from "@/hooks/use-toast";
 import {
   addMonthlyInvoice,
@@ -79,6 +79,15 @@ interface DayEntry {
   inbound: number;
   outbound: number;
   cost: number;
+  /**
+   * Precio/día aplicado ese día para calcular `cost` (el tanto por unidad, no
+   * el total). En días ya procesados por el cron viene de `storage_costs.
+   * daily_price` — el que estuviera vigente ESE día según el historial de
+   * precios del almacén, no necesariamente el actual. En días estimados se
+   * usa el precio vigente AHORA, la misma simplificación que ya hacía el
+   * cálculo de `cost` para esos días (ver loadCalendar).
+   */
+  price: number;
   isEstimated: boolean;
 }
 
@@ -490,7 +499,7 @@ export default function WarehouseProductPage() {
         .order("movement_date", { ascending: true }),
       supabase
         .from("storage_costs")
-        .select("cost_date, total_cost")
+        .select("cost_date, total_cost, daily_price")
         .eq("warehouse_id", params.id)
         .eq("product_id", params.productId)
         .order("cost_date", { ascending: true }),
@@ -517,15 +526,22 @@ export default function WarehouseProductPage() {
     }
 
     // Build day-level map for movements and actual storage costs
-    const dayMap = new Map<string, { inbound: number; outbound: number; cost: number }>();
+    const dayMap = new Map<string, { inbound: number; outbound: number; cost: number; price: number }>();
     function getDay(dateStr: string) {
-      if (!dayMap.has(dateStr)) dayMap.set(dateStr, { inbound: 0, outbound: 0, cost: 0 });
+      if (!dayMap.has(dateStr)) dayMap.set(dateStr, { inbound: 0, outbound: 0, cost: 0, price: 0 });
       return dayMap.get(dateStr)!;
     }
 
     for (const row of inboundMovements)  getDay(row.movement_date).inbound  += Number(row.quantity);
     for (const row of outboundMovements) getDay(row.movement_date).outbound += Number(row.quantity);
-    for (const row of costsRes.data ?? []) getDay(row.cost_date).cost += Number(row.total_cost);
+    for (const row of costsRes.data ?? []) {
+      const day = getDay(row.cost_date);
+      day.cost += Number(row.total_cost);
+      // Una sola fila por (almacén, producto, fecha) — UNIQUE en la tabla —
+      // así que asignar en vez de sumar es correcto: es el precio vigente
+      // ESE día, no algo que tenga sentido acumular.
+      day.price = Number(row.daily_price);
+    }
 
     // Set of dates with actual (non-estimated) costs
     const actualCostDates = new Set((costsRes.data ?? []).map((r) => r.cost_date));
@@ -567,18 +583,21 @@ export default function WarehouseProductPage() {
         const outbound = base?.outbound ?? 0;
 
         let cost = 0;
+        let price = 0;
         let isEstimated = false;
 
         if (actualCostDates.has(dateStr)) {
           cost = base?.cost ?? 0;
+          price = base?.price ?? 0;
         } else {
           const pending = calculatePendingQuantity(inboundMovements, outboundMovements, dayDate);
           cost = pending * dailyPrice;
+          price = dailyPrice;
           if (cost > 0) isEstimated = true;
         }
 
         if (isEstimated) hasEstimated = true;
-        days.push({ dateStr, inbound, outbound, cost, isEstimated });
+        days.push({ dateStr, inbound, outbound, cost, price, isEstimated });
         totalInbound += inbound;
         totalOutbound += outbound;
         totalCost += cost;
@@ -958,12 +977,13 @@ export default function WarehouseProductPage() {
                   <CardContent className="p-0">
                     {/* Tabla de días — overflow-x-auto for narrow screens */}
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm min-w-[460px]">
+                      <table className="w-full text-sm min-w-[560px]">
                         <thead>
                           <tr className="border-b bg-muted/10">
                             <th className="px-5 py-2 text-left font-medium text-muted-foreground w-[140px]">Fecha</th>
                             <th className="px-4 py-2 text-right font-medium text-muted-foreground min-w-[100px]">Entradas</th>
                             <th className="px-4 py-2 text-right font-medium text-muted-foreground min-w-[100px]">Salidas</th>
+                            <th className="px-4 py-2 text-right font-medium text-muted-foreground min-w-[100px]">Precio/día</th>
                             <th className="px-5 py-2 text-right font-medium text-muted-foreground min-w-[120px]">Almacenaje</th>
                           </tr>
                         </thead>
@@ -1001,6 +1021,25 @@ export default function WarehouseProductPage() {
                                   {day.outbound > 0 ? (
                                     <span className="text-red-600 dark:text-red-400 font-medium">
                                       -{formatQuantity(day.outbound, productUnit)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground/25">—</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2 text-right tabular-nums">
+                                  {/* El precio por unidad que se multiplicó por el pendiente
+                                      para dar la cifra de "Almacenaje" de esta misma fila. En
+                                      días ya procesados es el vigente ESE día según el
+                                      historial (puede no coincidir con el precio actual);
+                                      en días estimados es el precio actual, la misma
+                                      simplificación que ya usa la propia estimación de coste. */}
+                                  {day.cost > 0 ? (
+                                    <span className={cn(
+                                      day.isEstimated
+                                        ? "text-amber-600/70 dark:text-amber-400/60"
+                                        : "text-muted-foreground"
+                                    )}>
+                                      {formatCurrencyLong(day.price)}
                                     </span>
                                   ) : (
                                     <span className="text-muted-foreground/25">—</span>
