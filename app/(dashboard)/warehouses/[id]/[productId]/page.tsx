@@ -88,7 +88,44 @@ interface DayEntry {
    * cálculo de `cost` para esos días (ver loadCalendar).
    */
   price: number;
+  /**
+   * Cantidad puesta a disposición de clientes que ese día seguía DENTRO de
+   * plancha (`fecha_puesta ≤ día ≤ fecha_fin_plancha`) y pendiente de
+   * retirar. Es informativa: no interviene en el coste.
+   *
+   * "Dentro de plancha" incluye el propio `fecha_fin_plancha` porque ese día
+   * es el ÚLTIMO día franco (ver migración 017), no el primero de coste; es
+   * también el criterio del motor, que fecha la auto-salida ese día pero no
+   * la descuenta del stock hasta el siguiente.
+   */
+  enPlancha: number;
+  /**
+   * Stock del almacén ese día que NO está puesto a disposición de ningún
+   * cliente dentro de plancha. Informativa, tampoco interviene en el coste.
+   *
+   * Se calcula por diferencia contra el stock FÍSICO del día (entradas −
+   * salidas con fecha ≤ día), no contra la base del coste: la base excluye la
+   * mercancía que aún está en su periodo franco de entrada, y ahí el usuario
+   * sigue teniendo género sin vender que quiere ver. Por eso estas dos
+   * columnas pueden traer cifras en días cuyo "Almacenaje" es "—".
+   */
+  invendida: number;
   isEstimated: boolean;
+}
+
+/** Puesta reducida a lo que hace falta para repartir el stock de cada día. */
+interface PuestaStockRow {
+  fecha_puesta: string;
+  /** Columna generada en la BD; último día franco. Única fuente de verdad. */
+  fecha_fin_plancha: string;
+  cantidad_inicial: number;
+  /**
+   * Retiradas acumuladas ordenadas por fecha. Solo cuentan 'real' y
+   * 'desaplicacion' — las de tipo 'plancha' son el traspaso contable de fin
+   * de plancha, no una retirada, y restarlas dejaría a cero toda puesta
+   * vencida por partida doble (ya sale del stock por su outbound).
+   */
+  retiradas: { fecha: string; acumulado: number }[];
 }
 
 interface InvoiceRecord {
@@ -484,7 +521,7 @@ export default function WarehouseProductPage() {
   const loadCalendar = useCallback(async () => {
     setIsLoadingCalendar(true);
 
-    const [inboundRes, outboundRes, costsRes, invoicesRes, warehouseRes] = await Promise.all([
+    const [inboundRes, outboundRes, costsRes, invoicesRes, warehouseRes, puestasRes] = await Promise.all([
       supabase
         .from("inbound_movements")
         .select("movement_date, quantity, free_days, created_at")
@@ -513,6 +550,15 @@ export default function WarehouseProductPage() {
         .select("storage_daily_price")
         .eq("id", params.id)
         .single(),
+      // Para el reparto informativo del stock entre "a disposición" e
+      // "invendida". Se piden TODAS las puestas (no solo las abiertas): el
+      // calendario mira días pasados, y una puesta hoy finalizada sí estaba
+      // en plancha entonces.
+      supabase
+        .from("puestas_a_disposicion")
+        .select("fecha_puesta, fecha_fin_plancha, cantidad_inicial, salidas_parciales(cantidad, tipo, fecha_salida)")
+        .eq("warehouse_id", params.id)
+        .eq("product_id", params.productId),
     ]);
 
     const dailyPrice = Number(warehouseRes.data?.storage_daily_price ?? 0);
@@ -545,6 +591,104 @@ export default function WarehouseProductPage() {
 
     // Set of dates with actual (non-estimated) costs
     const actualCostDates = new Set((costsRes.data ?? []).map((r) => r.cost_date));
+
+    // ── Reparto informativo del stock: a disposición vs. invendido ──────
+    // Se prepara cada puesta con sus retiradas ya acumuladas por fecha, para
+    // no rehacer la suma en cada uno de los ~400 días del calendario.
+    type PuestaRaw = {
+      fecha_puesta: string;
+      fecha_fin_plancha: string;
+      cantidad_inicial: number;
+      salidas_parciales: { cantidad: number; tipo: string; fecha_salida: string }[] | null;
+    };
+    const puestasStock: PuestaStockRow[] = ((puestasRes.data ?? []) as unknown as PuestaRaw[]).map(
+      (p) => {
+        const ordenadas = (p.salidas_parciales ?? [])
+          .filter((s) => s.tipo === "real" || s.tipo === "desaplicacion")
+          .sort((a, b) => a.fecha_salida.localeCompare(b.fecha_salida));
+        let acumulado = 0;
+        const retiradas = ordenadas.map((s) => {
+          acumulado += Number(s.cantidad);
+          return { fecha: s.fecha_salida, acumulado };
+        });
+        return {
+          fecha_puesta: p.fecha_puesta,
+          fecha_fin_plancha: p.fecha_fin_plancha,
+          cantidad_inicial: Number(p.cantidad_inicial),
+          retiradas,
+        };
+      }
+    );
+
+    /** Retirado de una puesta hasta el cierre del día `dateStr` (incluido). */
+    function retiradoHasta(puesta: PuestaStockRow, dateStr: string): number {
+      // Recorrido desde el final: lo normal es preguntar por días recientes,
+      // con casi todas las retiradas ya hechas, así que sale a la primera.
+      for (let i = puesta.retiradas.length - 1; i >= 0; i--) {
+        if (puesta.retiradas[i].fecha <= dateStr) return puesta.retiradas[i].acumulado;
+      }
+      return 0;
+    }
+
+    /** Cantidad a disposición de clientes, en plancha y sin retirar, ese día. */
+    function aDisposicionEn(dateStr: string): number {
+      let total = 0;
+      for (const p of puestasStock) {
+        // Fuera del periodo de plancha no cuenta: antes todavía no existía la
+        // puesta y después la mercancía ya se traspasó al cliente (la
+        // auto-salida la sacó del stock del almacén).
+        if (dateStr < p.fecha_puesta || dateStr > p.fecha_fin_plancha) continue;
+        const pendiente = p.cantidad_inicial - retiradoHasta(p, dateStr);
+        if (pendiente > 0) total += pendiente;
+      }
+      return total;
+    }
+
+    /**
+     * Stock FÍSICO acumulado al cierre de cada fecha con movimiento
+     * (entradas − salidas), ordenado. Se precalcula una vez y luego cada día
+     * se resuelve con una búsqueda binaria, en vez de recorrer todos los
+     * movimientos por cada uno de los días del calendario: esta vista carga
+     * el histórico entero, y en un almacén con años de movimientos eso son
+     * millones de vueltas para nada.
+     *
+     * Ojo: NO es la base del coste. Esa además excluye la mercancía que
+     * sigue dentro de su periodo franco de entrada, y aquí interesa lo que
+     * hay físicamente en el almacén, que es lo que se reparte entre "a
+     * disposición" e "invendido".
+     */
+    const stockAcumulado: { fecha: string; total: number }[] = (() => {
+      const netoPorFecha = new Map<string, number>();
+      for (const m of inboundMovements) {
+        netoPorFecha.set(m.movement_date, (netoPorFecha.get(m.movement_date) ?? 0) + Number(m.quantity));
+      }
+      for (const m of outboundMovements) {
+        netoPorFecha.set(m.movement_date, (netoPorFecha.get(m.movement_date) ?? 0) - Number(m.quantity));
+      }
+      const fechas = [...netoPorFecha.keys()].sort();
+      let total = 0;
+      return fechas.map((fecha) => {
+        total += netoPorFecha.get(fecha)!;
+        return { fecha, total };
+      });
+    })();
+
+    /** Stock físico al cierre del día indicado. */
+    function stockFisicoEn(dateStr: string): number {
+      let lo = 0;
+      let hi = stockAcumulado.length - 1;
+      let resultado = 0;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (stockAcumulado[mid].fecha <= dateStr) {
+          resultado = stockAcumulado[mid].total;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      return resultado;
+    }
 
     // Invoice map (multiple per month)
     const invoiceMap = new Map<string, InvoiceRecord[]>();
@@ -596,8 +740,22 @@ export default function WarehouseProductPage() {
           if (cost > 0) isEstimated = true;
         }
 
+        // Reparto informativo: las dos columnas parten SIEMPRE el stock que
+        // ese día había de verdad en el almacén, así que suman exactamente
+        // eso y ninguna puede salir negativa.
+        //
+        // El tope contra el stock no es cosmético. En los datos reales hay
+        // puestas con `fecha_puesta` ANTERIOR a la descarga del barco (la
+        // mercancía se aplica a clientes antes de entrar): sin el tope, esos
+        // días mostraban miles de toneladas "a disposición" en un almacén
+        // vacío. Con él se lee lo que toca: no hay género, luego no hay nada
+        // ni comprometido ni sin vender.
+        const stockDia = Math.max(0, stockFisicoEn(dateStr));
+        const enPlancha = Math.min(aDisposicionEn(dateStr), stockDia);
+        const invendida = stockDia - enPlancha;
+
         if (isEstimated) hasEstimated = true;
-        days.push({ dateStr, inbound, outbound, cost, price, isEstimated });
+        days.push({ dateStr, inbound, outbound, cost, price, enPlancha, invendida, isEstimated });
         totalInbound += inbound;
         totalOutbound += outbound;
         totalCost += cost;
@@ -977,12 +1135,18 @@ export default function WarehouseProductPage() {
                   <CardContent className="p-0">
                     {/* Tabla de días — overflow-x-auto for narrow screens */}
                     <div className="overflow-x-auto">
-                      <table className="w-full text-sm min-w-[560px]">
+                      <table className="w-full text-sm min-w-[820px]">
                         <thead>
                           <tr className="border-b bg-muted/10">
                             <th className="px-5 py-2 text-left font-medium text-muted-foreground w-[140px]">Fecha</th>
                             <th className="px-4 py-2 text-right font-medium text-muted-foreground min-w-[100px]">Entradas</th>
                             <th className="px-4 py-2 text-right font-medium text-muted-foreground min-w-[100px]">Salidas</th>
+                            <th className="px-4 py-2 text-right font-medium text-muted-foreground min-w-[120px]">
+                              Invendida
+                            </th>
+                            <th className="px-4 py-2 text-right font-medium text-muted-foreground min-w-[140px]">
+                              A disposición
+                            </th>
                             <th className="px-4 py-2 text-right font-medium text-muted-foreground min-w-[100px]">Precio/día</th>
                             <th className="px-5 py-2 text-right font-medium text-muted-foreground min-w-[120px]">Almacenaje</th>
                           </tr>
@@ -1021,6 +1185,28 @@ export default function WarehouseProductPage() {
                                   {day.outbound > 0 ? (
                                     <span className="text-red-600 dark:text-red-400 font-medium">
                                       -{formatQuantity(day.outbound, productUnit)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground/25">—</span>
+                                  )}
+                                </td>
+                                {/* Reparto informativo del stock físico del día. Se pintan
+                                    juntas y solo cuando ese día había algo en el almacén:
+                                    un "0,00" suelto en un día vacío no dice nada, pero un
+                                    "0,00" con género dentro sí (todo comprometido). */}
+                                <td className="px-4 py-2 text-right tabular-nums">
+                                  {day.invendida > 0 || day.enPlancha > 0 ? (
+                                    <span className="text-muted-foreground">
+                                      {formatQuantity(day.invendida, productUnit)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground/25">—</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2 text-right tabular-nums">
+                                  {day.invendida > 0 || day.enPlancha > 0 ? (
+                                    <span className="text-muted-foreground">
+                                      {formatQuantity(day.enPlancha, productUnit)}
                                     </span>
                                   ) : (
                                     <span className="text-muted-foreground/25">—</span>
