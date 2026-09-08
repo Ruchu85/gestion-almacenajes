@@ -379,8 +379,19 @@ export function ExcelImportDialog({ open, onOpenChange }: ExcelImportDialogProps
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className={cn(showResults ? "sm:max-w-[92vw]" : "sm:max-w-[480px]")}>
-        <DialogHeader>
+      <DialogContent
+        className={cn(
+          showResults ? "sm:max-w-[92vw]" : "sm:max-w-[480px]",
+          // Cabecera y pie FIJOS, y una única zona central con scroll — igual
+          // que en el diálogo de PDF (mismo bug, mismo motivo: sin tope de
+          // altura, muchos avisos hacían crecer el diálogo fuera de la
+          // ventana por arriba y por abajo a la vez, sin forma de llegar al
+          // botón "Confirmar", y un clic "fuera" caía en el overlay y cerraba
+          // el diálogo en vez de hacer scroll de la página de detrás.
+          "flex max-h-[90vh] flex-col overflow-hidden"
+        )}
+      >
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <FileSpreadsheet className="h-5 w-5 text-brand-500" />
             {showResults ? "Propuesta de salidas" : "Subir Salidas Puerto (Excel)"}
@@ -392,6 +403,7 @@ export function ExcelImportDialog({ open, onOpenChange }: ExcelImportDialogProps
           </DialogDescription>
         </DialogHeader>
 
+        <div className="flex-1 overflow-y-auto">
         {/* ── Vista de carga ── */}
         {!showResults && (
           <div className="space-y-4">
@@ -491,20 +503,25 @@ export function ExcelImportDialog({ open, onOpenChange }: ExcelImportDialogProps
               </div>
             )}
 
-            <div className="max-h-[60vh] overflow-auto">
-              <ProposalTable
-                items={visibleProposals}
-                onToggle={handleToggle}
-                onEdit={handleEdit}
-                onChoosePuesta={handleChoosePuesta}
-                onSplit={handleSplit}
-                onRemoveSplit={handleRemoveSplit}
-              />
-            </div>
+            {/* Antes esta tabla tenía su propio "max-h-[60vh] overflow-auto"
+                independiente del resto del diálogo: con muchos avisos por
+                encima (rango con muchos rebases, etc.), quedaban DOS scrolls
+                anidados sin límite conjunto y el diálogo crecía igualmente
+                más allá de la ventana. Ahora fluye en el único scroll de
+                arriba. */}
+            <ProposalTable
+              items={visibleProposals}
+              onToggle={handleToggle}
+              onEdit={handleEdit}
+              onChoosePuesta={handleChoosePuesta}
+              onSplit={handleSplit}
+              onRemoveSplit={handleRemoveSplit}
+            />
           </div>
         )}
+        </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           {!showResults ? (
             <>
               <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={analyzing}>
