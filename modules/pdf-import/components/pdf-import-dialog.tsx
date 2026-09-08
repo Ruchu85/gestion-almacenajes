@@ -411,12 +411,16 @@ export function PdfImportDialog({ open, onOpenChange }: PdfImportDialogProps) {
           // dudosas, tabla entera) hacía crecer el diálogo más allá de la
           // ventana: se salía por arriba y por abajo a la vez (está
           // centrado con translate, así que crece a los dos lados) y no
-          // había forma de llegar al botón "Confirmar". Como además lo que
-          // se ve fuera de la ventana sigue siendo el propio diálogo pero
-          // invisible, un clic ahí "fuera" en realidad caía en el overlay de
-          // detrás y lo cerraba — el otro síntoma que reportó el usuario.
+          // había forma de llegar al botón "Confirmar".
           "flex max-h-[90vh] flex-col overflow-hidden"
         )}
+        // Un clic fuera (en el overlay) YA NO cierra el diálogo. Con una
+        // tabla grande y muchas filas marcadas a mano, un cierre accidental
+        // tira toda la revisión y obliga a volver a analizar el documento
+        // desde cero. Solo se cierra desde dentro: el aspa, "Volver" o tras
+        // confirmar. Esc sigue funcionando (no se ha tocado): es una acción
+        // deliberada, no un clic perdido.
+        onPointerDownOutside={(e) => e.preventDefault()}
       >
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">

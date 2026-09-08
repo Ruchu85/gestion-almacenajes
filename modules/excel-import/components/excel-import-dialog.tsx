@@ -386,10 +386,14 @@ export function ExcelImportDialog({ open, onOpenChange }: ExcelImportDialogProps
           // que en el diálogo de PDF (mismo bug, mismo motivo: sin tope de
           // altura, muchos avisos hacían crecer el diálogo fuera de la
           // ventana por arriba y por abajo a la vez, sin forma de llegar al
-          // botón "Confirmar", y un clic "fuera" caía en el overlay y cerraba
-          // el diálogo en vez de hacer scroll de la página de detrás.
+          // botón "Confirmar".
           "flex max-h-[90vh] flex-col overflow-hidden"
         )}
+        // Un clic fuera (en el overlay) YA NO cierra el diálogo, por el mismo
+        // motivo que en el de PDF: con una tabla grande y filas marcadas a
+        // mano, un cierre accidental tira toda la revisión. Solo se cierra
+        // desde dentro (aspa, "Volver" o al confirmar). Esc sigue funcionando.
+        onPointerDownOutside={(e) => e.preventDefault()}
       >
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
