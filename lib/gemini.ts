@@ -167,17 +167,28 @@ MUY IMPORTANTE — de dónde SÍ y de dónde NO extraer:
 Cada fila del "LISTADO DE PESADAS" ocupa DOS renglones:
 - "MATR./REM.": renglón 1 = matrícula del CAMIÓN (ej. "3058MGT");
                 renglón 2 = matrícula del REMOLQUE (ej. "R9038BD").
-- "POR CTA/DESTINAT.": renglón 1 = por cuenta de (ej. "LESA # LEONESA ASTUR");
+- "POR CTA/DESTINAT.": renglón 1 = por cuenta de (ej. "MENDOZA #AGROAL");
                 renglón 2, que empieza por un guion, = DESTINATARIO (ej. "-DE HEUS NUTRICION A").
 
 Campos del FORMATO B:
-- "cliente": el DESTINATARIO, es decir el renglón 2 de "POR CTA/DESTINAT.", sin el guion inicial.
-  Ejemplo: "-DE HEUS NUTRICION A" → "DE HEUS NUTRICION A". Si el nombre lleva un prefijo de código
-  con almohadilla (ej. "LESA # ..."), quítalo.
-  MUY IMPORTANTE: si la fila NO tiene destinatario, o el destinatario es la MISMA empresa que
-  figura como titular del informe (la que aparece tras "SRES." o tras "CLIENTE : (nn)", por
-  ejemplo "LESA # LEONESA ASTUR DE PIENSOS, S.A."), devuelve cliente = "". Eso significa que la
-  retirada es una salida directa del titular y no una entrega a un cliente.
+- "cliente": el DESTINATARIO, es decir SIEMPRE el renglón 2 de "POR CTA/DESTINAT." (el que empieza
+  por guion), sin el guion inicial. Ejemplo: "-DE HEUS NUTRICION A" → "DE HEUS NUTRICION A". Si el
+  nombre lleva un prefijo de código con almohadilla (ej. "LESA # ..."), quítalo.
+  El renglón 1 ("por cuenta de") NO decide nada por sí solo: es habitual, y no significa nada
+  especial, que coincida con el titular del informe — el titular casi siempre aparece ahí. Decide
+  EXCLUSIVAMENTE mirando el renglón 2:
+    · Si el renglón 2 (el destinatario) está VACÍO → cliente = "".
+    · Si el renglón 2, una vez quitado el guion y el prefijo con almohadilla si lo hay, es la MISMA
+      empresa que el titular del informe (el que aparece tras "SRES." o tras "CLIENTE : (nn)") →
+      cliente = "".
+    · Si el renglón 2 es una empresa DISTINTA del titular (aunque el renglón 1 sea igual al
+      titular, que es lo normal) → cliente = ese renglón 2. NUNCA lo dejes vacío en este caso.
+  Ejemplo real a NO confundir: titular "LESA # LEONESA ASTUR DE PIENSOS, S.A.", renglón 1
+  "LESA # LEONESA ASTUR" (coincide con el titular, es lo esperado e irrelevante), renglón 2
+  "-DELAGRO SOCIEDAD CO" (empresa distinta) → cliente = "DELAGRO SOCIEDAD CO", NO "".
+  cliente = "" significa que la retirada es una salida directa del titular y no una entrega a un
+  cliente; úsalo solo cuando el renglón 2 esté vacío o repita al propio titular, nunca por el
+  renglón 1.
 - "numero_puesta": el valor de "CONTRATO REF." QUITANDO el prefijo:
   "CONT.CLI.-D02600804" → "D02600804"; "CONT.PROV.-D02600804" → "D02600804".
   Si la columna está vacía, devuelve "".
