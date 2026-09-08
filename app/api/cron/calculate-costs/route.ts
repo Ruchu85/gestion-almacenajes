@@ -57,20 +57,33 @@ export async function POST(request: NextRequest) {
       const pending = Math.max(0, Number(puesta.cantidad_inicial) - totalReal);
       if (pending <= 0) continue;
 
-      const { error: salidaErr } = await supabase.from("salidas_parciales").insert({
-        puesta_id: puesta.id,
-        fecha_salida: fechaFinStr,
-        cantidad: pending,
-        tipo: "plancha",
-        comentarios: "Salida automática fin de plancha (cron)",
-        created_by: null,
-      });
-      if (salidaErr) {
-        console.error(`[cron] plancha auto-exit error for puesta ${puesta.id}:`, salidaErr.message);
+      const { data: salidaCreada, error: salidaErr } = await supabase
+        .from("salidas_parciales")
+        .insert({
+          puesta_id: puesta.id,
+          fecha_salida: fechaFinStr,
+          cantidad: pending,
+          tipo: "plancha",
+          comentarios: "Salida automática fin de plancha (cron)",
+          created_by: null,
+        })
+        .select("id")
+        .single();
+      if (salidaErr || !salidaCreada) {
+        console.error(`[cron] plancha auto-exit error for puesta ${puesta.id}:`, salidaErr?.message);
         continue;
       }
 
-      await supabase.from("outbound_movements").insert({
+      // `puesta_id`/`salida_parcial_id` son el vínculo que hace posible
+      // reconciliar este movimiento más tarde (ver lib/puesta-stock-sync.ts).
+      // Sin ellos el movimiento nace huérfano: si otra puesta del mismo
+      // almacén+producto vence plancha el mismo día, su propia reconciliación
+      // puede "adoptar" este movimiento por error (mismo almacén+producto+
+      // fecha, sin más criterio) y dejar a ESTA puesta sin el suyo. Bug real
+      // encontrado en producción el 08/09/2026 (4 puestas con la auto-salida
+      // sin generar movimiento de stock, coste inflado desde su fin de
+      // plancha) — ver [[project-plancha-stock]].
+      const { error: outboundErr } = await supabase.from("outbound_movements").insert({
         warehouse_id: puesta.warehouse_id,
         product_id: puesta.product_id,
         quantity: pending,
@@ -79,8 +92,18 @@ export async function POST(request: NextRequest) {
         customer_id: puesta.customer_id ?? null,
         comments: `Auto-salida fin de plancha${puesta.numero_contrato ? ` (${puesta.numero_contrato})` : ""} (cron)`,
         from_puesta: true,
+        puesta_id: puesta.id,
+        salida_parcial_id: salidaCreada.id,
         created_by: null,
       });
+      if (outboundErr) {
+        // La salida_parcial ya quedó grabada (correcta), pero sin su reflejo
+        // en stock. No se revierte: la próxima reconciliación de ESTA puesta
+        // (sincronizarPuestaStock) la completará sola al no encontrar el
+        // movimiento vinculado a esta salida_parcial_id.
+        console.error(`[cron] outbound_movement error for puesta ${puesta.id}:`, outboundErr.message);
+        continue;
+      }
 
       planchaCreated++;
     }

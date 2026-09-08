@@ -258,15 +258,27 @@ export async function sincronizarPuestaStock(
       ];
       const { data: huerfanos } = await supabase
         .from("outbound_movements")
-        .select("id")
+        .select("id, quantity")
         .eq("warehouse_id", row.warehouse_id)
         .eq("product_id", row.product_id)
         .eq("from_puesta", true)
         .is("salida_parcial_id", null)
         .in("movement_date", candidatas)
-        .limit(1);
+        .order("created_at", { ascending: true });
 
-      const adoptado = huerfanos?.[0];
+      // Almacén + producto + fecha NO identifica un huérfano sin ambigüedad:
+      // dos puestas distintas pueden vencer plancha el mismo día en el mismo
+      // almacén+producto (pasa en 27 combinaciones reales de producción), y
+      // sin comprobar la cantidad se puede adoptar el huérfano de OTRA
+      // puesta, dejando a la dueña real sin su propio movimiento. Bug
+      // encontrado en producción el 08/09/2026: 4 puestas con la auto-salida
+      // sin generar movimiento de stock, coste inflado desde su fin de
+      // plancha — ver [[project-plancha-stock]]. Si ningún huérfano coincide
+      // en cantidad, se cae al INSERT de más abajo, que sí queda vinculado
+      // desde el principio.
+      const adoptado = (huerfanos ?? []).find(
+        (h) => Math.abs(Number(h.quantity) - deseado.cantidad) < EPSILON
+      );
       if (adoptado) {
         const { error } = await supabase
           .from("outbound_movements")
