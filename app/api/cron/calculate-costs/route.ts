@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { autoFinalizarPuestasAgotadas } from "@/lib/puesta-estado";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -108,13 +109,21 @@ export async function POST(request: NextRequest) {
       planchaCreated++;
     }
 
-    console.log(`[cron] ${today}: costs=${data} records, plancha_exits=${planchaCreated} created`);
+    // ── 3. Finalizar puestas abiertas que ya no tienen nada pendiente ───────
+    // Red de seguridad: cubre cualquier camino que agote una puesta sin pasar
+    // por la comprobación inmediata (ver lib/puesta-estado.ts).
+    const puestasFinalizadas = await autoFinalizarPuestasAgotadas(supabase);
+
+    console.log(
+      `[cron] ${today}: costs=${data} records, plancha_exits=${planchaCreated} created, puestas_finalizadas=${puestasFinalizadas}`
+    );
 
     return NextResponse.json({
       success: true,
       date: today,
       records: data,
       planchaExitsCreated: planchaCreated,
+      puestasFinalizadas,
     });
   } catch (err) {
     console.error("[cron] Unexpected error:", err);

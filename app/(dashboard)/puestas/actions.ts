@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import { upsertMatricula } from "@/lib/actions/matriculas";
 import { sincronizarPuestaStock } from "@/lib/puesta-stock-sync";
 import { recalcStorageCostsFrom } from "@/lib/storage-costs";
+import { autoFinalizarPuestaSiAgotada } from "@/lib/puesta-estado";
 import { minDate } from "@/services/puestas-plancha.service";
 
 async function requireAuth() {
@@ -271,17 +272,11 @@ export async function createSalidaParcial(
     await recalcStorageCostsFrom(supabase, parsed.data.fecha_salida);
   }
 
-  // Auto-finalizar cuando las salidas reales cubren o superan toda la cantidad inicial
-  const salidaList = (puesta.salidas_parciales ?? []) as { cantidad: number; tipo: string }[];
-  const realTotal = salidaList
-    .filter((s) => s.tipo === "real")
-    .reduce((sum, s) => sum + Number(s.cantidad), 0);
-  if (realTotal + parsed.data.cantidad >= Number(puesta.cantidad_inicial)) {
-    await supabase
-      .from("puestas_a_disposicion")
-      .update({ estado: "finalizada" })
-      .eq("id", parsed.data.puesta_id);
-  } else if (esDevolucion) {
+  // Auto-finalizar cuando lo retirado cubre toda la cantidad inicial. Se lee
+  // de la BD y se redondea (ver lib/puesta-estado.ts): comparar sumas de
+  // decimales en coma flotante dejaba puestas agotadas como "abierta".
+  const finalizada = await autoFinalizarPuestaSiAgotada(supabase, parsed.data.puesta_id);
+  if (!finalizada && esDevolucion) {
     // La devolución ha vuelto a dejar mercancía pendiente: si la puesta se
     // había dado por finalizada, hay que reabrirla para que el cliente pueda
     // retirarla y para que se sigan calculando sus almacenajes.
@@ -380,6 +375,10 @@ export async function updateSalidaParcial(
   // altera lo que quedaba pendiente al vencer la plancha.
   const sync = await sincronizarPuestaStock(supabase, parsed.data.puesta_id, user.id);
 
+  // Si la edición deja la puesta sin pendiente, se finaliza (antes solo se
+  // comprobaba al crear una retirada).
+  await autoFinalizarPuestaSiAgotada(supabase, parsed.data.puesta_id);
+
   return { data: data as SalidaParcial, aviso: sync.error };
 }
 
@@ -475,16 +474,7 @@ export async function createDesaplicacion(
   }
 
   // Auto-finalizar si la cantidad pendiente llega a 0
-  const salidaList = (puesta.salidas_parciales ?? []) as { cantidad: number; tipo: string }[];
-  const totalPrev = salidaList
-    .filter((s) => s.tipo === "real" || s.tipo === "desaplicacion")
-    .reduce((sum, s) => sum + Number(s.cantidad), 0);
-  if (totalPrev + cantidad >= Number(puesta.cantidad_inicial)) {
-    await supabase
-      .from("puestas_a_disposicion")
-      .update({ estado: "finalizada" })
-      .eq("id", puestaId);
-  }
+  await autoFinalizarPuestaSiAgotada(supabase, puestaId);
 
   return {};
 }
