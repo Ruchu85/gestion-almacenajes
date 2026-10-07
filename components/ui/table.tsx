@@ -21,7 +21,7 @@ const TableHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <thead
     ref={ref}
-    className={cn("bg-muted/60 [&_tr]:border-b", className)}
+    className={cn("bg-table-head/60 [&_tr]:border-b", className)}
     {...props}
   />
 ));
@@ -73,9 +73,9 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      // Cabecera al estilo Flowbite: versalitas pequeñas sobre superficie
-      // apagada, para que los encabezados no compitan con los datos.
-      "h-11 px-4 text-left align-middle text-xs font-semibold uppercase tracking-wider text-muted-foreground [&:has([role=checkbox])]:pr-0",
+      // Cabecera: versalitas pequeñas sobre una superficie tintada (azul
+      // pálido en claro, gris en oscuro), para que los encabezados no compitan con los datos.
+      "h-11 px-4 text-left align-middle text-xs font-semibold uppercase tracking-wider text-table-head-foreground [&:has([role=checkbox])]:pr-0",
       className
     )}
     {...props}

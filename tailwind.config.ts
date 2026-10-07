@@ -45,6 +45,11 @@ const config: Config = {
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
+        surface: "hsl(var(--surface))",
+        "table-head": {
+          DEFAULT: "hsl(var(--table-head))",
+          foreground: "hsl(var(--table-head-foreground))",
+        },
         foreground: "hsl(var(--foreground))",
         primary: {
           DEFAULT: "hsl(var(--primary))",

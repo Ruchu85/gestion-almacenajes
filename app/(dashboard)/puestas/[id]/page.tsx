@@ -530,7 +530,7 @@ export default function PuestaDetailPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Card>
+        <Card className="border-t-4 border-t-brand-600 dark:border-t dark:border-t-border">
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1.5 text-xs">
               <Package className="h-3.5 w-3.5" />Cantidad inicial
@@ -542,7 +542,7 @@ export default function PuestaDetailPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-t-4 border-t-green-600 dark:border-t dark:border-t-border">
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1.5 text-xs">
               <Truck className="h-3.5 w-3.5" />Salida real
@@ -560,7 +560,7 @@ export default function PuestaDetailPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-t-4 border-t-amber-500 dark:border-t dark:border-t-border">
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1.5 text-xs">
               <BarChart3 className="h-3.5 w-3.5" />Cant. Pte Retirar
@@ -581,7 +581,7 @@ export default function PuestaDetailPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-t-4 border-t-red-600 dark:border-t dark:border-t-border">
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-1.5 text-xs">
               <TrendingUp className="h-3.5 w-3.5" />Coste acumulado

@@ -246,7 +246,7 @@ function InvoiceLineItem({
           }}
           onChange={(e) => { setAmount(e.target.value); schedule(e.target.value, ref); }}
           onBlur={() => { if (timerRef.current) clearTimeout(timerRef.current); save(amount, ref); }}
-          className="pl-8 pr-3 py-1.5 text-sm border rounded-md w-32 tabular-nums bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+          className="pl-8 pr-3 py-1.5 text-sm border rounded-md w-32 tabular-nums bg-surface focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
       <input
@@ -254,7 +254,7 @@ function InvoiceLineItem({
         value={ref}
         onChange={(e) => { setRef(e.target.value); schedule(amount, e.target.value); }}
         onBlur={() => { if (timerRef.current) clearTimeout(timerRef.current); save(amount, ref); }}
-        className="px-3 py-1.5 text-sm border rounded-md w-44 bg-background focus:outline-none focus:ring-2 focus:ring-ring"
+        className="px-3 py-1.5 text-sm border rounded-md w-44 bg-surface focus:outline-none focus:ring-2 focus:ring-ring"
       />
       {saving && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />}
       {saved && !saving && <Check className="h-3.5 w-3.5 text-green-500 shrink-0" />}

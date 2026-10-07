@@ -724,7 +724,7 @@ export default function DashboardPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Buscar por posición, almacén o producto..."
-                className="pl-9 pr-9 h-9 text-sm bg-background"
+                className="pl-9 pr-9 h-9 text-sm bg-surface"
               />
               {searchQuery && (
                 <button

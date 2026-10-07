@@ -47,7 +47,7 @@ const NAV_BASE =
   "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors duration-150";
 const NAV_ACTIVE = "bg-sidebar-accent text-sidebar-accent-foreground font-semibold";
 const NAV_IDLE =
-  "text-sidebar-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground";
+  "text-sidebar-foreground hover:bg-sidebar-border/70 hover:text-sidebar-accent-foreground";
 
 const navItems: NavItem[] = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -265,7 +265,7 @@ export function Sidebar() {
         <Button
           variant="ghost"
           size="icon"
-          className="w-full h-9 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          className="w-full h-9 text-sidebar-foreground hover:bg-sidebar-border hover:text-sidebar-accent-foreground"
           onClick={() => setCollapsed(!collapsed)}
           aria-label={collapsed ? "Expandir sidebar" : "Colapsar sidebar"}
         >

@@ -19,21 +19,26 @@ interface StatsCardProps {
 /**
  * Al estilo Flowbite, la cifra va siempre en el color de texto principal: es
  * el dato, no un adorno. El color de la variante se reserva para el icono, en
- * una pastilla de fondo tenue, y para el indicador de tendencia. Así una fila
+ * una pastilla (sólida en claro, tenue en oscuro), un filo de color en el borde
+ * superior (solo en claro) y el indicador de tendencia. Así una fila
  * de KPIs se lee como un bloque homogéneo en lugar de un arcoíris.
  */
 const variantStyles = {
   default: {
-    iconBg: "bg-brand-50 text-brand-600 dark:bg-brand-500/15 dark:text-brand-400",
+    accent: "border-t-brand-600",
+    iconBg: "bg-brand-600 text-white dark:bg-brand-500/15 dark:text-brand-400",
   },
   success: {
-    iconBg: "bg-green-50 text-green-600 dark:bg-green-500/15 dark:text-green-400",
+    accent: "border-t-green-600",
+    iconBg: "bg-green-600 text-white dark:bg-green-500/15 dark:text-green-400",
   },
   warning: {
-    iconBg: "bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400",
+    accent: "border-t-amber-500",
+    iconBg: "bg-amber-500 text-white dark:bg-amber-500/15 dark:text-amber-400",
   },
   destructive: {
-    iconBg: "bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-400",
+    accent: "border-t-red-600",
+    iconBg: "bg-red-600 text-white dark:bg-red-500/15 dark:text-red-400",
   },
 };
 
@@ -64,7 +69,7 @@ export function StatsCard({
   const styles = variantStyles[variant];
 
   return (
-    <Card className="transition-shadow duration-200 hover:shadow-md">
+    <Card className={cn("border-t-4 dark:border-t dark:border-t-border transition-shadow duration-200 hover:shadow-md", styles.accent)}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}

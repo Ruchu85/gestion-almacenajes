@@ -12,45 +12,52 @@
    ============================================================ */
 @layer base {
   :root {
-    /* Fondo gris claro con superficies blancas: las tarjetas destacan
-       por elevación, no por borde. */
-    --background: 210 20% 98%;
-    --foreground: 221 39% 11%;
+    /* MODO CLARO — "Azul marino + cielo". Capas bien separadas y con color:
+       lienzo azulado (--background) → superficies blancas (tarjetas,
+       diálogos, campos: --card / --surface) → trazos y campos visibles. El menú
+       lateral es azul marino y ancla la pantalla; las cabeceras de tabla van
+       tintadas de azul. Texto principal ~16:1, secundario ~7:1 y borde de
+       campos 3:1 (WCAG). */
+    --background: 214 42% 94%;
+    /* Superficie "elevada" sobre el lienzo: diálogos, campos, botones de
+       contorno, toasts. En oscuro es el propio fondo. */
+    --surface: 0 0% 100%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 221 39% 11%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 221 39% 11%;
-    /* Azul Flowbite 700: sobre fondo claro necesita más profundidad
-       que el 600 para mantener el contraste del texto en blanco. */
-    --primary: 220 79% 48%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 221 83% 46%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 217 19% 27%;
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
-    --accent: 220 14% 96%;
-    --accent-foreground: 221 39% 11%;
-    --destructive: 0 72% 51%;
+    --secondary: 214 36% 89%;
+    --secondary-foreground: 222 40% 18%;
+    --muted: 214 40% 92%;
+    --muted-foreground: 215 20% 33%;
+    --accent: 214 45% 90%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 48%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 219 89% 53%;
+    --border: 214 28% 82%;
+    --input: 214 22% 62%;
+    --ring: 221 83% 46%;
     --radius: 0.5rem;
-    /* Serie categórica de Flowbite: azul, turquesa, morado, verde y
-       naranja. Tonos distinguibles entre sí también en escala de grises. */
-    --chart-1: 219 89% 53%;
-    --chart-2: 184 77% 44%;
-    --chart-3: 259 91% 68%;
-    --chart-4: 158 64% 48%;
-    --chart-5: 21 100% 65%;
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 215 14% 34%;
-    --sidebar-primary: 220 79% 48%;
+    /* Cabecera de tabla: azul pálido con texto azul profundo. */
+    --table-head: 214 75% 90%;
+    --table-head-foreground: 221 60% 28%;
+    --chart-1: 221 83% 46%;
+    --chart-2: 184 90% 33%;
+    --chart-3: 259 70% 55%;
+    --chart-4: 160 84% 29%;
+    --chart-5: 32 95% 44%;
+    /* Menú lateral azul marino con el elemento activo en azul vivo. */
+    --sidebar-background: 222 52% 15%;
+    --sidebar-foreground: 214 35% 82%;
+    --sidebar-primary: 221 90% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 14% 96%;
-    --sidebar-accent-foreground: 221 39% 11%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 219 89% 53%;
+    --sidebar-accent: 221 90% 58%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 222 40% 24%;
+    --sidebar-ring: 221 90% 60%;
   }
 
   .dark {
@@ -59,6 +66,7 @@
        activos gray-700. La separación la dan los propios niveles y un
        borde discreto, sin necesidad de contrastes duros. */
     --background: 221 39% 11%;
+    --surface: 221 39% 11%;
     --foreground: 210 20% 98%;
     --card: 215 28% 17%;
     --card-foreground: 210 20% 98%;
@@ -71,6 +79,8 @@
     --secondary-foreground: 210 20% 98%;
     --muted: 217 19% 27%;
     --muted-foreground: 218 11% 65%;
+    --table-head: 217 19% 27%;
+    --table-head-foreground: 218 11% 65%;
     --accent: 217 19% 27%;
     --accent-foreground: 210 20% 98%;
     /* Rojo Flowbite 500: legible como texto sobre el fondo oscuro y
