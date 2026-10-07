@@ -18,7 +18,17 @@
 
 import type { Workbook, Alignment, Border, Fill } from "exceljs";
 
-export type ColumnType = "text" | "date" | "quantity" | "estado";
+export type ColumnType = "text" | "date" | "quantity" | "integer" | "currency" | "price" | "estado";
+
+/** Aspecto de una etiqueta de estado (texto y fondo, hex sin #). */
+export interface EstadoBadge {
+  label: string;
+  font: string;
+  bg: string;
+}
+
+const NUMERIC_TYPES: ColumnType[] = ["quantity", "integer", "currency", "price"];
+const isNumeric = (t: ColumnType) => NUMERIC_TYPES.includes(t);
 
 export interface ExcelColumn<T> {
   header: string;
@@ -31,6 +41,10 @@ export interface ExcelColumn<T> {
   wrap?: boolean;
   /** Formato monoespaciado para códigos (matrículas, contratos...). */
   mono?: boolean;
+  /** Etiquetas de un `estado`; por defecto las de las puestas a disposición. */
+  badges?: Record<string, EstadoBadge>;
+  /** Añade esta columna numérica a la fila TOTAL (las de cantidad lo hacen si la hoja tiene `unit`). */
+  total?: boolean;
 }
 
 export interface ExcelSheet<T> {
@@ -65,7 +79,7 @@ const C = {
   totalBg: "E2E8F0",
 } as const;
 
-const ESTADOS: Record<string, { label: string; font: string; bg: string }> = {
+export const ESTADOS: Record<string, EstadoBadge> = {
   abierta: { label: "Abierta", font: "166534", bg: "DCFCE7" },
   finalizada: { label: "Finalizada", font: "1D4ED8", bg: "DBEAFE" },
   cerrada_manual: { label: "Cerrada", font: "475569", bg: "E2E8F0" },
@@ -94,21 +108,39 @@ function colLetter(n: number): string {
   return s;
 }
 
-function cellText(v: string | number | null | undefined, type: ColumnType): string {
+function cellText<T>(v: string | number | null | undefined, col: ExcelColumn<T>): string {
+  const type = col.type ?? "text";
   if (v == null) return "";
   if (type === "date") return "00/00/0000";
-  if (type === "quantity") return typeof v === "number" ? v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 3 }) : String(v);
-  if (type === "estado") return ESTADOS[String(v)]?.label ?? String(v);
+  if (isNumeric(type)) {
+    const n = typeof v === "number" ? v.toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : String(v);
+    return type === "currency" || type === "price" ? `${n} €` : n;
+  }
+  if (type === "estado") return (col.badges ?? ESTADOS)[String(v)]?.label ?? String(v);
   return String(v);
+}
+
+/** Formato numérico de Excel de cada tipo (con unidad opcional para cantidades). */
+function numFmtFor(type: ColumnType, unit?: string | null): string {
+  switch (type) {
+    case "integer":
+      return "#,##0";
+    case "currency":
+      return '#,##0.00 "€"';
+    case "price":
+      return '#,##0.00## "€"';
+    default:
+      return unit ? `#,##0.00 "${unit}"` : "#,##0.00;[Red]-#,##0.00";
+  }
 }
 
 function autoWidth<T>(col: ExcelColumn<T>, rows: T[]): number {
   if (col.width) return col.width;
-  const type = col.type ?? "text";
   let max = col.header.length + 3; // hueco para el icono del filtro
   for (const row of rows) {
-    max = Math.max(max, cellText(col.value(row), type).length + 2);
+    max = Math.max(max, cellText(col.value(row), col).length + 2);
   }
+  max += col.total ? 4 : 0;
   return Math.min(Math.max(max, 11), col.wrap ? 48 : 42);
 }
 
@@ -173,7 +205,7 @@ function buildDataSheet<T>(wb: Workbook, sheet: ExcelSheet<T>, generatedAt: stri
     const type = col.type ?? "text";
     cell.alignment = {
       vertical: "middle",
-      horizontal: type === "quantity" ? "right" : type === "date" || type === "estado" ? "center" : "left",
+      horizontal: isNumeric(type) ? "right" : type === "date" || type === "estado" ? "center" : "left",
       indent: type === "text" ? 1 : 0,
       wrapText: true,
     };
@@ -196,13 +228,13 @@ function buildDataSheet<T>(wb: Workbook, sheet: ExcelSheet<T>, generatedAt: stri
         cell.value = d;
         cell.numFmt = "dd/mm/yyyy";
         align.horizontal = "center";
-      } else if (type === "quantity") {
+      } else if (isNumeric(type)) {
         cell.value = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
-        cell.numFmt = '#,##0.00;[Red]-#,##0.00';
+        cell.numFmt = numFmtFor(type);
         align.horizontal = "right";
         align.indent = 1;
       } else if (type === "estado") {
-        const e = ESTADOS[String(raw ?? "")];
+        const e = (col.badges ?? ESTADOS)[String(raw ?? "")];
         cell.value = e?.label ?? (raw == null ? "" : String(raw));
         align.horizontal = "center";
         cell.font = { name: FONT, size: 10, bold: true, color: { argb: `FF${e?.font ?? C.muted}` } };
@@ -240,8 +272,10 @@ function buildDataSheet<T>(wb: Workbook, sheet: ExcelSheet<T>, generatedAt: stri
   const lastData = HEADER_ROW + sheet.rows.length;
 
   // Totales (SUBTOTAL respeta los filtros de Excel)
-  const qtyIdx = cols.findIndex((c) => c.type === "quantity");
-  if (sheet.rows.length > 0 && qtyIdx >= 0 && sheet.unit) {
+  const totalCols = cols
+    .map((col, i) => ({ col, i }))
+    .filter(({ col }) => col.total || (col.type === "quantity" && !!sheet.unit));
+  if (sheet.rows.length > 0 && totalCols.length > 0) {
     const totalRow = ws.getRow(lastData + 1);
     totalRow.height = 24;
     for (let c = 1; c <= lastCol; c++) {
@@ -252,16 +286,17 @@ function buildDataSheet<T>(wb: Workbook, sheet: ExcelSheet<T>, generatedAt: stri
       cell.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
     }
     totalRow.getCell(1).value = "TOTAL";
-    const qCol = qtyIdx + 1;
-    const letter = colLetter(qCol);
-    const result = sheet.rows.reduce((s, row) => {
-      const v = cols[qtyIdx].value(row);
-      return s + (typeof v === "number" ? v : 0);
-    }, 0);
-    const q = totalRow.getCell(qCol);
-    q.value = { formula: `SUBTOTAL(109,${letter}${firstData}:${letter}${lastData})`, result };
-    q.numFmt = `#,##0.00 "${sheet.unit}"`;
-    q.alignment = { vertical: "middle", horizontal: "right", indent: 1 };
+    for (const { col, i } of totalCols) {
+      const letter = colLetter(i + 1);
+      const result = sheet.rows.reduce((acc, row) => {
+        const v = col.value(row);
+        return acc + (typeof v === "number" ? v : 0);
+      }, 0);
+      const q = totalRow.getCell(i + 1);
+      q.value = { formula: `SUBTOTAL(109,${letter}${firstData}:${letter}${lastData})`, result };
+      q.numFmt = numFmtFor(col.type ?? "quantity", col.type === "quantity" ? sheet.unit : null);
+      q.alignment = { vertical: "middle", horizontal: "right", indent: 1 };
+    }
   }
 
   // Autofiltro sobre cabecera + datos
@@ -396,9 +431,16 @@ function buildSummarySheet(
 
 // ─── API pública ─────────────────────────────────────────────────────────────
 
+/** Unidad compartida por todas las filas, o null si se mezclan (entonces no se puede totalizar). */
+export function commonUnit(rows: { unit: string }[]): string | null {
+  const units = new Set(rows.map((r) => r.unit));
+  return units.size === 1 ? [...units][0] : null;
+}
+
 export interface StyledExcelOptions {
   filename: string;
-  summary: ExcelSummary;
+  /** Sin resumen no se crea la hoja "Resumen": útil en listados de una sola hoja. */
+  summary?: ExcelSummary;
   sheets: ExcelSheet<any>[]; // eslint-disable-line @typescript-eslint/no-explicit-any
 }
 
@@ -418,7 +460,8 @@ export async function exportStyledExcel({ filename, summary, sheets }: StyledExc
   });
 
   const nonEmpty = sheets.filter((s) => s.rows.length > 0);
-  buildSummarySheet(wb, summary, nonEmpty, generatedAt);
+  if (nonEmpty.length === 0) throw new Error("No hay datos que exportar.");
+  if (summary) buildSummarySheet(wb, summary, nonEmpty, generatedAt);
   for (const sheet of nonEmpty) buildDataSheet(wb, sheet, generatedAt);
 
   const buffer = await wb.xlsx.writeBuffer();

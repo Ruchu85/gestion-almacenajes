@@ -17,10 +17,11 @@ import {
 } from "@/components/ui/card";
 import { getStorageCostColumns } from "@/modules/storage-costs/components/storage-costs-columns";
 import { toast } from "@/hooks/use-toast";
-import { exportToCSV, exportToExcel } from "@/utils/export";
+import { exportToCSV } from "@/utils/export";
 import { formatDate, formatCurrency } from "@/utils/format";
 import { format, subDays } from "date-fns";
 import { ExcelIcon } from "@/components/shared/excel-icon";
+import { exportStyledExcel, commonUnit } from "@/utils/export-styled-excel";
 
 export default function StorageCostsPage() {
   const [costs, setCosts] = useState<StorageCostWithRelations[]>([]);
@@ -102,25 +103,27 @@ export default function StorageCostsPage() {
   }
 
   async function handleExportExcel() {
-    await exportToExcel(
-      costs.map((c) => ({
-        fecha: formatDate(c.cost_date),
-        almacen: `${c.warehouse.code} - ${c.warehouse.name}`,
-        producto: `${c.product.code} - ${c.product.name}`,
-        cantidad_pendiente: Number(c.pending_quantity),
-        precio_dia: Number(c.daily_price),
-        coste_total: Number(c.total_cost),
-      })),
-      [
-        { key: "fecha", header: "Fecha" },
-        { key: "almacen", header: "Almacén" },
-        { key: "producto", header: "Producto" },
-        { key: "cantidad_pendiente", header: "Cantidad Pendiente" },
-        { key: "precio_dia", header: "Precio/Día (€)" },
-        { key: "coste_total", header: "Coste Total (€)" },
+    await exportStyledExcel({
+      filename: `costes-almacenaje_${new Date().toISOString().slice(0, 10)}`,
+      sheets: [
+        {
+          name: "Costes",
+          title: "Costes de Almacenaje",
+          accent: "2563EB",
+          unit: commonUnit(costs.map((c) => ({ unit: c.product.unit }))),
+          rows: costs,
+          columns: [
+            { header: "Fecha", type: "date", value: (c) => c.cost_date },
+            { header: "Almacén", value: (c) => `${c.warehouse.code} - ${c.warehouse.name}` },
+            { header: "Producto", value: (c) => `${c.product.code} - ${c.product.name}` },
+            { header: "Cantidad pendiente", type: "quantity", value: (c) => Number(c.pending_quantity) },
+            { header: "Unidad", value: (c) => c.product.unit },
+            { header: "Precio/día", type: "price", value: (c) => Number(c.daily_price) },
+            { header: "Coste total", type: "currency", total: true, value: (c) => Number(c.total_cost) },
+          ],
+        },
       ],
-      { filename: "costes-almacenaje", title: "Costes de Almacenaje" }
-    );
+    });
   }
 
   return (

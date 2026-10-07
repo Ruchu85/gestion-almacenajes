@@ -39,9 +39,10 @@ import {
   deleteInboundMovementAction,
 } from "@/lib/actions/movements";
 import { toast } from "@/hooks/use-toast";
-import { exportToCSV, exportToExcel } from "@/utils/export";
+import { exportToCSV } from "@/utils/export";
 import { formatDate } from "@/utils/format";
 import { ExcelIcon } from "@/components/shared/excel-icon";
+import { exportStyledExcel, commonUnit } from "@/utils/export-styled-excel";
 
 export default function InboundMovementsPage() {
   const router = useRouter();
@@ -261,9 +262,28 @@ export default function InboundMovementsPage() {
   }
 
   async function handleExportExcel() {
-    await exportToExcel(exportRows(), exportColumns, {
-      filename: "entradas",
-      title: "Entradas de Mercancía",
+    const rows = filteredMovements;
+    await exportStyledExcel({
+      filename: `entradas_${new Date().toISOString().slice(0, 10)}`,
+      sheets: [
+        {
+          name: "Entradas",
+          title: "Entradas de Mercancía",
+          accent: "16A34A",
+          unit: commonUnit(rows.map((m) => ({ unit: m.product.unit }))),
+          rows,
+          columns: [
+            { header: "Fecha", type: "date", value: (m) => m.movement_date },
+            { header: "Almacén", value: (m) => `${m.warehouse.code} - ${m.warehouse.name}` },
+            { header: "Producto", value: (m) => `${m.product.code} - ${m.product.name}` },
+            { header: "Proveedor", value: (m) => m.supplier?.name },
+            { header: "Cantidad", type: "quantity", value: (m) => Number(m.quantity) },
+            { header: "Unidad", value: (m) => m.product.unit },
+            { header: "Días plancha", type: "integer", value: (m) => m.free_days },
+            { header: "Comentarios", wrap: true, width: 40, value: (m) => m.comments },
+          ],
+        },
+      ],
     });
   }
 

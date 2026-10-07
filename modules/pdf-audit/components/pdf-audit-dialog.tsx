@@ -24,11 +24,11 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/utils/format";
-import { exportToExcel } from "@/utils/export";
 import { auditPdfAction } from "@/lib/actions/pdf-audit";
 import type { AuditFileReport } from "@/validations/pdf-audit.schema";
 import { AuditReportTable, isLineaProblematica } from "./audit-report-table";
 import { ExcelIcon } from "@/components/shared/excel-icon";
+import { exportStyledExcel, type EstadoBadge } from "@/utils/export-styled-excel";
 
 interface PdfAuditDialogProps {
   open: boolean;
@@ -69,6 +69,14 @@ function SummaryCard({
     </div>
   );
 }
+
+const AUDIT_BADGES: Record<string, EstadoBadge> = {
+  ok: { label: "Correcta", font: "166534", bg: "DCFCE7" },
+  cantidad_distinta: { label: "Cantidad distinta", font: "991B1B", bg: "FEE2E2" },
+  fecha_distinta: { label: "Fecha distinta", font: "92400E", bg: "FEF3C7" },
+  no_registrada: { label: "No registrada", font: "991B1B", bg: "FEE2E2" },
+  duplicada: { label: "Duplicada", font: "92400E", bg: "FEF3C7" },
+};
 
 export function PdfAuditDialog({ open, onOpenChange }: PdfAuditDialogProps) {
   const { toast } = useToast();
@@ -216,27 +224,31 @@ export function PdfAuditDialog({ open, onOpenChange }: PdfAuditDialogProps) {
       return;
     }
 
-    await exportToExcel(
-      rows,
-      [
-        { key: "archivo", header: "Archivo" },
-        { key: "almacen", header: "Almacén" },
-        { key: "estado", header: "Estado" },
-        { key: "ticket", header: "Ticket" },
-        { key: "fecha_pdf", header: "Fecha PDF" },
-        { key: "fecha_sistema", header: "Fecha sistema" },
-        { key: "matricula", header: "Matrícula" },
-        { key: "cliente", header: "Cliente" },
-        { key: "cantidad_pdf", header: "Cantidad PDF" },
-        { key: "cantidad_sistema", header: "Cantidad sistema" },
-        { key: "diferencia", header: "Diferencia" },
-        { key: "avisos", header: "Avisos" },
+    await exportStyledExcel({
+      filename: `revision-salidas-puerto-${new Date().toISOString().split("T")[0]}`,
+      sheets: [
+        {
+          name: "Revisión",
+          title: "Revisión de Salidas de Puerto",
+          accent: "2563EB",
+          rows,
+          columns: [
+            { header: "Archivo", value: (r) => r.archivo },
+            { header: "Almacén", value: (r) => r.almacen },
+            { header: "Estado", type: "estado", badges: AUDIT_BADGES, width: 20, value: (r) => r.estado },
+            { header: "Ticket", mono: true, value: (r) => r.ticket },
+            { header: "Fecha PDF", type: "date", value: (r) => r.fecha_pdf },
+            { header: "Fecha sistema", type: "date", value: (r) => r.fecha_sistema },
+            { header: "Matrícula", mono: true, value: (r) => r.matricula },
+            { header: "Cliente", value: (r) => r.cliente },
+            { header: "Cantidad PDF", type: "quantity", value: (r) => r.cantidad_pdf },
+            { header: "Cantidad sistema", type: "quantity", value: (r) => (r.cantidad_sistema === "" ? null : r.cantidad_sistema) },
+            { header: "Diferencia", type: "quantity", value: (r) => (r.diferencia === "" ? null : r.diferencia) },
+            { header: "Avisos", wrap: true, width: 50, value: (r) => r.avisos },
+          ],
+        },
       ],
-      {
-        filename: `revision-salidas-puerto-${new Date().toISOString().split("T")[0]}`,
-        title: "Revisión",
-      }
-    );
+    });
   }
 
   const showResults = reports !== null;

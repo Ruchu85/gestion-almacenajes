@@ -33,7 +33,6 @@ import {
 import { PuestaForm } from "@/modules/puestas/components/puesta-form";
 import { getPuestaColumns } from "@/modules/puestas/components/puesta-columns";
 import { toast } from "@/hooks/use-toast";
-import { exportToExcel } from "@/utils/export";
 import { formatDate } from "@/utils/format";
 import {
   createPuesta,
@@ -42,6 +41,7 @@ import {
   changePuestaEstado,
 } from "./actions";
 import { ExcelIcon } from "@/components/shared/excel-icon";
+import { exportStyledExcel, commonUnit } from "@/utils/export-styled-excel";
 
 export default function PuestasPage() {
   const router = useRouter();
@@ -323,41 +323,35 @@ export default function PuestasPage() {
   }
 
   async function handleExportExcel() {
-    await exportToExcel(
-      filteredSummaries.map((s) => ({
-        contrato: s.numero_contrato,
-        cliente: s.customer_name,
-        producto: `${s.product_code} - ${s.product_name}`,
-        almacen: s.warehouse_name,
-        fecha_puesta: formatDate(s.fecha_puesta),
-        dias_plancha: s.dias_plancha,
-        fecha_fin_plancha: formatDate(s.fecha_fin_plancha),
-        cantidad_inicial: Number(s.cantidad_inicial),
-        cantidad_salida: Number(s.cantidad_salida),
-        cantidad_pendiente: Number(s.cantidad_pendiente),
-        unidad: s.unit,
-        dias_activos: s.dias_activos,
-        coste_acumulado: Number(s.coste_acumulado),
-        estado: s.estado,
-      })),
-      [
-        { key: "contrato" as const, header: "Contrato" },
-        { key: "cliente" as const, header: "Cliente" },
-        { key: "producto" as const, header: "Producto" },
-        { key: "almacen" as const, header: "Almacén" },
-        { key: "fecha_puesta" as const, header: "Fecha Puesta" },
-        { key: "dias_plancha" as const, header: "Días Plancha" },
-        { key: "fecha_fin_plancha" as const, header: "Fin Plancha" },
-        { key: "cantidad_inicial" as const, header: "Cantidad Inicial" },
-        { key: "cantidad_salida" as const, header: "Cantidad Salida" },
-        { key: "cantidad_pendiente" as const, header: "Cantidad Pendiente" },
-        { key: "unidad" as const, header: "Unidad" },
-        { key: "dias_activos" as const, header: "Días Activos" },
-        { key: "coste_acumulado" as const, header: "Coste Acumulado (€)" },
-        { key: "estado" as const, header: "Estado" },
+    const rows = filteredSummaries;
+    await exportStyledExcel({
+      filename: `puestas-a-disposicion_${new Date().toISOString().slice(0, 10)}`,
+      sheets: [
+        {
+          name: "Puestas",
+          title: "Puestas a Disposición",
+          accent: "D97706",
+          unit: commonUnit(rows),
+          rows,
+          columns: [
+            { header: "Contrato", mono: true, value: (s) => s.numero_contrato },
+            { header: "Cliente", value: (s) => s.customer_name },
+            { header: "Producto", value: (s) => `${s.product_code} - ${s.product_name}` },
+            { header: "Almacén", value: (s) => s.warehouse_name },
+            { header: "Estado", type: "estado", value: (s) => s.estado },
+            { header: "Fecha puesta", type: "date", value: (s) => s.fecha_puesta },
+            { header: "Días plancha", type: "integer", value: (s) => s.dias_plancha },
+            { header: "Fin plancha", type: "date", value: (s) => s.fecha_fin_plancha },
+            { header: "Cant. inicial", type: "quantity", value: (s) => Number(s.cantidad_inicial) },
+            { header: "Cant. salida", type: "quantity", value: (s) => Number(s.cantidad_salida) },
+            { header: "Cant. pendiente", type: "quantity", value: (s) => Number(s.cantidad_pendiente) },
+            { header: "Unidad", value: (s) => s.unit },
+            { header: "Días activos", type: "integer", value: (s) => s.dias_activos },
+            { header: "Coste acumulado", type: "currency", total: true, value: (s) => Number(s.coste_acumulado) },
+          ],
+        },
       ],
-      { filename: "puestas-a-disposicion", title: "Puestas a Disposición" }
-    );
+    });
   }
 
   const columns = getPuestaColumns(handleView, handleEdit, handleDelete, handleChangeEstado);

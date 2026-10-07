@@ -35,10 +35,11 @@ import {
 import { OutboundForm } from "@/modules/movements/components/outbound-form";
 import { getOutboundColumns } from "@/modules/movements/components/outbound-columns";
 import { toast } from "@/hooks/use-toast";
-import { exportToCSV, exportToExcel } from "@/utils/export";
+import { exportToCSV } from "@/utils/export";
 import { formatDate } from "@/utils/format";
 import { getMatriculas, upsertMatricula } from "@/lib/actions/matriculas";
 import { ExcelIcon } from "@/components/shared/excel-icon";
+import { exportStyledExcel, commonUnit } from "@/utils/export-styled-excel";
 
 export default function OutboundMovementsPage() {
   const router = useRouter();
@@ -227,9 +228,29 @@ export default function OutboundMovementsPage() {
   }
 
   async function handleExportExcel() {
-    await exportToExcel(exportRows(), exportColumns, {
-      filename: "salidas",
-      title: "Salidas de Mercancía",
+    const rows = filteredMovements;
+    await exportStyledExcel({
+      filename: `salidas_${new Date().toISOString().slice(0, 10)}`,
+      sheets: [
+        {
+          name: "Salidas",
+          title: "Salidas de Mercancía",
+          accent: "DC2626",
+          unit: commonUnit(rows.map((m) => ({ unit: m.product.unit }))),
+          rows,
+          columns: [
+            { header: "Fecha", type: "date", value: (m) => m.movement_date },
+            { header: "Almacén", value: (m) => `${m.warehouse.code} - ${m.warehouse.name}` },
+            { header: "Producto", value: (m) => `${m.product.code} - ${m.product.name}` },
+            { header: "Cliente", value: (m) => m.customer?.name },
+            { header: "Matrícula", mono: true, value: (m) => m.matricula ?? m.salida_parcial?.matricula },
+            { header: "Nº pta. a disposición", value: (m) => m.puesta?.numero_contrato },
+            { header: "Cantidad", type: "quantity", value: (m) => Number(m.quantity) },
+            { header: "Unidad", value: (m) => m.product.unit },
+            { header: "Comentarios", wrap: true, width: 40, value: (m) => m.comments },
+          ],
+        },
+      ],
     });
   }
 
