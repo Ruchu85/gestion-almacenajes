@@ -38,6 +38,7 @@ import { toast } from "@/hooks/use-toast";
 import { exportToCSV, exportToExcel } from "@/utils/export";
 import { formatDate } from "@/utils/format";
 import { getMatriculas, upsertMatricula } from "@/lib/actions/matriculas";
+import { ExcelIcon } from "@/components/shared/excel-icon";
 
 export default function OutboundMovementsPage() {
   const router = useRouter();
@@ -252,7 +253,7 @@ export default function OutboundMovementsPage() {
               CSV
             </Button>
             <Button variant="outline" onClick={handleExportExcel} disabled={filteredMovements.length === 0}>
-              <Download className="mr-2 h-4 w-4" />
+              <ExcelIcon className="mr-2 h-5 w-5" />
               Excel
             </Button>
             <Button onClick={() => setFormOpen(true)}>

@@ -20,6 +20,7 @@ import { toast } from "@/hooks/use-toast";
 import { exportToCSV, exportToExcel } from "@/utils/export";
 import { formatDate, formatCurrency } from "@/utils/format";
 import { format, subDays } from "date-fns";
+import { ExcelIcon } from "@/components/shared/excel-icon";
 
 export default function StorageCostsPage() {
   const [costs, setCosts] = useState<StorageCostWithRelations[]>([]);
@@ -133,7 +134,7 @@ export default function StorageCostsPage() {
               <Download className="mr-2 h-4 w-4" />CSV
             </Button>
             <Button variant="outline" onClick={handleExportExcel} disabled={costs.length === 0}>
-              <Download className="mr-2 h-4 w-4" />Excel
+              <ExcelIcon className="mr-2 h-5 w-5" />Excel
             </Button>
           </>
         }

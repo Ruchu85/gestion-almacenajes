@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   CheckCircle2,
   ClipboardCheck,
-  Download,
   FileText,
   FileUp,
   Loader2,
@@ -29,6 +28,7 @@ import { exportToExcel } from "@/utils/export";
 import { auditPdfAction } from "@/lib/actions/pdf-audit";
 import type { AuditFileReport } from "@/validations/pdf-audit.schema";
 import { AuditReportTable, isLineaProblematica } from "./audit-report-table";
+import { ExcelIcon } from "@/components/shared/excel-icon";
 
 interface PdfAuditDialogProps {
   open: boolean;
@@ -398,7 +398,7 @@ export function PdfAuditDialog({ open, onOpenChange }: PdfAuditDialogProps) {
                 Mostrar solo lo que hay que revisar
               </label>
               <Button variant="outline" size="sm" onClick={handleExport} className="gap-1.5">
-                <Download className="h-3.5 w-3.5" />
+                <ExcelIcon className="h-4 w-4" />
                 Exportar informe
               </Button>
             </div>

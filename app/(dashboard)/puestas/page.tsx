@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 // El icono Warehouse se aliasa: el nombre choca con el tipo Warehouse de @/types.
 import {
-  Plus, ClipboardList, Download, ChevronLeft, X,
+  Plus, ClipboardList, ChevronLeft, X,
   Warehouse as WarehouseIcon, Package as PackageIcon, Users as UsersIcon,
   ClipboardList as ClipboardListIcon, Calendar as CalendarIcon,
 } from "lucide-react";
@@ -41,6 +41,7 @@ import {
   deletePuesta,
   changePuestaEstado,
 } from "./actions";
+import { ExcelIcon } from "@/components/shared/excel-icon";
 
 export default function PuestasPage() {
   const router = useRouter();
@@ -375,7 +376,7 @@ export default function PuestasPage() {
               </Button>
             )}
             <Button variant="outline" onClick={handleExportExcel} disabled={filteredSummaries.length === 0}>
-              <Download className="mr-2 h-4 w-4" />
+              <ExcelIcon className="mr-2 h-5 w-5" />
               Excel
             </Button>
             <Button onClick={() => { setEditingPuesta(null); setFormOpen(true); }}>

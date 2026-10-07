@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ChevronUp,
   ExternalLink,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -32,6 +33,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatDate, formatQuantity } from "@/utils/format";
+import { toast } from "@/hooks/use-toast";
+import { ExcelIcon } from "@/components/shared/excel-icon";
+import { exportStyledExcel, type ExcelSheet } from "@/utils/export-styled-excel";
 import type { Warehouse as WarehouseType, Product } from "@/types";
 
 // ─── Tipos de resultado ───────────────────────────────────────────────────────
@@ -112,6 +116,103 @@ function estadoBadge(estado: string) {
   };
   const { label, className } = map[estado] ?? { label: estado, className: "border-muted text-muted-foreground" };
   return <Badge variant="outline" className={cn("text-[10px] font-semibold", className)}>{label}</Badge>;
+}
+
+/** Tope de filas que trae cada consulta (ver .limit(300) en handleSearch). */
+const MAX_POR_TIPO = 300;
+
+/** Unidad común de un grupo de filas; null si se mezclan (no se puede totalizar). */
+function unidadComun(rows: { unit: string }[]): string | null {
+  const units = new Set(rows.map((r) => r.unit));
+  return units.size === 1 ? [...units][0] : null;
+}
+
+const producto = (r: { product_code: string; product_name: string }) =>
+  r.product_code ? `${r.product_code} — ${r.product_name}` : r.product_name;
+
+function buildExcelSheets(
+  puestas: ResultPuesta[],
+  salidasParciales: ResultSalidaParcial[],
+  entradas: ResultEntrada[],
+  salidas: ResultSalida[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): ExcelSheet<any>[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sheets: ExcelSheet<any>[] = [
+    {
+      name: "Puestas",
+      title: "Puestas a Disposición",
+      accent: "D97706",
+      unit: unidadComun(puestas),
+      rows: puestas,
+      columns: [
+        { header: "Nº Contrato", mono: true, value: (r: ResultPuesta) => r.numero_contrato ?? `#${r.id.slice(0, 8).toUpperCase()}` },
+        { header: "Cliente", value: (r: ResultPuesta) => r.customer_name },
+        { header: "Producto", value: (r: ResultPuesta) => producto(r) },
+        { header: "Almacén", value: (r: ResultPuesta) => r.warehouse_name },
+        { header: "Posición cerrada", value: (r: ResultPuesta) => r.posicion_cerrada },
+        { header: "Fecha puesta", type: "date", value: (r: ResultPuesta) => r.fecha_puesta },
+        { header: "Estado", type: "estado", value: (r: ResultPuesta) => r.estado },
+        { header: "Cant. inicial", type: "quantity", value: (r: ResultPuesta) => r.cantidad_inicial },
+        { header: "Unidad", value: (r: ResultPuesta) => r.unit },
+      ],
+    },
+    {
+      name: "Salidas de Puestas",
+      title: "Salidas de Puestas a Disposición",
+      accent: "DC2626",
+      unit: unidadComun(salidasParciales),
+      rows: salidasParciales,
+      columns: [
+        { header: "Matrícula", mono: true, value: (r: ResultSalidaParcial) => r.matricula },
+        { header: "Nº Camión", value: (r: ResultSalidaParcial) => r.n_camion },
+        { header: "Nº Contrato", value: (r: ResultSalidaParcial) => r.numero_contrato ?? `#${r.puesta_id.slice(0, 8).toUpperCase()}` },
+        { header: "Cliente", value: (r: ResultSalidaParcial) => r.customer_name },
+        { header: "Producto", value: (r: ResultSalidaParcial) => producto(r) },
+        { header: "Almacén", value: (r: ResultSalidaParcial) => r.warehouse_name },
+        { header: "Fecha salida", type: "date", value: (r: ResultSalidaParcial) => r.fecha_salida },
+        { header: "Cantidad", type: "quantity", value: (r: ResultSalidaParcial) => r.cantidad },
+        { header: "Unidad", value: (r: ResultSalidaParcial) => r.unit },
+        { header: "Comentarios", wrap: true, width: 40, value: (r: ResultSalidaParcial) => r.comentarios },
+      ],
+    },
+    {
+      name: "Entradas",
+      title: "Entradas de Mercancía",
+      accent: "16A34A",
+      unit: unidadComun(entradas),
+      rows: entradas,
+      columns: [
+        { header: "Nº Albarán", mono: true, value: (r: ResultEntrada) => r.numero_albaran },
+        { header: "Proveedor", value: (r: ResultEntrada) => r.supplier_name },
+        { header: "Producto", value: (r: ResultEntrada) => producto(r) },
+        { header: "Almacén", value: (r: ResultEntrada) => r.warehouse_name },
+        { header: "Fecha entrada", type: "date", value: (r: ResultEntrada) => r.movement_date },
+        { header: "Cantidad", type: "quantity", value: (r: ResultEntrada) => r.quantity },
+        { header: "Unidad", value: (r: ResultEntrada) => r.unit },
+        { header: "Comentarios", wrap: true, width: 40, value: (r: ResultEntrada) => r.comments },
+      ],
+    },
+    {
+      name: "Salidas Directas",
+      title: "Salidas Directas",
+      accent: "9333EA",
+      unit: unidadComun(salidas),
+      rows: salidas,
+      columns: [
+        { header: "Matrícula", mono: true, value: (r: ResultSalida) => r.matricula },
+        { header: "Nº Albarán", value: (r: ResultSalida) => r.numero_albaran },
+        { header: "Cliente", value: (r: ResultSalida) => r.customer_name },
+        { header: "Producto", value: (r: ResultSalida) => producto(r) },
+        { header: "Almacén", value: (r: ResultSalida) => r.warehouse_name },
+        { header: "Fecha salida", type: "date", value: (r: ResultSalida) => r.movement_date },
+        { header: "Cantidad", type: "quantity", value: (r: ResultSalida) => r.quantity },
+        { header: "Unidad", value: (r: ResultSalida) => r.unit },
+        { header: "Comentarios", wrap: true, width: 40, value: (r: ResultSalida) => r.comments },
+      ],
+    },
+  ];
+  return sheets;
 }
 
 // ─── Componentes de fila ──────────────────────────────────────────────────────
@@ -249,6 +350,9 @@ export default function BuscadorPage() {
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  /** Filtros tal y como estaban al pulsar Buscar: el Excel describe lo que se ve, no lo que se ha tocado después. */
+  const [appliedFilters, setAppliedFilters] = useState<{ label: string; value: string }[]>([]);
 
   // Cargar datos para los selects
   useEffect(() => {
@@ -272,6 +376,17 @@ export default function BuscadorPage() {
   const handleSearch = useCallback(async () => {
     setIsSearching(true);
     setHasSearched(true);
+
+    const prod = products.find((p) => p.id === filterProduct);
+    const wh = warehouses.find((w) => w.id === filterWarehouse);
+    setAppliedFilters([
+      { label: "Texto", value: searchText.trim() || "—" },
+      { label: "Producto", value: prod ? `${prod.code} — ${prod.name}` : "Todos" },
+      { label: "Almacén", value: wh ? `${wh.code} — ${wh.name}` : "Todos" },
+      { label: "Posición cerrada", value: filterPosition !== "all" ? filterPosition : "Todas" },
+      { label: "Fecha desde", value: filterDateFrom ? formatDate(filterDateFrom) : "—" },
+      { label: "Fecha hasta", value: filterDateTo ? formatDate(filterDateTo) : "—" },
+    ]);
 
     // Calcular IDs de almacenes según filtros
     let whIds: string[] | null = null;
@@ -319,6 +434,7 @@ export default function BuscadorPage() {
         .eq("tipo", "real")
         .order("fecha_salida", { ascending: false })
         .limit(300);
+      if (filterProduct !== "all") q = q.eq("puesta.product_id", filterProduct);
       if (filterDateFrom) q = q.gte("fecha_salida", filterDateFrom);
       if (filterDateTo) q = q.lte("fecha_salida", filterDateTo);
       return q;
@@ -422,9 +538,6 @@ export default function BuscadorPage() {
           );
           if (!matchesWh) return false;
         }
-        if (filterProduct !== "all") {
-          // product already in puesta – can't easily join here, skip re-filter
-        }
         return true;
       })
       .map((r) => ({
@@ -514,7 +627,7 @@ export default function BuscadorPage() {
 
     setResults([...filteredPuestas, ...finalSP, ...filteredEntradas, ...filteredSalidas]);
     setIsSearching(false);
-  }, [supabase, searchText, filterProduct, filterWarehouse, filterPosition, filterDateFrom, filterDateTo, warehouses]);
+  }, [supabase, searchText, filterProduct, filterWarehouse, filterPosition, filterDateFrom, filterDateTo, warehouses, products]);
 
   function clearFilters() {
     setSearchText("");
@@ -532,6 +645,44 @@ export default function BuscadorPage() {
   const entradas = (results ?? []).filter((r): r is ResultEntrada => r.type === "entrada");
   const salidas = (results ?? []).filter((r): r is ResultSalida => r.type === "salida");
   const totalResults = (results ?? []).length;
+
+  async function handleExportExcel() {
+    if (totalResults === 0) return;
+    setIsExporting(true);
+    try {
+      const truncados = [
+        ["puestas", puestas.length],
+        ["salidas de puestas", salidasParciales.length],
+        ["entradas", entradas.length],
+        ["salidas directas", salidas.length],
+      ].filter(([, n]) => (n as number) >= MAX_POR_TIPO);
+
+      await exportStyledExcel({
+        filename: `buscador_${new Date().toISOString().slice(0, 10)}`,
+        summary: {
+          title: "Resultados del Buscador",
+          subtitle: `${totalResults} ${totalResults === 1 ? "resultado" : "resultados"}`,
+          filters: appliedFilters,
+          notes: truncados.length
+            ? [
+                `Cada búsqueda devuelve como máximo ${MAX_POR_TIPO} registros por tipo (${truncados
+                  .map(([n]) => n)
+                  .join(", ")}). Puede haber más: acota las fechas o los filtros para verlos todos.`,
+              ]
+            : [],
+        },
+        sheets: buildExcelSheets(puestas, salidasParciales, entradas, salidas),
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "No se pudo exportar",
+        description: err instanceof Error ? err.message : "Error desconocido al generar el Excel.",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }
 
   const hasFilters =
     searchText.trim() !== "" ||
@@ -677,9 +828,21 @@ export default function BuscadorPage() {
       {/* Resultados */}
       {hasSearched && results !== null && totalResults > 0 && (
         <div className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            <span className="font-semibold text-foreground">{totalResults}</span> resultado{totalResults !== 1 ? "s" : ""} encontrado{totalResults !== 1 ? "s" : ""}
-          </p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">
+              <span className="font-semibold text-foreground">{totalResults}</span> resultado{totalResults !== 1 ? "s" : ""} encontrado{totalResults !== 1 ? "s" : ""}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportExcel}
+              disabled={isExporting}
+              className="gap-2"
+            >
+              {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExcelIcon className="h-5 w-5" />}
+              {isExporting ? "Generando..." : "Exportar a Excel"}
+            </Button>
+          </div>
 
           {/* Puestas a disposición */}
           <ResultSection title="Puestas a Disposición" icon={ClipboardList} count={puestas.length} color="text-amber-500">
