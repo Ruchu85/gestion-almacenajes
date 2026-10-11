@@ -924,7 +924,7 @@ export default function DashboardPage() {
                                           return (
                                             <div key={product.product_id} className="relative">
                                               <div className="absolute left-[-4px] top-[22px] w-5 h-0.5 bg-brand-200 dark:bg-brand-800" />
-                                              <div className="hover-zoom [--hover-zoom:1.015] ml-5 rounded-lg border bg-card hover:border-brand-300 dark:hover:border-brand-700 overflow-hidden">
+                                              <div className="ml-5 rounded-lg border bg-card hover:border-brand-300 dark:hover:border-brand-700 transition-all duration-150 overflow-hidden">
 
                                                 {/* Fila del producto */}
                                                 <div
@@ -1094,6 +1094,11 @@ export default function DashboardPage() {
                                                             <div
                                                               key={puesta.id}
                                                               className={cn(
+                                                                // Zoom pequeño + marcado violeta (distinto del azul del
+                                                                // tema y del ámbar de la zona) para ver qué puesta
+                                                                // está bajo el cursor. `ring-inset` para que el
+                                                                // contenedor con overflow-hidden no lo recorte.
+                                                                "hover-zoom [--hover-zoom:1.02] relative hover:z-10 hover:bg-violet-50 hover:ring-2 hover:ring-inset hover:ring-violet-500 dark:hover:bg-violet-500/15 dark:hover:ring-violet-400",
                                                                 "grid grid-cols-[150px_110px_1fr_96px_92px_100px_82px] items-center gap-x-2 px-3 py-2",
                                                                 idx % 2 === 0
                                                                   ? "bg-card dark:bg-transparent"

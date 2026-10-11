@@ -136,7 +136,11 @@
     transform: scale(var(--hover-zoom, 1.03));
     box-shadow: 0 6px 16px -4px hsl(var(--foreground) / 0.18);
   }
-  .hover-zoom:not(:disabled):not([aria-disabled="true"]):active {
+  /* Efecto de pulsación SOLO en elementos que son botón o enlace. `:active`
+     se propaga a todos los ancestros: aplicado a una tarjeta con contenido
+     clicable dentro, la encogía al pulsar y el clic no llegaba al botón. */
+  button.hover-zoom:not(:disabled):active,
+  a.hover-zoom:active {
     transform: scale(calc(var(--hover-zoom, 1.03) - 0.05));
   }
   @media (prefers-reduced-motion: reduce) {
