@@ -123,6 +123,26 @@
   }
 }
 
+@layer components {
+  /* Fondo de la zona de contenido: foto del puerto (carga de cereal a granel)
+     bajo una capa del color del propio tema. Así la foto se percibe pero el
+     texto que cae directamente sobre ella (títulos, descripciones) mantiene
+     el contraste en claro y en oscuro. Las tarjetas son opacas y no se ven
+     afectadas. Foto: Fabrizio Zini, Pexels (licencia libre). */
+  .app-backdrop {
+    background-image:
+      linear-gradient(hsl(var(--background) / 0.78), hsl(var(--background) / 0.88)),
+      url("/images/puerto-granel.jpg");
+    background-size: cover;
+    background-position: center;
+  }
+  .dark .app-backdrop {
+    background-image:
+      linear-gradient(hsl(var(--background) / 0.7), hsl(var(--background) / 0.84)),
+      url("/images/puerto-granel.jpg");
+  }
+}
+
 @layer utilities {
   /* Zoom al pasar el ratón: confirma visualmente qué elemento está bajo el
      cursor. La escala se ajusta por elemento con `[--hover-zoom:1.02]` (los

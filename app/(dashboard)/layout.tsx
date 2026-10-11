@@ -62,7 +62,7 @@ export default async function DashboardLayout({
           userName={profile?.full_name ?? undefined}
           userRole={profile?.role ?? undefined}
         />
-        <main className="flex-1 overflow-auto p-6">
+        <main className="app-backdrop flex-1 overflow-auto p-6">
           <div className="mx-auto max-w-[1600px] space-y-6 animate-fade-in">
             {children}
           </div>
