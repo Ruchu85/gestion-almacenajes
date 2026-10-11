@@ -77,14 +77,24 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
+    <div
+      className="flex min-h-screen items-center justify-center bg-muted/30 p-4"
+      style={{
+        // Foto del puerto (carga de cereal a granel) con capa oscura para que
+        // el formulario y la marca se lean. Foto: Fabrizio Zini, Pexels.
+        backgroundImage:
+          "linear-gradient(rgba(10,20,45,0.58), rgba(10,20,45,0.76)), url('/images/puerto-granel.jpg')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }}
+    >
       <div className="w-full max-w-[400px]">
         <div className="mb-8 flex flex-col items-center text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary mb-3">
             <Warehouse className="h-6 w-6 text-primary-foreground" />
           </div>
-          <h1 className="text-2xl font-bold">GestiPuertos</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="text-2xl font-bold text-white">GestiPuertos</h1>
+          <p className="text-sm text-white/80 mt-1">
             Gestión profesional de almacenajes
           </p>
         </div>

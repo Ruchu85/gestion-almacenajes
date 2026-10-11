@@ -25,7 +25,7 @@ import { createClient } from "@/lib/supabase/client";
 import { StorageCostsService } from "@/services/storage-costs.service";
 import type { DashboardKPIs } from "@/types";
 import { StatsCard } from "@/components/shared/stats-card";
-import { PageHeader } from "@/components/shared/page-header";
+import { HeroBanner } from "@/components/shared/hero-banner";
 import {
   Card,
   CardContent,
@@ -537,7 +537,7 @@ export default function DashboardPage() {
 
   return (
     <>
-      <PageHeader
+      <HeroBanner
         title="Dashboard"
         description="Resumen general de almacenajes y costes"
         actions={
@@ -553,7 +553,7 @@ export default function DashboardPage() {
           >
             <span className={cn(
               "text-xs font-medium transition-colors",
-              showKpis ? "text-foreground" : "text-muted-foreground"
+              showKpis ? "text-white" : "text-white/60"
             )}>
               KPIs
             </span>
@@ -561,7 +561,7 @@ export default function DashboardPage() {
               "relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200",
               showKpis
                 ? "bg-brand-600 dark:bg-brand-500"
-                : "bg-muted group-hover:bg-muted-foreground/30"
+                : "bg-white/25 group-hover:bg-white/40"
             )}>
               <span className={cn(
                 "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform duration-200",
