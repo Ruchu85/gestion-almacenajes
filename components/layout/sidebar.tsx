@@ -44,7 +44,7 @@ interface NavItem {
  * del texto y el fondo.
  */
 const NAV_BASE =
-  "flex items-center gap-3 rounded-lg text-sm font-medium transition-colors duration-150";
+  "hover-zoom [--hover-zoom:1.04] origin-left flex items-center gap-3 rounded-lg text-sm font-medium transition-colors duration-150";
 const NAV_ACTIVE = "bg-sidebar-accent text-sidebar-accent-foreground font-semibold";
 const NAV_IDLE =
   "text-sidebar-foreground hover:bg-sidebar-border/70 hover:text-sidebar-accent-foreground";

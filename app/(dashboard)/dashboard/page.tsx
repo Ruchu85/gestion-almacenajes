@@ -798,7 +798,7 @@ export default function DashboardPage() {
                     <button
                       onClick={() => togglePosition(pg.posicion_cerrada)}
                       className={cn(
-                        "w-full flex items-center gap-4 p-4 rounded-xl border text-left transition-all duration-200",
+                        "hover-zoom [--hover-zoom:1.015] w-full flex items-center gap-4 p-4 rounded-xl border text-left transition-all duration-200",
                         isPosExpanded
                           ? "bg-brand-50 dark:bg-brand-500/10 border-brand-200 dark:border-brand-800"
                           : "bg-card hover:bg-accent/60 border-border hover:shadow-sm"
@@ -863,7 +863,7 @@ export default function DashboardPage() {
                                   <button
                                     onClick={() => toggleWarehouse(group.warehouse_id)}
                                     className={cn(
-                                      "w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-all duration-200",
+                                      "hover-zoom [--hover-zoom:1.015] w-full flex items-center gap-3 p-3 rounded-lg border text-left transition-all duration-200",
                                       isExpanded
                                         ? "bg-brand-50 dark:bg-brand-500/10 border-brand-200 dark:border-brand-800"
                                         : "bg-card hover:bg-accent/60 border-border hover:shadow-sm"
@@ -924,7 +924,7 @@ export default function DashboardPage() {
                                           return (
                                             <div key={product.product_id} className="relative">
                                               <div className="absolute left-[-4px] top-[22px] w-5 h-0.5 bg-brand-200 dark:bg-brand-800" />
-                                              <div className="ml-5 rounded-lg border bg-card hover:border-brand-300 dark:hover:border-brand-700 transition-all duration-150 overflow-hidden">
+                                              <div className="hover-zoom [--hover-zoom:1.015] ml-5 rounded-lg border bg-card hover:border-brand-300 dark:hover:border-brand-700 overflow-hidden">
 
                                                 {/* Fila del producto */}
                                                 <div

@@ -69,7 +69,7 @@ export function StatsCard({
   const styles = variantStyles[variant];
 
   return (
-    <Card className={cn("border-t-4 dark:border-t dark:border-t-border transition-shadow duration-200 hover:shadow-md", styles.accent)}>
+    <Card className={cn("hover-zoom [--hover-zoom:1.03] border-t-4 dark:border-t dark:border-t-border", styles.accent)}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}
