@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Truck, AlertTriangle } from "lucide-react";
+import { Loader2, Truck, AlertTriangle, ArrowRightLeft, Lock } from "lucide-react";
 import { salidaParcialSchema, type SalidaParcialFormValues } from "@/validations/salida-parcial.schema";
 import type { SalidaParcial } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,11 @@ import {
   AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { MatriculaInput } from "@/components/shared/matricula-input";
-import { formatNumber } from "@/utils/format";
+import { formatDate, formatNumber } from "@/utils/format";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import type { OpcionesMoverRetirada } from "@/lib/mover-retirada";
 import { cn } from "@/lib/utils";
 
 interface SalidaParcialFormProps {
@@ -38,6 +42,12 @@ interface SalidaParcialFormProps {
   defaultValues?: SalidaParcial;
   fechaMinima?: string;
   matriculas?: string[];
+  /**
+   * Solo al editar: puestas a las que se puede mover la retirada (mismo
+   * cliente, producto y almacén). Con valor, se muestra el selector.
+   */
+  opcionesPuesta?: OpcionesMoverRetirada | null;
+  cargandoOpciones?: boolean;
 }
 
 export function SalidaParcialForm({
@@ -51,6 +61,8 @@ export function SalidaParcialForm({
   defaultValues,
   fechaMinima,
   matriculas = [],
+  opcionesPuesta,
+  cargandoOpciones = false,
 }: SalidaParcialFormProps) {
   const isEditing = !!defaultValues;
   const [pendingOverflowValues, setPendingOverflowValues] = useState<SalidaParcialFormValues | null>(null);
@@ -68,6 +80,10 @@ export function SalidaParcialForm({
   });
 
   const cantidad = form.watch("cantidad");
+  const puestaElegida = form.watch("puesta_id");
+  const cambiaPuesta = isEditing && !!puestaElegida && puestaElegida !== puestaId;
+  const destinoElegido = opcionesPuesta?.opciones.find((o) => o.id === puestaElegida);
+  const etiquetaPuesta = (num: string | null, id: string) => num ?? `#${id.slice(0, 8).toUpperCase()}`;
   const exceedsPending = cantidadPendiente !== undefined && cantidad > cantidadPendiente;
   const exceso = exceedsPending ? cantidad - cantidadPendiente : 0;
 
@@ -160,6 +176,81 @@ export function SalidaParcialForm({
                   </FormItem>
                 )}
               />
+
+              {/* Puesta a disposición (solo al editar) */}
+              {isEditing && (cargandoOpciones || opcionesPuesta) && (
+                <FormField
+                  control={form.control}
+                  name="puesta_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-1.5">
+                        <ArrowRightLeft className="h-3.5 w-3.5" />
+                        Puesta a disposición
+                      </FormLabel>
+                      {cargandoOpciones || !opcionesPuesta ? (
+                        <div className="flex h-10 items-center gap-2 rounded-md border px-3 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" /> Cargando puestas…
+                        </div>
+                      ) : (
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          disabled={!!opcionesPuesta.bloqueo || opcionesPuesta.opciones.length === 0}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value={puestaId}>
+                              {opcionesPuesta.actual
+                                ? etiquetaPuesta(opcionesPuesta.actual.numero_contrato, opcionesPuesta.actual.id)
+                                : etiquetaPuesta(null, puestaId)}{" "}
+                              (actual)
+                            </SelectItem>
+                            {opcionesPuesta.opciones.map((o) => (
+                              <SelectItem key={o.id} value={o.id} disabled={!!o.motivo}>
+                                <span className="font-mono">{etiquetaPuesta(o.numero_contrato, o.id)}</span>
+                                <span className="text-muted-foreground">
+                                  {" "}· {formatDate(o.fecha_puesta)} · pte. {formatNumber(o.pendiente)} {unit}
+                                </span>
+                                {o.motivo && (
+                                  <span className="block text-[11px] text-muted-foreground">{o.motivo}</span>
+                                )}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      {opcionesPuesta?.bloqueo ? (
+                        <FormDescription className="flex items-start gap-1.5">
+                          <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          {opcionesPuesta.bloqueo}
+                        </FormDescription>
+                      ) : opcionesPuesta && opcionesPuesta.opciones.length === 0 ? (
+                        <FormDescription>
+                          No hay otras puestas abiertas de este cliente, producto y almacén.
+                        </FormDescription>
+                      ) : null}
+                      {cambiaPuesta && destinoElegido && (
+                        <div className="rounded-md border-2 border-amber-400 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-200">
+                          <p className="font-semibold">
+                            La retirada pasará a la puesta{" "}
+                            {etiquetaPuesta(destinoElegido.numero_contrato, destinoElegido.id)}.
+                          </p>
+                          <p className="mt-0.5">
+                            Al guardar se recalculan los pendientes, las auto-salidas de fin de
+                            plancha y los almacenajes de las dos puestas.
+                          </p>
+                        </div>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               {/* Matrícula */}
               <FormField

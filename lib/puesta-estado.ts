@@ -58,6 +58,33 @@ export async function autoFinalizarPuestaSiAgotada(
 }
 
 /**
+ * Inversa de la anterior: una puesta `finalizada` que vuelve a tener
+ * pendiente (p. ej. porque una de sus retiradas se ha movido a otra puesta)
+ * se reabre. Nunca toca `cerrada_manual` ni `traspasada`.
+ */
+export async function reabrirPuestaSiTienePendiente(
+  supabase: SupabaseClient,
+  puestaId: string
+): Promise<boolean> {
+  const { data } = await supabase
+    .from("puestas_a_disposicion")
+    .select("id, estado, cantidad_inicial, salidas_parciales(cantidad, tipo)")
+    .eq("id", puestaId)
+    .single();
+
+  const puesta = data as PuestaRow | null;
+  if (!puesta || puesta.estado !== "finalizada") return false;
+  if (pendienteDePuesta(puesta.cantidad_inicial, puesta.salidas_parciales) <= 0) return false;
+
+  const { error } = await supabase
+    .from("puestas_a_disposicion")
+    .update({ estado: "abierta" })
+    .eq("id", puestaId)
+    .eq("estado", "finalizada");
+  return !error;
+}
+
+/**
  * Red de seguridad para el cron: finaliza todas las abiertas agotadas, vengan
  * de donde vengan (importaciones, ediciones o borrados de retiradas...).
  * Devuelve cuántas finalizó.

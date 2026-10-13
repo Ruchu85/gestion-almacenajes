@@ -23,6 +23,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { SalidaParcialForm } from "@/modules/puestas/components/salida-parcial-form";
+import { getOpcionesMoverRetirada, moverRetiradaAPuesta } from "@/app/(dashboard)/puestas/mover-retirada.actions";
+import type { OpcionesMoverRetirada } from "@/lib/mover-retirada";
 import { getSalidaColumns } from "@/modules/puestas/components/salida-parcial-columns";
 import { DesaplicarDialog } from "@/modules/puestas/components/desaplicar-dialog";
 import { TraspassarDialog } from "@/modules/puestas/components/traspasar-dialog";
@@ -92,6 +94,8 @@ export default function PuestaDetailPage() {
 
   const [salidaFormOpen, setSalidaFormOpen] = useState(false);
   const [editingSalida, setEditingSalida]   = useState<SalidaParcial | null>(null);
+  const [opcionesMover, setOpcionesMover]   = useState<OpcionesMoverRetirada | null>(null);
+  const [cargandoOpciones, setCargandoOpciones] = useState(false);
   const [matriculas, setMatriculas]         = useState<string[]>([]);
 
   const [desaplicarOpen, setDesaplicarOpen]           = useState(false);
@@ -213,9 +217,32 @@ export default function PuestaDetailPage() {
   async function handleUpdateSalida(values: SalidaParcialFormValues) {
     if (!editingSalida) return;
     setIsSaving(true);
-    const result = await updateSalidaParcial(editingSalida.id, values);
+    const destinoId = values.puesta_id;
+    const cambiaPuesta = !!destinoId && destinoId !== editingSalida.puesta_id;
+    // Primero la edición normal (fecha, cantidad...) SOBRE LA PUESTA ACTUAL;
+    // después, si se eligió otra puesta, el cambio de puesta, que valida en
+    // servidor con los datos ya guardados.
+    const result = await updateSalidaParcial(editingSalida.id, { ...values, puesta_id: editingSalida.puesta_id });
     if (result.error) {
       toast({ variant: "destructive", title: "Error al actualizar", description: result.error });
+    } else if (cambiaPuesta) {
+      const mov = await moverRetiradaAPuesta(editingSalida.id, destinoId);
+      if (mov.error) {
+        toast({
+          variant: "destructive",
+          title: "Salida actualizada, pero no se cambió de puesta",
+          description: mov.error,
+        });
+      } else {
+        toast({
+          title: `Retirada movida a la puesta ${mov.destino?.numero_contrato ?? ""}`.trim(),
+          description: mov.aviso ?? result.aviso ?? "Pendientes, auto-salidas de plancha y almacenajes recalculados en ambas puestas.",
+          variant: mov.aviso || result.aviso ? "destructive" : undefined,
+        });
+      }
+      setSalidaFormOpen(false);
+      setEditingSalida(null);
+      await loadData();
     } else {
       toast({
         title: "Salida actualizada correctamente",
@@ -354,10 +381,19 @@ export default function PuestaDetailPage() {
     }
   }
 
-  function handleEditSalida(salida: SalidaParcial) {
+  async function handleEditSalida(salida: SalidaParcial) {
     if (salida.tipo === "plancha") return;
     setEditingSalida(salida);
+    setOpcionesMover(null);
     setSalidaFormOpen(true);
+    // Solo las retiradas de camión pueden cambiar de puesta.
+    if (salida.tipo !== "real") return;
+    setCargandoOpciones(true);
+    try {
+      setOpcionesMover(await getOpcionesMoverRetirada(salida.id));
+    } finally {
+      setCargandoOpciones(false);
+    }
   }
 
   function openComentariosDialog() {
@@ -910,6 +946,8 @@ export default function PuestaDetailPage() {
         defaultValues={editingSalida ?? undefined}
         fechaMinima={summary.fecha_puesta}
         matriculas={matriculas}
+        opcionesPuesta={editingSalida?.tipo === "real" ? opcionesMover : null}
+        cargandoOpciones={editingSalida?.tipo === "real" && cargandoOpciones}
       />
 
       {/* Desaplicar dialog */}
