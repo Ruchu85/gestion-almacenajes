@@ -69,6 +69,7 @@ import {
 import { SalidaParcialForm } from "@/modules/puestas/components/salida-parcial-form";
 import { createSalidaParcial, triggerPlanchaAutoExit } from "../../../puestas/actions";
 import type { SalidaParcialFormValues } from "@/validations/salida-parcial.schema";
+import { pendienteDePuesta } from "@/lib/puesta-estado";
 
 // ────────────────────────────────────────────────────────────────
 // Types
@@ -901,10 +902,8 @@ export default function WarehouseProductPage() {
 
   // ── Grabar salida handlers ────────────────────────────────────
   function handleGrabarSalida(row: PuestaRow) {
-    const realSalidas = (row.salidas_parciales ?? [])
-      .filter((s) => s.tipo === "real")
-      .reduce((acc, s) => acc + Number(s.cantidad), 0);
-    const realPending = Math.max(0, Number(row.cantidad_inicial) - realSalidas);
+    // Real + desaplicaciones (ver lib/puesta-estado.ts), igual que la ficha.
+    const realPending = Math.max(0, pendienteDePuesta(row.cantidad_inicial, row.salidas_parciales));
     setSalidaPuestaId(row.id);
     setSalidaPuestaPendiente(realPending);
     setSalidaFechaPuesta(row.fecha_puesta);
@@ -1491,10 +1490,7 @@ export default function WarehouseProductPage() {
                     </thead>
                     <tbody>
                       {allPuestas.filter((p) => showAllPuestas || p.estado === "abierta").map((row) => {
-                        const totalRealSalidas = (row.salidas_parciales ?? [])
-                          .filter((s) => s.tipo === "real")
-                          .reduce((acc, s) => acc + Number(s.cantidad), 0);
-                        const pending = Number(row.cantidad_inicial) - totalRealSalidas;
+                        const pending = pendienteDePuesta(row.cantidad_inicial, row.salidas_parciales);
                         const isOverflow = pending < 0;
                         return (
                           <tr

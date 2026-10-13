@@ -49,6 +49,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { formatCurrency, formatNumber, formatQuantity, formatDate } from "@/utils/format";
 import { countPendingPuestaPdfsAction } from "@/lib/actions/pdf-puestas";
+import { pendienteDePuesta } from "@/lib/puesta-estado";
 
 interface PuestaItem {
   id: string;
@@ -299,12 +300,18 @@ export default function DashboardPage() {
       const customer = puesta.customer as { name: string } | null;
       if (!w || !p || !w.active) continue;
 
-      // Solo salidas reales (camión) reducen la cant. pte. del cliente.
-      // Las de tipo 'plancha' y 'desaplicacion' son contables, no físicas.
-      const totalRealSalida = ((puesta.salidas_parciales ?? []) as { cantidad: number; tipo: string }[])
-        .filter((s) => s.tipo === "real")
-        .reduce((sum, s) => sum + Number(s.cantidad), 0);
-      const puestaPending = Math.max(0, Number(puesta.cantidad_inicial) - totalRealSalida);
+      // Pendiente del cliente = inicial − retiradas reales − desaplicaciones.
+      // La de tipo 'plancha' es el traspaso contable de fin de plancha y NO
+      // resta. Mismo cálculo que la ficha de la puesta (lib/puesta-estado.ts);
+      // antes aquí se ignoraban las desaplicaciones y el listado no cuadraba
+      // con el detalle.
+      const puestaPending = Math.max(
+        0,
+        pendienteDePuesta(
+          puesta.cantidad_inicial,
+          (puesta.salidas_parciales ?? []) as { cantidad: number; tipo: string }[]
+        )
+      );
 
       const key = `${puesta.warehouse_id}||${puesta.product_id}`;
 
