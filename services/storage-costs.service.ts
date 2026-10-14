@@ -8,6 +8,7 @@ import type {
   ServiceResult,
   PaginatedResult,
   StorageCostFilters,
+  StorageCostListFilters,
   PaginationParams,
 } from "@/types";
 import { format } from "date-fns";
@@ -25,6 +26,18 @@ export class StorageCostsService {
   ): Promise<ServiceResult<PaginatedResult<StorageCostWithRelations>>> {
     try {
       const data = await this.repo.findWithRelations(filters, pagination);
+      return { data, error: null };
+    } catch (err) {
+      return { data: null, error: (err as Error).message };
+    }
+  }
+
+  /** Todos los costes que cumplen el filtro, sin paginar. */
+  async getAllFiltered(
+    filters: StorageCostListFilters
+  ): Promise<ServiceResult<StorageCostWithRelations[]>> {
+    try {
+      const data = await this.repo.findAllWithRelations(filters);
       return { data, error: null };
     } catch (err) {
       return { data: null, error: (err as Error).message };

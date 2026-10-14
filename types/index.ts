@@ -161,6 +161,14 @@ export interface StorageCostFilters {
   dateRange?: DateRangeFilter;
 }
 
+/** Filtro de la pantalla de Costes; fechas como `yyyy-MM-dd` para no pasar por zona horaria. */
+export interface StorageCostListFilters {
+  warehouseId?: string;
+  productId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 export interface PaginationParams {
   page?: number;
   pageSize?: number;

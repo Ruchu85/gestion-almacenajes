@@ -3,11 +3,13 @@ import type { Tables, InsertDto, UpdateDto } from "@/types/database.types";
 import type {
   StorageCostWithRelations,
   StorageCostFilters,
+  StorageCostListFilters,
   PaginationParams,
   PaginatedResult,
   MonthlyCostEvolution,
 } from "@/types";
 import { format } from "date-fns";
+import { fetchAllBatches } from "./fetch-all";
 
 type StorageCostRow = Tables<"storage_costs">;
 type StorageCostInsert = InsertDto<"storage_costs">;
@@ -77,6 +79,28 @@ export class StorageCostsRepository extends BaseRepository<
       pageSize,
       totalPages: Math.ceil((count ?? 0) / pageSize),
     };
+  }
+
+  /** Todas las filas que cumplen el filtro (sin el tope de 1000 de PostgREST). */
+  async findAllWithRelations(
+    filters: StorageCostListFilters
+  ): Promise<StorageCostWithRelations[]> {
+    return fetchAllBatches<StorageCostWithRelations>(
+      "[storage_costs] findAllWithRelations",
+      (from, to) => {
+        let query = this.supabase
+          .from("storage_costs")
+          .select(STORAGE_COST_WITH_RELATIONS);
+        if (filters.warehouseId) query = query.eq("warehouse_id", filters.warehouseId);
+        if (filters.productId) query = query.eq("product_id", filters.productId);
+        if (filters.dateFrom) query = query.gte("cost_date", filters.dateFrom);
+        if (filters.dateTo) query = query.lte("cost_date", filters.dateTo);
+        return query
+          .order("cost_date", { ascending: false })
+          .order("id", { ascending: true })
+          .range(from, to);
+      }
+    );
   }
 
   async getTotalCostForDateRange(

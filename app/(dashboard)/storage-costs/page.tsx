@@ -1,17 +1,27 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
-import { Calculator, RefreshCw, Download, RotateCcw, Info } from "lucide-react";
+import { useState, useCallback, useEffect, useMemo } from "react";
+// El icono Warehouse se aliasa: el nombre choca con el tipo Warehouse de @/types.
+import {
+  Calculator, RefreshCw, Download, RotateCcw, Info, X,
+  Warehouse as WarehouseIcon, Package as PackageIcon, Calendar as CalendarIcon,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { StorageCostsService } from "@/services/storage-costs.service";
+import { WarehousesService } from "@/services/warehouses.service";
+import { ProductsService } from "@/services/products.service";
 import { recalculateStorageCosts, recalculateAllStorageCosts } from "./actions";
-import type { StorageCostWithRelations } from "@/types";
+import type { StorageCostWithRelations, Warehouse, Product } from "@/types";
 import { DataTable } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
+import { FiltersCard, FilterField } from "@/components/shared/filters-card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from "@/components/ui/card";
@@ -19,7 +29,7 @@ import { getStorageCostColumns } from "@/modules/storage-costs/components/storag
 import { toast } from "@/hooks/use-toast";
 import { exportToCSV } from "@/utils/export";
 import { formatDate, formatCurrency } from "@/utils/format";
-import { format, subDays } from "date-fns";
+import { format, subDays, startOfMonth } from "date-fns";
 import { ExcelIcon } from "@/components/shared/excel-icon";
 import { exportStyledExcel, commonUnit } from "@/utils/export-styled-excel";
 
@@ -31,24 +41,79 @@ export default function StorageCostsPage() {
   const [recalcStart, setRecalcStart] = useState(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [recalcEnd, setRecalcEnd] = useState(format(new Date(), "yyyy-MM-dd"));
 
-  const service = new StorageCostsService(createClient());
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+
+  // Los costes son una fila por almacén/producto/día: el histórico completo
+  // crece muy deprisa, así que almacén, producto y fechas se filtran en la BD
+  // (por defecto, el mes en curso). La búsqueda libre filtra sobre lo cargado.
+  const defaultDateFrom = format(startOfMonth(new Date()), "yyyy-MM-dd");
+  const defaultDateTo = format(new Date(), "yyyy-MM-dd");
+  const [search, setSearch] = useState("");
+  const [filterWarehouse, setFilterWarehouse] = useState("all");
+  const [filterProduct, setFilterProduct] = useState("all");
+  const [filterDateFrom, setFilterDateFrom] = useState(defaultDateFrom);
+  const [filterDateTo, setFilterDateTo] = useState(defaultDateTo);
+
+  const supabase = useMemo(() => createClient(), []);
+  const service = useMemo(() => new StorageCostsService(supabase), [supabase]);
+  const warehousesService = useMemo(() => new WarehousesService(supabase), [supabase]);
+  const productsService = useMemo(() => new ProductsService(supabase), [supabase]);
   const columns = getStorageCostColumns();
+
+  useEffect(() => {
+    Promise.all([warehousesService.getActive(), productsService.getActive()]).then(
+      ([whResult, prResult]) => {
+        setWarehouses(whResult.data ?? []);
+        setProducts(prResult.data ?? []);
+      }
+    );
+  }, [warehousesService, productsService]);
 
   const loadCosts = useCallback(async () => {
     setIsLoading(true);
-    const result = await service.getAll(
-      {},
-      { sortBy: "cost_date", sortOrder: "desc", pageSize: 500 }
-    );
+    const result = await service.getAllFiltered({
+      warehouseId: filterWarehouse !== "all" ? filterWarehouse : undefined,
+      productId: filterProduct !== "all" ? filterProduct : undefined,
+      dateFrom: filterDateFrom || undefined,
+      dateTo: filterDateTo || undefined,
+    });
     if (result.error) {
       toast({ variant: "destructive", title: "Error al cargar", description: result.error });
     } else {
-      setCosts(result.data?.data ?? []);
+      setCosts(result.data ?? []);
     }
     setIsLoading(false);
-  }, []);
+  }, [service, filterWarehouse, filterProduct, filterDateFrom, filterDateTo]);
 
   useEffect(() => { loadCosts(); }, [loadCosts]);
+
+  const filteredCosts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return costs;
+    return costs.filter(
+      (c) =>
+        c.warehouse.name.toLowerCase().includes(q) ||
+        c.warehouse.code.toLowerCase().includes(q) ||
+        c.product.name.toLowerCase().includes(q) ||
+        c.product.code.toLowerCase().includes(q)
+    );
+  }, [costs, search]);
+
+  const hasActiveFilters =
+    search.trim() !== "" ||
+    filterWarehouse !== "all" ||
+    filterProduct !== "all" ||
+    filterDateFrom !== defaultDateFrom ||
+    filterDateTo !== defaultDateTo;
+
+  function clearFilters() {
+    setSearch("");
+    setFilterWarehouse("all");
+    setFilterProduct("all");
+    setFilterDateFrom(defaultDateFrom);
+    setFilterDateTo(defaultDateTo);
+  }
 
   async function handleRecalculate() {
     if (!recalcStart || !recalcEnd) {
@@ -78,11 +143,11 @@ export default function StorageCostsPage() {
     setIsRecalculatingAll(false);
   }
 
-  const totalCost = costs.reduce((acc, c) => acc + Number(c.total_cost), 0);
+  const totalCost = filteredCosts.reduce((acc, c) => acc + Number(c.total_cost), 0);
 
   function handleExportCSV() {
     exportToCSV(
-      costs.map((c) => ({
+      filteredCosts.map((c) => ({
         fecha: formatDate(c.cost_date),
         almacen: `${c.warehouse.code} - ${c.warehouse.name}`,
         producto: `${c.product.code} - ${c.product.name}`,
@@ -110,8 +175,8 @@ export default function StorageCostsPage() {
           name: "Costes",
           title: "Costes de Almacenaje",
           accent: "2563EB",
-          unit: commonUnit(costs.map((c) => ({ unit: c.product.unit }))),
-          rows: costs,
+          unit: commonUnit(filteredCosts.map((c) => ({ unit: c.product.unit }))),
+          rows: filteredCosts,
           columns: [
             { header: "Fecha", type: "date", value: (c) => c.cost_date },
             { header: "Almacén", value: (c) => `${c.warehouse.code} - ${c.warehouse.name}` },
@@ -133,10 +198,10 @@ export default function StorageCostsPage() {
         description="Histórico de costes diarios generados automáticamente"
         actions={
           <>
-            <Button variant="outline" onClick={handleExportCSV} disabled={costs.length === 0}>
+            <Button variant="outline" onClick={handleExportCSV} disabled={filteredCosts.length === 0}>
               <Download className="mr-2 h-4 w-4" />CSV
             </Button>
-            <Button variant="outline" onClick={handleExportExcel} disabled={costs.length === 0}>
+            <Button variant="outline" onClick={handleExportExcel} disabled={filteredCosts.length === 0}>
               <ExcelIcon className="mr-2 h-5 w-5" />Excel
             </Button>
           </>
@@ -156,9 +221,9 @@ export default function StorageCostsPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Total costes cargados</CardTitle>
+            <CardTitle className="text-base">Total costes</CardTitle>
             <CardDescription>
-              Suma de todos los costes en el rango visible
+              Suma de los costes que cumplen los filtros
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -226,16 +291,89 @@ export default function StorageCostsPage() {
         </Card>
       </div>
 
-      {!isLoading && costs.length === 0 ? (
+      <FiltersCard
+        searchPlaceholder="Buscar por almacén o producto..."
+        searchValue={search}
+        onSearchChange={setSearch}
+        actions={
+          hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1.5 text-muted-foreground">
+              <X className="h-3.5 w-3.5" />
+              Limpiar
+            </Button>
+          )
+        }
+        summary={
+          <span className="text-sm text-muted-foreground">
+            {filteredCosts.length} registros
+          </span>
+        }
+      >
+        <FilterField icon={WarehouseIcon}>
+          <Select value={filterWarehouse} onValueChange={setFilterWarehouse}>
+            <SelectTrigger>
+              <SelectValue placeholder="Almacén" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los almacenes</SelectItem>
+              {warehouses.map((w) => (
+                <SelectItem key={w.id} value={w.id}>
+                  {w.code} — {w.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
+
+        <FilterField icon={PackageIcon}>
+          <Select value={filterProduct} onValueChange={setFilterProduct}>
+            <SelectTrigger>
+              <SelectValue placeholder="Producto" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los productos</SelectItem>
+              {products.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.code} — {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FilterField>
+
+        <FilterField icon={CalendarIcon}>
+          <Input
+            type="date"
+            aria-label="Fecha desde"
+            value={filterDateFrom}
+            onChange={(e) => setFilterDateFrom(e.target.value)}
+          />
+        </FilterField>
+
+        <FilterField icon={CalendarIcon}>
+          <Input
+            type="date"
+            aria-label="Fecha hasta"
+            value={filterDateTo}
+            onChange={(e) => setFilterDateTo(e.target.value)}
+          />
+        </FilterField>
+      </FiltersCard>
+
+      {!isLoading && filteredCosts.length === 0 ? (
         <EmptyState
           icon={Calculator}
-          title="No hay costes calculados"
-          description='Usa el botón "Recalcular" para generar los costes de almacenaje del período deseado.'
+          title={hasActiveFilters ? "No hay costes con estos filtros" : "No hay costes calculados"}
+          description={
+            hasActiveFilters
+              ? "Amplía el rango de fechas o quita algún filtro."
+              : 'Usa el botón "Recalcular" para generar los costes de almacenaje del período deseado.'
+          }
         />
       ) : (
         <DataTable
           columns={columns}
-          data={costs}
+          data={filteredCosts}
           isLoading={isLoading}
         />
       )}
