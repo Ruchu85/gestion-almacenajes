@@ -77,7 +77,7 @@ export default function InboundMovementsPage() {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     const [movResult, whResult, prResult, supResult, { data: { user } }] = await Promise.all([
-      movementsService.getAll({}, { sortBy: "movement_date", sortOrder: "desc", pageSize: 500 }),
+      movementsService.getAllUnpaginated(),
       warehousesService.getActive(),
       productsService.getActive(),
       suppliersService.getActive(),
@@ -87,7 +87,7 @@ export default function InboundMovementsPage() {
     if (movResult.error) {
       toast({ variant: "destructive", title: "Error al cargar", description: movResult.error });
     } else {
-      setMovements(movResult.data?.data ?? []);
+      setMovements(movResult.data ?? []);
     }
     setWarehouses(whResult.data ?? []);
     setProducts(prResult.data ?? []);

@@ -36,6 +36,16 @@ export class InboundMovementsService {
     }
   }
 
+  /** Todo el histórico (sin el tope de 1000 filas de PostgREST). */
+  async getAllUnpaginated(): Promise<ServiceResult<InboundMovementWithRelations[]>> {
+    try {
+      const data = await this.repo.findAllWithRelations();
+      return { data, error: null };
+    } catch (err) {
+      return { data: null, error: (err as Error).message };
+    }
+  }
+
   async getById(id: string): Promise<ServiceResult<InboundMovement>> {
     try {
       const data = await this.repo.findById(id);
@@ -98,6 +108,16 @@ export class OutboundMovementsService {
   ): Promise<ServiceResult<PaginatedResult<OutboundMovementWithRelations>>> {
     try {
       const data = await this.repo.findWithRelations(filters, pagination);
+      return { data, error: null };
+    } catch (err) {
+      return { data: null, error: (err as Error).message };
+    }
+  }
+
+  /** Todo el histórico (sin el tope de 1000 filas de PostgREST). */
+  async getAllUnpaginated(): Promise<ServiceResult<OutboundMovementWithRelations[]>> {
+    try {
+      const data = await this.repo.findAllWithRelations();
       return { data, error: null };
     } catch (err) {
       return { data: null, error: (err as Error).message };
