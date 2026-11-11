@@ -310,9 +310,9 @@ export default function PuestaDetailPage() {
     setIsSaving(false);
   }
 
-  async function handleDesaplicar(cantidad: number) {
+  async function handleDesaplicar(cantidad: number, fecha: string) {
     setIsSavingDesaplicar(true);
-    const result = await createDesaplicacion(id, cantidad);
+    const result = await createDesaplicacion(id, cantidad, fecha);
     if (result.error) {
       toast({ variant: "destructive", title: "Error al desaplicar", description: result.error });
     } else {
@@ -958,8 +958,10 @@ export default function PuestaDetailPage() {
         isLoading={isSavingDesaplicar}
         maxCantidad={Math.max(0, realPending)}
         unit={summary.unit}
-        isOutsidePlancha={isOutsidePlancha}
         puestaRef={puestaRef}
+        fechaPuesta={summary.fecha_puesta}
+        fechaFinPlancha={summary.fecha_fin_plancha}
+        today={today}
       />
 
       {/* Traspasar dialog */}

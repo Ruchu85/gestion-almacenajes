@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { autoFinalizarPuestasAgotadas } from "@/lib/puesta-estado";
+import { cuentaParaAutoSalida } from "@/services/puestas-plancha.service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
     // ── 2. Generar auto-salidas de fin de plancha vencidas ──────────────────
     // Busca puestas abiertas cuya fecha_fin_plancha ya pasó y no tienen
     // salida de tipo 'plancha' → las genera con la cantidad pendiente
-    // a fecha fin de plancha (solo salidas reales ≤ fecha_fin_plancha).
+    // a fecha fin de plancha (reales y desaplicaciones ≤ fecha_fin_plancha).
     type SalidaRow = { cantidad: number; tipo: string; fecha_salida: string };
     const { data: puestasVencidas } = await supabase
       .from("puestas_a_disposicion")
@@ -51,9 +52,10 @@ export async function POST(request: NextRequest) {
 
       const fechaFinStr = puesta.fecha_fin_plancha as string;
 
-      // Solo salidas reales hasta el fin de plancha
+      // Retiradas reales y desaplicaciones hasta el fin de plancha — misma
+      // regla que la reconciliación (services/puestas-plancha.service.ts).
       const totalReal = salidas
-        .filter((s) => s.tipo === "real" && s.fecha_salida <= fechaFinStr)
+        .filter((s) => cuentaParaAutoSalida(s, fechaFinStr))
         .reduce((sum, s) => sum + Number(s.cantidad), 0);
       const pending = Math.max(0, Number(puesta.cantidad_inicial) - totalReal);
       if (pending <= 0) continue;

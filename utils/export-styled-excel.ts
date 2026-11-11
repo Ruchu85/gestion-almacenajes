@@ -43,7 +43,11 @@ export interface ExcelColumn<T> {
   mono?: boolean;
   /** Etiquetas de un `estado`; por defecto las de las puestas a disposición. */
   badges?: Record<string, EstadoBadge>;
-  /** Añade esta columna numérica a la fila TOTAL (las de cantidad lo hacen si la hoja tiene `unit`). */
+  /**
+   * Añade esta columna numérica a la fila TOTAL (las de cantidad lo hacen si la
+   * hoja tiene `unit`). `false` lo impide: p. ej. saldos diarios, que sumados
+   * no significan nada.
+   */
   total?: boolean;
 }
 
@@ -274,7 +278,7 @@ function buildDataSheet<T>(wb: Workbook, sheet: ExcelSheet<T>, generatedAt: stri
   // Totales (SUBTOTAL respeta los filtros de Excel)
   const totalCols = cols
     .map((col, i) => ({ col, i }))
-    .filter(({ col }) => col.total || (col.type === "quantity" && !!sheet.unit));
+    .filter(({ col }) => col.total ?? (col.type === "quantity" && !!sheet.unit));
   if (sheet.rows.length > 0 && totalCols.length > 0) {
     const totalRow = ws.getRow(lastData + 1);
     totalRow.height = 24;

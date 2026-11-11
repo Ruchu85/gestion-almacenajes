@@ -8,7 +8,8 @@ import { redirect } from "next/navigation";
 import { upsertMatricula } from "@/lib/actions/matriculas";
 import { sincronizarPuestaStock } from "@/lib/puesta-stock-sync";
 import { recalcStorageCostsFrom } from "@/lib/storage-costs";
-import { autoFinalizarPuestaSiAgotada } from "@/lib/puesta-estado";
+import { autoFinalizarPuestaSiAgotada, pendienteDePuesta } from "@/lib/puesta-estado";
+import { roundQty } from "@/utils/calculations";
 import { minDate } from "@/services/puestas-plancha.service";
 
 async function requireAuth() {
@@ -425,52 +426,129 @@ export async function deleteSalidaParcial(id: string): Promise<{ error?: string 
 
 // ── Desaplicaciones ──────────────────────────────────────────
 
+/**
+ * Desaplica (devuelve al almacén como mercancía sin vender) parte de lo que
+ * el cliente tiene pendiente de retirar, con efecto en la fecha indicada.
+ *
+ * Reglas:
+ * - La cantidad nunca puede superar el pendiente ACTUAL de la puesta
+ *   (inicial − todas las retiradas reales − desaplicaciones previas, sea cual
+ *   sea su fecha). Así ningún día intermedio puede quedar en negativo.
+ * - La fecha va de la fecha de puesta a hoy, ambas incluidas.
+ * - Una fecha pasada no puede caer en (ni antes de) un mes ya facturado de la
+ *   puesta: alteraría un importe ya cobrado.
+ * - Desaplicación DESPUÉS del fin de plancha: la mercancía ya se había
+ *   traspasado al cliente, así que vuelve al almacén con una entrada
+ *   compensatoria fechada ese día.
+ * - Desaplicación DENTRO de la plancha: la mercancía nunca salió; no hay
+ *   entrada, y la reconciliación reduce la auto-salida de fin de plancha.
+ */
 export async function createDesaplicacion(
   puestaId: string,
-  cantidad: number
+  cantidad: number,
+  fecha?: string
 ): Promise<{ error?: string }> {
   const user = await requireAuth();
   const supabase = await createServiceClient();
 
+  const today = new Date().toISOString().split("T")[0];
+  const fechaDesap = fecha ?? today;
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaDesap)) {
+    return { error: "Fecha de desaplicación no válida" };
+  }
+  if (!Number.isFinite(cantidad) || cantidad <= 0) {
+    return { error: "La cantidad a desaplicar debe ser mayor que 0" };
+  }
+
   const { data: puesta, error: puestaError } = await supabase
     .from("puestas_a_disposicion")
-    .select("fecha_fin_plancha, warehouse_id, product_id, numero_contrato, cantidad_inicial, salidas_parciales(cantidad, tipo)")
+    .select("estado, fecha_puesta, fecha_fin_plancha, warehouse_id, product_id, numero_contrato, cantidad_inicial, salidas_parciales(cantidad, tipo)")
     .eq("id", puestaId)
     .single();
 
   if (puestaError || !puesta) {
     return { error: "No se pudo cargar la puesta a disposición" };
   }
+  if (puesta.estado !== "abierta") {
+    return { error: "Solo se puede desaplicar en puestas abiertas" };
+  }
+  if (fechaDesap > today) {
+    return { error: "La fecha de desaplicación no puede ser posterior a hoy" };
+  }
+  if (fechaDesap < puesta.fecha_puesta) {
+    return { error: "La fecha de desaplicación no puede ser anterior a la fecha de puesta" };
+  }
 
-  const today = new Date().toISOString().split("T")[0];
+  // Control de stock: contra el pendiente de HOY, con todas las retiradas.
+  const pendienteActual = pendienteDePuesta(
+    puesta.cantidad_inicial,
+    (puesta.salidas_parciales ?? []) as { cantidad: number; tipo: string }[]
+  );
+  const cantidadRedondeada = roundQty(cantidad);
+  if (cantidadRedondeada > pendienteActual + 0.0005) {
+    return {
+      error: `No se puede desaplicar más de lo pendiente de retirar (${pendienteActual.toFixed(3)})`,
+    };
+  }
+
+  if (fechaDesap < today) {
+    const { data: facturados } = await supabase
+      .from("puesta_facturacion_meses")
+      .select("year_month")
+      .eq("puesta_id", puestaId);
+    const mesDesap = fechaDesap.slice(0, 7);
+    const mesBloqueante = (facturados ?? [])
+      .map((r) => r.year_month as string)
+      .filter((m) => m >= mesDesap)
+      .sort()[0];
+    if (mesBloqueante) {
+      return {
+        error: `La puesta tiene facturado el mes ${mesBloqueante}: una desaplicación con fecha ${fechaDesap} alteraría un importe ya facturado.`,
+      };
+    }
+  }
+
   const puestaRef = puesta.numero_contrato || puestaId.slice(0, 8).toUpperCase();
 
   // Registrar la desaplicación como salida parcial
-  const { error: salidaError } = await supabase.from("salidas_parciales").insert({
-    puesta_id: puestaId,
-    fecha_salida: today,
-    cantidad,
-    tipo: "desaplicacion",
-    comentarios: `Desaplicación de ${Number(cantidad).toFixed(2)} unidades`,
-    created_by: user.id,
-  });
-  if (salidaError) return { error: salidaError.message };
+  const { data: salidaCreada, error: salidaError } = await supabase
+    .from("salidas_parciales")
+    .insert({
+      puesta_id: puestaId,
+      fecha_salida: fechaDesap,
+      cantidad: cantidadRedondeada,
+      tipo: "desaplicacion",
+      comentarios: `Desaplicación de ${cantidadRedondeada.toFixed(2)} unidades`,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+  if (salidaError || !salidaCreada) return { error: salidaError?.message ?? "No se pudo registrar la desaplicación" };
 
-  // Si ya ha pasado el período de plancha, generar entrada de stock automática
-  if (today > puesta.fecha_fin_plancha) {
+  // Fuera de plancha la mercancía ya era del cliente: vuelve al almacén.
+  if (fechaDesap > puesta.fecha_fin_plancha) {
     const { error: inboundError } = await supabase.from("inbound_movements").insert({
       warehouse_id: puesta.warehouse_id,
       product_id: puesta.product_id,
-      quantity: cantidad,
-      movement_date: today,
+      quantity: cantidadRedondeada,
+      movement_date: fechaDesap,
       free_days: 1,
       supplier_id: null,
       comments: `Desaplicacion cliente nº pta ${puestaRef}`,
       created_by: user.id,
     });
-    if (inboundError) return { error: inboundError.message };
-    // La mercancía vuelve a ser stock del almacén desde hoy.
-    await recalcStorageCostsFrom(supabase, today);
+    if (inboundError) {
+      // Sin la entrada el stock quedaría descuadrado: se deshace la salida.
+      await supabase.from("salidas_parciales").delete().eq("id", salidaCreada.id);
+      return { error: inboundError.message };
+    }
+    await recalcStorageCostsFrom(supabase, fechaDesap);
+  } else {
+    // Dentro de plancha: si la auto-salida ya existía, la reconciliación la
+    // reduce en lo desaplicado y recalcula los costes afectados.
+    const sync = await sincronizarPuestaStock(supabase, puestaId, user.id);
+    if (sync.error) return { error: sync.error };
   }
 
   // Auto-finalizar si la cantidad pendiente llega a 0

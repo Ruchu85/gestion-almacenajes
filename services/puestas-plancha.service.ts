@@ -33,6 +33,26 @@ function round3(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
 
+/**
+ * ¿Resta esta salida parcial de lo que la auto-salida de fin de plancha
+ * traspasa al cliente?
+ *
+ * - Retiradas reales hasta el fin de plancha: sí, esa mercancía ya salió.
+ * - Desaplicaciones hasta el fin de plancha: sí. La mercancía desaplicada
+ *   dentro de la plancha nunca llegó a traspasarse; sigue siendo stock del
+ *   almacén (no se graba entrada compensatoria porque nunca salió). Si la
+ *   auto-salida no la descontara, la sacaría del stock igualmente.
+ * - Desaplicaciones POSTERIORES al fin de plancha: no. Esa mercancía sí salió
+ *   con la auto-salida y vuelve al almacén con su propia entrada
+ *   compensatoria; descontarla aquí la contaría dos veces.
+ */
+export function cuentaParaAutoSalida(
+  s: Pick<SalidaParcialRef, "tipo" | "fecha_salida">,
+  fechaFin: string
+): boolean {
+  return (s.tipo === "real" || s.tipo === "desaplicacion") && s.fecha_salida <= fechaFin;
+}
+
 export type PlanchaMotivo =
   /** La plancha aún no ha vencido: la auto-salida todavía no toca. */
   | "en_plancha"
@@ -58,9 +78,9 @@ export interface PlanchaPlan {
  * pasa a correr desde el día posterior.
  *
  * La cantidad es lo que quedaba pendiente EN la fecha de fin de plancha, es
- * decir descontando solo las salidas reales hasta esa fecha inclusive. Las
- * retiradas posteriores no cuentan: ocurrieron cuando la mercancía ya estaba a
- * cargo del cliente.
+ * decir descontando las retiradas reales y las desaplicaciones hasta esa
+ * fecha inclusive (ver `cuentaParaAutoSalida`). Lo posterior no cuenta:
+ * ocurrió cuando la mercancía ya estaba a cargo del cliente.
  */
 export function planPlanchaAutoExit(input: {
   /**
@@ -85,7 +105,7 @@ export function planPlanchaAutoExit(input: {
   }
 
   const retiradoEnPlancha = input.salidas
-    .filter((s) => s.tipo === "real" && s.fecha_salida <= fechaFin)
+    .filter((s) => cuentaParaAutoSalida(s, fechaFin))
     .reduce((sum, s) => sum + Number(s.cantidad), 0);
 
   const pendiente = round3(Number(input.cantidadInicial) - retiradoEnPlancha);

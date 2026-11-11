@@ -70,6 +70,14 @@ import { SalidaParcialForm } from "@/modules/puestas/components/salida-parcial-f
 import { createSalidaParcial, triggerPlanchaAutoExit } from "../../../puestas/actions";
 import type { SalidaParcialFormValues } from "@/validations/salida-parcial.schema";
 import { pendienteDePuesta } from "@/lib/puesta-estado";
+import { ExcelIcon } from "@/components/shared/excel-icon";
+import {
+  exportCalendarioExcel,
+  exportEntradasExcel,
+  exportPuestasExcel,
+  exportSalidasExcel,
+  type FichaContext,
+} from "@/modules/warehouses/export-ficha-excel";
 
 // ────────────────────────────────────────────────────────────────
 // Types
@@ -948,6 +956,58 @@ export default function WarehouseProductPage() {
 
   const hasAnyEstimated = useMemo(() => monthGroups.some((mg) => mg.hasEstimated), [monthGroups]);
 
+  // ── Exportación a Excel de la pestaña activa ──────────────────
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportDisabled =
+    isExporting ||
+    isLoadingMeta ||
+    (activeTab === "calendar" && (isLoadingCalendar || monthGroups.length === 0)) ||
+    (activeTab === "entradas" && allInbound.length === 0) ||
+    (activeTab === "salidas" && allOutbound.length === 0) ||
+    (activeTab === "puestas" && allPuestas.length === 0);
+
+  async function handleExportExcel() {
+    const ctx: FichaContext = {
+      warehouseName,
+      productName,
+      productCode,
+      unit: productUnit,
+    };
+    setIsExporting(true);
+    try {
+      switch (activeTab) {
+        case "calendar":
+          await exportCalendarioExcel(ctx, monthGroups, allInbound, allOutbound);
+          break;
+        case "entradas":
+          await exportEntradasExcel(ctx, allInbound);
+          break;
+        case "salidas":
+          await exportSalidasExcel(ctx, allOutbound);
+          break;
+        case "puestas":
+          await exportPuestasExcel(ctx, allPuestas);
+          break;
+      }
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "No se pudo exportar a Excel",
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  const exportLabel: Record<string, string> = {
+    calendar: "Exportar calendario",
+    entradas: "Exportar entradas",
+    salidas: "Exportar salidas",
+    puestas: "Exportar puestas",
+  };
+
   return (
     <>
       <PageHeader
@@ -964,7 +1024,8 @@ export default function WarehouseProductPage() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <TabsList>
           <TabsTrigger value="calendar">
             <CalendarDays className="h-4 w-4 mr-1.5" />
             Calendario
@@ -991,6 +1052,15 @@ export default function WarehouseProductPage() {
             )}
           </TabsTrigger>
         </TabsList>
+        <Button variant="outline" size="sm" onClick={handleExportExcel} disabled={exportDisabled}>
+          {isExporting ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <ExcelIcon className="mr-2 h-5 w-5" />
+          )}
+          {exportLabel[activeTab] ?? "Exportar a Excel"}
+        </Button>
+        </div>
 
         {/* ═══════════════════════════════════════════════════════
             TAB: CALENDARIO VERTICAL
