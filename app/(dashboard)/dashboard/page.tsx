@@ -24,6 +24,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { format } from "date-fns";
 import { fetchAllBatches } from "@/repositories/fetch-all";
+import { roundQty } from "@/utils/calculations";
 import {
   aDisposicionEn,
   invendidaDe,
@@ -390,11 +391,7 @@ export default function DashboardPage() {
 
     const warehouseMap = new Map<string, WarehouseGroup>();
     for (const item of stockMap.values()) {
-      const movementPending = Math.max(0, item.total_inbound - item.total_outbound);
       const key = `${item.warehouse_id}||${item.product_id}`;
-      const puestaPending = puestaStockByKey.get(key) ?? 0;
-      item.pending_stock = Math.max(movementPending, puestaPending);
-      item.daily_cost = item.pending_stock * item.daily_price;
 
       // Cant. Invendida = stock físico hoy − pendiente de puestas en plancha
       // hoy. Mismo cálculo que el calendario de la ficha almacén/producto;
@@ -404,7 +401,16 @@ export default function DashboardPage() {
         aDisposicionEn(prepararPuestas(puestasEnPlanchaByKey.get(key) ?? []), hoyLocal)
       );
 
-      if (item.pending_stock <= 0) continue;
+      // Pendiente = cantidad física que sigue en el almacén: lo invendido más
+      // lo que los clientes tienen pendiente de retirar en sus puestas
+      // abiertas (estén aún en plancha o ya traspasadas). Sin tope: un
+      // negativo es un descuadre y se pinta en rojo.
+      item.pending_stock = roundQty(item.cant_invendida + (puestaStockByKey.get(key) ?? 0));
+      // Un coste negativo no tiene sentido: con pendiente negativo, 0.
+      item.daily_cost = Math.max(0, item.pending_stock) * item.daily_price;
+
+      // Se ocultan solo los productos sin nada: ni stock ni descuadre.
+      if (Math.abs(item.pending_stock) < 0.0005 && Math.abs(item.cant_invendida) < 0.0005) continue;
 
       // Asignar puestas al producto ordenadas por cliente y fecha
       item.puestas = (puestasMap.get(key) ?? []).sort((a, b) => {
@@ -1024,7 +1030,12 @@ export default function DashboardPage() {
                                                         <p className="text-xs text-muted-foreground">Pendiente</p>
                                                         <Badge
                                                           variant="outline"
-                                                          className="border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300 font-bold tabular-nums"
+                                                          className={cn(
+                                                            "font-bold tabular-nums",
+                                                            product.pending_stock < 0
+                                                              ? "border-red-400 text-red-600 dark:border-red-700 dark:text-red-400"
+                                                              : "border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300"
+                                                          )}
                                                         >
                                                           {formatQuantity(product.pending_stock, product.unit)}
                                                         </Badge>
