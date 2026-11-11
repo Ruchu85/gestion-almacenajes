@@ -70,6 +70,12 @@ import { SalidaParcialForm } from "@/modules/puestas/components/salida-parcial-f
 import { createSalidaParcial, triggerPlanchaAutoExit } from "../../../puestas/actions";
 import type { SalidaParcialFormValues } from "@/validations/salida-parcial.schema";
 import { pendienteDePuesta } from "@/lib/puesta-estado";
+import {
+  aDisposicionEn,
+  invendidaDe,
+  prepararPuestas,
+  type PuestaParaReparto,
+} from "@/services/stock-invendido.service";
 import { ExcelIcon } from "@/components/shared/excel-icon";
 import {
   exportCalendarioExcel,
@@ -117,24 +123,12 @@ interface DayEntry {
    * mercancía que aún está en su periodo franco de entrada, y ahí el usuario
    * sigue teniendo género sin vender que quiere ver. Por eso estas dos
    * columnas pueden traer cifras en días cuyo "Almacenaje" es "—".
+   *
+   * Puede ser NEGATIVA (stock negativo o puestas por encima del stock): se
+   * pinta en rojo. El coste de esos días es 0, nunca negativo.
    */
   invendida: number;
   isEstimated: boolean;
-}
-
-/** Puesta reducida a lo que hace falta para repartir el stock de cada día. */
-interface PuestaStockRow {
-  fecha_puesta: string;
-  /** Columna generada en la BD; último día franco. Única fuente de verdad. */
-  fecha_fin_plancha: string;
-  cantidad_inicial: number;
-  /**
-   * Retiradas acumuladas ordenadas por fecha. Solo cuentan 'real' y
-   * 'desaplicacion' — las de tipo 'plancha' son el traspaso contable de fin
-   * de plancha, no una retirada, y restarlas dejaría a cero toda puesta
-   * vencida por partida doble (ya sale del stock por su outbound).
-   */
-  retiradas: { fecha: string; acumulado: number }[];
 }
 
 interface InvoiceRecord {
@@ -602,56 +596,8 @@ export default function WarehouseProductPage() {
     const actualCostDates = new Set((costsRes.data ?? []).map((r) => r.cost_date));
 
     // ── Reparto informativo del stock: a disposición vs. invendido ──────
-    // Se prepara cada puesta con sus retiradas ya acumuladas por fecha, para
-    // no rehacer la suma en cada uno de los ~400 días del calendario.
-    type PuestaRaw = {
-      fecha_puesta: string;
-      fecha_fin_plancha: string;
-      cantidad_inicial: number;
-      salidas_parciales: { cantidad: number; tipo: string; fecha_salida: string }[] | null;
-    };
-    const puestasStock: PuestaStockRow[] = ((puestasRes.data ?? []) as unknown as PuestaRaw[]).map(
-      (p) => {
-        const ordenadas = (p.salidas_parciales ?? [])
-          .filter((s) => s.tipo === "real" || s.tipo === "desaplicacion")
-          .sort((a, b) => a.fecha_salida.localeCompare(b.fecha_salida));
-        let acumulado = 0;
-        const retiradas = ordenadas.map((s) => {
-          acumulado += Number(s.cantidad);
-          return { fecha: s.fecha_salida, acumulado };
-        });
-        return {
-          fecha_puesta: p.fecha_puesta,
-          fecha_fin_plancha: p.fecha_fin_plancha,
-          cantidad_inicial: Number(p.cantidad_inicial),
-          retiradas,
-        };
-      }
-    );
-
-    /** Retirado de una puesta hasta el cierre del día `dateStr` (incluido). */
-    function retiradoHasta(puesta: PuestaStockRow, dateStr: string): number {
-      // Recorrido desde el final: lo normal es preguntar por días recientes,
-      // con casi todas las retiradas ya hechas, así que sale a la primera.
-      for (let i = puesta.retiradas.length - 1; i >= 0; i--) {
-        if (puesta.retiradas[i].fecha <= dateStr) return puesta.retiradas[i].acumulado;
-      }
-      return 0;
-    }
-
-    /** Cantidad a disposición de clientes, en plancha y sin retirar, ese día. */
-    function aDisposicionEn(dateStr: string): number {
-      let total = 0;
-      for (const p of puestasStock) {
-        // Fuera del periodo de plancha no cuenta: antes todavía no existía la
-        // puesta y después la mercancía ya se traspasó al cliente (la
-        // auto-salida la sacó del stock del almacén).
-        if (dateStr < p.fecha_puesta || dateStr > p.fecha_fin_plancha) continue;
-        const pendiente = p.cantidad_inicial - retiradoHasta(p, dateStr);
-        if (pendiente > 0) total += pendiente;
-      }
-      return total;
-    }
+    // Mismo cálculo que el dashboard (services/stock-invendido.service.ts).
+    const puestasStock = prepararPuestas((puestasRes.data ?? []) as unknown as PuestaParaReparto[]);
 
     /**
      * Stock FÍSICO acumulado al cierre de cada fecha con movimiento
@@ -749,19 +695,12 @@ export default function WarehouseProductPage() {
           if (cost > 0) isEstimated = true;
         }
 
-        // Reparto informativo: las dos columnas parten SIEMPRE el stock que
-        // ese día había de verdad en el almacén, así que suman exactamente
-        // eso y ninguna puede salir negativa.
-        //
-        // El tope contra el stock no es cosmético. En los datos reales hay
-        // puestas con `fecha_puesta` ANTERIOR a la descarga del barco (la
-        // mercancía se aplica a clientes antes de entrar): sin el tope, esos
-        // días mostraban miles de toneladas "a disposición" en un almacén
-        // vacío. Con él se lee lo que toca: no hay género, luego no hay nada
-        // ni comprometido ni sin vender.
-        const stockDia = Math.max(0, stockFisicoEn(dateStr));
-        const enPlancha = Math.min(aDisposicionEn(dateStr), stockDia);
-        const invendida = stockDia - enPlancha;
+        // Reparto informativo SIN topes (decisión del usuario, 11/11/2026):
+        // si el stock queda en negativo o una puesta supera lo que hay, la
+        // invendida sale negativa y en rojo para que el descuadre se vea.
+        // El coste no se ve afectado: nunca baja de 0.
+        const enPlancha = aDisposicionEn(puestasStock, dateStr);
+        const invendida = invendidaDe(stockFisicoEn(dateStr), enPlancha);
 
         if (isEstimated) hasEstimated = true;
         days.push({ dateStr, inbound, outbound, cost, price, enPlancha, invendida, isEstimated });
@@ -1264,8 +1203,12 @@ export default function WarehouseProductPage() {
                                     un "0,00" suelto en un día vacío no dice nada, pero un
                                     "0,00" con género dentro sí (todo comprometido). */}
                                 <td className="px-4 py-2 text-right tabular-nums">
-                                  {day.invendida > 0 || day.enPlancha > 0 ? (
-                                    <span className="text-muted-foreground">
+                                  {day.invendida !== 0 || day.enPlancha > 0 ? (
+                                    <span className={cn(
+                                      day.invendida < 0
+                                        ? "font-semibold text-red-600 dark:text-red-400"
+                                        : "text-muted-foreground"
+                                    )}>
                                       {formatQuantity(day.invendida, productUnit)}
                                     </span>
                                   ) : (
@@ -1273,7 +1216,7 @@ export default function WarehouseProductPage() {
                                   )}
                                 </td>
                                 <td className="px-4 py-2 text-right tabular-nums">
-                                  {day.invendida > 0 || day.enPlancha > 0 ? (
+                                  {day.invendida !== 0 || day.enPlancha > 0 ? (
                                     <span className="text-muted-foreground">
                                       {formatQuantity(day.enPlancha, productUnit)}
                                     </span>

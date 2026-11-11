@@ -22,6 +22,14 @@ import {
   FileWarning,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { format } from "date-fns";
+import { fetchAllBatches } from "@/repositories/fetch-all";
+import {
+  aDisposicionEn,
+  invendidaDe,
+  prepararPuestas,
+  type PuestaParaReparto,
+} from "@/services/stock-invendido.service";
 import { StorageCostsService } from "@/services/storage-costs.service";
 import type { DashboardKPIs } from "@/types";
 import { StatsCard } from "@/components/shared/stats-card";
@@ -194,25 +202,44 @@ export default function DashboardPage() {
     type WRow = { id: string; name: string; posicion_cerrada: string | null; active: boolean; storage_daily_price: number };
     type PRow = { id: string; name: string; code: string; unit: string };
 
+    // Fecha de hoy en horario local (no toISOString: en España adelantaría
+    // o retrasaría el día según la hora).
+    const hoyLocal = format(new Date(), "yyyy-MM-dd");
+
     const [inboundRes, outboundRes, puestasRes, allPuestasRes, productMetaRes] = await Promise.all([
       supabase
         .from("inbound_movements")
         .select(
-          "warehouse_id, product_id, quantity, warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
+          "warehouse_id, product_id, quantity, movement_date, warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
         ),
-      supabase
-        .from("outbound_movements")
-        .select("warehouse_id, product_id, quantity, from_puesta"),
+      // Por tandas: hay más salidas que el tope de 1.000 filas de PostgREST,
+      // y con una sola consulta los totales de salidas se quedaban cortos.
+      fetchAllBatches<{ warehouse_id: string; product_id: string; quantity: number; movement_date: string }>(
+        "outbound_movements",
+        (from, to) =>
+          supabase
+            .from("outbound_movements")
+            .select("warehouse_id, product_id, quantity, movement_date")
+            .order("movement_date", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to)
+      ).then(
+        (data) => ({ data, error: null }),
+        (err: unknown) => ({ data: null, error: { message: err instanceof Error ? err.message : String(err) } })
+      ),
       supabase
         .from("puestas_a_disposicion")
         .select(
           "id, numero_contrato, fecha_puesta, fecha_fin_plancha, warehouse_id, product_id, cantidad_inicial, salidas_parciales(cantidad, tipo), customer:customers(name), warehouse:warehouses(id, name, posicion_cerrada, active, storage_daily_price), product:products(id, name, code, unit)"
         )
         .eq("estado", "abierta"),
-      // Todas las puestas (cualquier estado salvo cerrada_manual) para calcular Cant. Invendida
+      // Puestas que HOY están dentro de su plancha (cualquier estado), para
+      // la Cant. Invendida: mismo criterio que el calendario de la ficha.
       supabase
         .from("puestas_a_disposicion")
-        .select("warehouse_id, product_id, cantidad_inicial, cant_traspasada, estado"),
+        .select("warehouse_id, product_id, fecha_puesta, fecha_fin_plancha, cantidad_inicial, salidas_parciales(cantidad, tipo, fecha_salida)")
+        .lte("fecha_puesta", hoyLocal)
+        .gte("fecha_fin_plancha", hoyLocal),
       // Icono y fondo por producto — query separada y resiliente
       supabase
         .from("products")
@@ -263,31 +290,35 @@ export default function DashboardPage() {
           puestas: [],
         });
       }
-      stockMap.get(key)!.total_inbound += Number(row.quantity);
+      // Igual que las salidas: solo lo ocurrido hasta hoy.
+      if (row.movement_date <= hoyLocal) {
+        stockMap.get(key)!.total_inbound += Number(row.quantity);
+      }
     }
 
-    // Mapa de salidas manuales (from_puesta = false) para Cant. Invendida
-    const manualOutboundByKey = new Map<string, number>();
+    if (outboundRes.error) {
+      toast({ variant: "destructive", title: "Error al cargar salidas", description: outboundRes.error.message });
+      setIsLoadingStock(false);
+      return;
+    }
+
+    // Salidas de stock con fecha ≤ hoy (todas: directas, de puestas,
+    // auto-salidas de plancha y rebases). Las futuras aún no han ocurrido.
     for (const row of outboundRes.data ?? []) {
+      if (row.movement_date > hoyLocal) continue;
       const key = `${row.warehouse_id}||${row.product_id}`;
       if (stockMap.has(key)) {
         stockMap.get(key)!.total_outbound += Number(row.quantity);
       }
-      if (!row.from_puesta) {
-        manualOutboundByKey.set(key, (manualOutboundByKey.get(key) ?? 0) + Number(row.quantity));
-      }
     }
 
-    // Mapa de cantidad inicial total de puestas (todos los estados salvo "Cerrada manualmente")
-    // para Cant. Invendida — una puesta cerrada manualmente no representa mercancía
-    // vendida/comprometida, así que no debe restar de lo invendido.
-    const allPuestaQtyByKey = new Map<string, number>();
-    const allTraspasadaByKey = new Map<string, number>();
-    for (const p of allPuestasRes.data ?? []) {
-      if (p.estado === "cerrada_manual") continue;
+    // Puestas en plancha hoy, agrupadas por almacén+producto, para la
+    // Cant. Invendida (services/stock-invendido.service.ts).
+    const puestasEnPlanchaByKey = new Map<string, PuestaParaReparto[]>();
+    for (const p of (allPuestasRes.data ?? []) as unknown as (PuestaParaReparto & { warehouse_id: string; product_id: string })[]) {
       const key = `${p.warehouse_id}||${p.product_id}`;
-      allPuestaQtyByKey.set(key, (allPuestaQtyByKey.get(key) ?? 0) + Number(p.cantidad_inicial));
-      allTraspasadaByKey.set(key, (allTraspasadaByKey.get(key) ?? 0) + Number(p.cant_traspasada ?? 0));
+      if (!puestasEnPlanchaByKey.has(key)) puestasEnPlanchaByKey.set(key, []);
+      puestasEnPlanchaByKey.get(key)!.push(p);
     }
 
     // Construir mapa de puestas activas por key (warehouse_id||product_id)
@@ -365,11 +396,13 @@ export default function DashboardPage() {
       item.pending_stock = Math.max(movementPending, puestaPending);
       item.daily_cost = item.pending_stock * item.daily_price;
 
-      // Cant. Invendida = Total Entradas - Total cant. inicial puestas (todos estados) - Salidas manuales + Cant. Traspasada
-      const totalPuestaQty   = allPuestaQtyByKey.get(key) ?? 0;
-      const totalManualOut   = manualOutboundByKey.get(key) ?? 0;
-      const totalTraspasada  = allTraspasadaByKey.get(key) ?? 0;
-      item.cant_invendida = item.total_inbound - totalPuestaQty - totalManualOut + totalTraspasada;
+      // Cant. Invendida = stock físico hoy − pendiente de puestas en plancha
+      // hoy. Mismo cálculo que el calendario de la ficha almacén/producto;
+      // sin topes: si sale negativa se pinta en rojo (descuadre).
+      item.cant_invendida = invendidaDe(
+        item.total_inbound - item.total_outbound,
+        aDisposicionEn(prepararPuestas(puestasEnPlanchaByKey.get(key) ?? []), hoyLocal)
+      );
 
       if (item.pending_stock <= 0) continue;
 
