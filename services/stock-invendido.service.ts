@@ -8,10 +8,18 @@
  *   stock: directas, retiradas en plancha, auto-salidas de fin de plancha y
  *   rebases).
  * - A disposición = pendiente, ese día, de cada puesta cuyo período de
- *   plancha incluye el día (`fecha_puesta ≤ día ≤ fecha_fin_plancha`).
+ *   plancha incluye el día (`fecha_puesta ≤ día ≤ fecha_fin_plancha`) Y cuya
+ *   mercancía todavía no ha salido del stock con la auto-salida de plancha.
  *   Pendiente = inicial − retiradas reales − desaplicaciones con fecha ≤ día.
- *   Las salidas de tipo 'plancha' NO restan: son el traspaso contable, y esa
- *   mercancía ya sale del stock físico por su propio movimiento.
+ *   Las salidas de tipo 'plancha' NO restan del pendiente: son el traspaso
+ *   contable, y esa mercancía ya sale del stock físico por su propio
+ *   movimiento.
+ *
+ *   Por qué se exige lo último: la auto-salida se fecha EL ÚLTIMO día de
+ *   plancha, que sigue siendo "dentro de plancha". Ese día el stock físico ya
+ *   ha bajado, así que contar además la puesta como "a disposición" restaba la
+ *   misma mercancía dos veces (la invendida se hundía un día y al siguiente
+ *   volvía). La puesta deja de contar justo cuando su salida entra en el stock.
  *
  * SIN topes a propósito (decisión del usuario, 11/11/2026): si una puesta
  * supera el stock, o el stock queda en negativo, la invendida sale negativa
@@ -39,6 +47,12 @@ export interface PuestaReparto {
   fecha_fin_plancha: string;
   cantidad_inicial: number;
   retiradas: { fecha: string; acumulado: number }[];
+  /**
+   * Fecha de la auto-salida de fin de plancha, si ya existe. Desde ese día la
+   * mercancía pendiente ya no está en el stock del almacén (la sacó la
+   * auto-salida), así que deja de contar como "a disposición".
+   */
+  traspasadaDesde: string | null;
 }
 
 export function prepararPuestas(puestas: PuestaParaReparto[]): PuestaReparto[] {
@@ -51,11 +65,16 @@ export function prepararPuestas(puestas: PuestaParaReparto[]): PuestaReparto[] {
       acumulado += Number(s.cantidad);
       return { fecha: s.fecha_salida, acumulado };
     });
+    const fechasPlancha = (p.salidas_parciales ?? [])
+      .filter((s) => s.tipo === "plancha")
+      .map((s) => s.fecha_salida)
+      .sort();
     return {
       fecha_puesta: p.fecha_puesta,
       fecha_fin_plancha: p.fecha_fin_plancha,
       cantidad_inicial: Number(p.cantidad_inicial),
       retiradas,
+      traspasadaDesde: fechasPlancha[0] ?? null,
     };
   });
 }
@@ -76,6 +95,9 @@ export function aDisposicionEn(puestas: PuestaReparto[], dateStr: string): numbe
     // Fuera del período de plancha no cuenta: antes la puesta no existía y
     // después la mercancía ya se traspasó al cliente (salió del stock).
     if (dateStr < p.fecha_puesta || dateStr > p.fecha_fin_plancha) continue;
+    // Su auto-salida ya sacó la mercancía del stock: contarla aquí la restaría
+    // dos veces (ver la cabecera del archivo).
+    if (p.traspasadaDesde && dateStr >= p.traspasadaDesde) continue;
     const pendiente = p.cantidad_inicial - retiradoHasta(p, dateStr);
     if (pendiente > 0) total += pendiente;
   }
