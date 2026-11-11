@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { parseSalidasExcel } from "@/lib/excel-salidas";
+import { marcarSalidasDirectasDuplicadas } from "@/lib/salidas-directas-duplicadas";
 import {
   aplicarRebasesDelTramo,
   buildProposals,
@@ -117,6 +118,9 @@ export async function analyzeExcelAction(
       );
     }
   }
+
+  // 6.b Duplicados de salidas directas: la misma pesada importada dos veces.
+  await marcarSalidasDirectasDuplicadas(supabase, proposals);
 
   // 7. Detección de duplicados: misma puesta + fecha + matrícula + cantidad
   const puestaIds = [...new Set(proposals.filter((p) => p.match).map((p) => p.match!.puesta_id))];

@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { marcarSalidasDirectasDuplicadas } from "@/lib/salidas-directas-duplicadas";
 import { extractSalidasFromPdf, extractPesadasVerification, type Motor } from "@/lib/gemini";
 import { estadoMotorAlternativo, MISTRAL_MODEL, type EstadoMotorAlternativo } from "@/lib/mistral";
 import {
@@ -267,6 +268,9 @@ export async function analyzePdfAction(
       }
     }
   }
+
+  // 6.c Duplicados de salidas directas: la misma pesada importada dos veces.
+  await marcarSalidasDirectasDuplicadas(supabase, proposals);
 
   // 7. Detección de duplicados (requiere DB): misma puesta + fecha + matrícula + cantidad
   const puestaIds = [
