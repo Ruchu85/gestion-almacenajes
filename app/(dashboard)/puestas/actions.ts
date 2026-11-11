@@ -213,11 +213,18 @@ export async function createSalidaParcial(
 
   if (parsed.data.matricula) await upsertMatricula(parsed.data.matricula);
 
-  // La mercancía devuelta vuelve a ser stock del almacén. Se registra como
-  // ENTRADA porque outbound_movements exige quantity > 0 y el espejo de la
-  // puesta deja fuera las salidas negativas a propósito. Es el mismo patrón
-  // que usa una desaplicación.
-  if (esDevolucion) {
+  // Devolución DENTRO de plancha: la retirada que anula tenía su salida de
+  // stock (espejo), así que hay que deshacerla. Se registra como ENTRADA
+  // porque outbound_movements exige quantity > 0 y el espejo de la puesta
+  // deja fuera las salidas negativas a propósito.
+  //
+  // Devolución POSTERIOR al fin de plancha: NO se crea entrada. Esa
+  // mercancía ya salió del stock del almacén con la auto-salida de plancha,
+  // y las retiradas posteriores no generan movimiento; la devolución solo
+  // devuelve pendiente al cliente, que es quien paga su almacenaje. Una
+  // entrada aquí la contaría dos veces (bug corregido el 11/11/2026: había
+  // 19 devoluciones así, 485,90 TNS, sumadas de más al stock y al coste).
+  if (esDevolucion && parsed.data.fecha_salida <= (puesta.fecha_fin_plancha as string)) {
     const puestaRefDev = puesta.numero_contrato || parsed.data.puesta_id.slice(0, 8).toUpperCase();
     const { error: devError } = await supabase.from("inbound_movements").insert({
       warehouse_id: puesta.warehouse_id,
